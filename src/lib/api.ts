@@ -58,22 +58,25 @@ export async function checkHealth() {
   return res.json();
 }
 
-export function generateInsight(materials: LibraryItem[], userNote?: string) {
+export function generateInsight(materials: LibraryItem[], userNote?: string, seedTopics?: TopicItem[]) {
   return post<{ topics: TopicItem[]; summary: string }>('/generate/insight', {
     materials: materials.filter((m) => m.def),
     userNote,
+    seedTopics: seedTopics?.length ? seedTopics : undefined,
   });
 }
 
 export function generateCopy(
   materials: LibraryItem[],
   topics: TopicItem[],
-  userNote?: string
+  userNote?: string,
+  copiesPerTopic?: number
 ) {
   return post<{ copies: CopyItem[] }>('/generate/copy', {
     materials: materials.filter((m) => m.def),
     topics,
     userNote,
+    copiesPerTopic: copiesPerTopic ?? 3,
   });
 }
 

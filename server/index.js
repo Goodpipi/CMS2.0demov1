@@ -9,7 +9,8 @@ import {
   parseJsonSafe,
   buildMaterialContext,
 } from './lib/deepseek.js';
-import { getMockData } from './mockData.js';
+import { getMockData, getMockCopy } from './mockData.js';
+import { assignCopyTopicTitles, ensureCopyCount } from './copyUtils.js';
 import { enrichPptDesignVersions, flattenOutlinePages } from './lib/pptSlides.js';
 import { getPptTemplate } from './lib/pptTemplates.js';
 import { getImageTemplate } from './lib/imageTemplates.js';
@@ -17,6 +18,7 @@ import {
   SYSTEM_BASE,
   SYSTEM_CHAT,
   promptInsight,
+  promptExpandInsight,
   promptCopy,
   promptTeam,
   promptVideo,
@@ -55,19 +57,9 @@ const fallbackEnabled = () =>
 
 function shouldUseMockFallback(err) {
   if (!fallbackEnabled()) return false;
-  const msg = String(err?.message || '');
-  return (
-    err?.status === 502 ||
-    err?.status === 503 ||
-    err?.status === 504 ||
-    err.parseError === true ||
-    msg.includes('繁忙') ||
-    msg.includes('超时') ||
-    msg.includes('无法连接') ||
-    msg.includes('API Key') ||
-    msg.includes('JSON') ||
-    msg.includes('json')
-  );
+  // 演示工作台优先保证流程不中断：DeepSeek/API 抖动时统一降级为演示数据。
+  if (err) console.warn('[ai fallback eligible]', err.message);
+  return true;
 }
 
 app.get('/api/health', (_req, res) => {
@@ -114,9 +106,18 @@ function sendOk(res, data, meta = {}) {
 
 app.post('/api/generate/insight', async (req, res) => {
   try {
-    const { materials = [], userNote = '' } = req.body;
+    const { materials = [], userNote = '', seedTopics = [] } = req.body;
     const ctx = buildMaterialContext(materials);
-    const { result: data, mockUsed, mockReason } = await runAgent('', promptInsight(ctx, userNote), true, 'insight');
+    const isExpand = Array.isArray(seedTopics) && seedTopics.length > 0;
+    const prompt = isExpand
+      ? promptExpandInsight(ctx, seedTopics, userNote)
+      : promptInsight(ctx, userNote);
+    const { result: data, mockUsed, mockReason } = await runAgent(
+      '',
+      prompt,
+      true,
+      isExpand ? 'insight-expand' : 'insight'
+    );
     sendOk(res, data, { mockUsed, mockReason });
   } catch (e) {
     res.status(e.status || 500).json({ ok: false, error: e.message });
@@ -125,10 +126,36 @@ app.post('/api/generate/insight', async (req, res) => {
 
 app.post('/api/generate/copy', async (req, res) => {
   try {
-    const { materials = [], topics = [], userNote = '' } = req.body;
+    const { materials = [], topics = [], userNote = '', copiesPerTopic = 3 } = req.body;
+    const count = Math.min(Math.max(Number(copiesPerTopic) || 3, 1), 5);
     const ctx = buildMaterialContext(materials);
-    const { result: data, mockUsed, mockReason } = await runAgent('', promptCopy(ctx, topics, userNote), true, 'copy');
-    sendOk(res, data, { mockUsed, mockReason });
+    const topicList =
+      topics.length > 0
+        ? topics
+        : [{ title: userNote || '基于素材与对话内容', reason: '', source: '用户描述' }];
+    let data;
+    let mockUsed;
+    let mockReason;
+    if (mockOnly()) {
+      data = getMockCopy(topicList, count, userNote);
+      mockUsed = true;
+      mockReason = '演示模式（MOCK_AI=1）';
+    } else {
+      const agent = await runAgent(
+        '',
+        promptCopy(ctx, topicList, userNote, count),
+        true,
+        'copy'
+      );
+      data = agent.result;
+      mockUsed = agent.mockUsed;
+      mockReason = agent.mockReason;
+    }
+    const normalized = {
+      ...data,
+      copies: ensureCopyCount(data?.copies || [], topicList, count),
+    };
+    sendOk(res, normalized, { mockUsed, mockReason });
   } catch (e) {
     res.status(e.status || 500).json({ ok: false, error: e.message });
   }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { ChatSession, SessionStatus } from '@/types/session';
 import type { ChatProject } from '@/types/project';
 import {
@@ -9,8 +9,20 @@ import {
   touchProject,
 } from '@/lib/chatProjects';
 import { moveSessionToProject } from '@/lib/chatSessions';
-import { ChevronLeft, FolderPlus, MessageSquare, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FolderPlus, MessageSquare, MoreHorizontal, Search } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
+
+function sessionToneClasses(status: SessionStatus): string {
+  switch (status) {
+    case 'in_progress':
+    case 'team':
+      return 'from-[#D8466A] to-[#7762B8]';
+    case 'submitted':
+      return 'from-[#4A9EE0] to-[#7762B8]';
+    default:
+      return 'from-[#4A9EE0] to-[#3B7FBF]';
+  }
+}
 
 function lovableStatusClass(status: SessionStatus): string {
   switch (status) {
@@ -45,13 +57,41 @@ interface HomeHistorySidebarProps {
   formatSessionTime: (ts: number) => string;
 }
 
-function SessionRow({
+function HistorySection({
+  title,
+  badge,
+  headerActions,
+  children,
+}: {
+  title: ReactNode;
+  badge?: number;
+  headerActions?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="glass-card-subtle rounded-2xl p-2.5">
+      <div className="mb-1.5 flex items-center justify-between gap-2 px-1">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 text-[12px] font-semibold text-foreground">
+          {title}
+          {badge !== undefined && badge > 0 && (
+            <span className="grid h-4 min-w-[16px] shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#4A9EE0] to-[#D8466A] px-1 text-[10px] font-bold text-white shadow-[0_2px_6px_-1px_rgba(59,127,191,0.5)]">
+              {badge}
+            </span>
+          )}
+        </div>
+        {headerActions}
+      </div>
+      <div className="space-y-1">{children}</div>
+    </div>
+  );
+}
+
+function SessionSourceRow({
   session,
   isActive,
   deriveSessionSubtitle,
   deriveSessionStatus,
   sessionStatusLabel,
-  sessionStatusBadgeClass,
   formatSessionTime,
   projects,
   onOpen,
@@ -63,7 +103,6 @@ function SessionRow({
   deriveSessionSubtitle: (session: ChatSession) => string;
   deriveSessionStatus: (session: ChatSession) => SessionStatus;
   sessionStatusLabel: (status: SessionStatus) => string;
-  sessionStatusBadgeClass: (status: SessionStatus) => string;
   formatSessionTime: (ts: number) => string;
   projects: ChatProject[];
   onOpen: () => void;
@@ -86,87 +125,104 @@ function SessionRow({
   }, [menuOpen]);
 
   return (
-    <div
-      className={cn(
-        'group relative w-full overflow-hidden rounded-2xl border border-transparent p-3 text-left transition',
-        'hover:border-border/60 hover:bg-background/60 hover:shadow-soft',
-        isActive && 'border-border/60 bg-background/60 shadow-soft'
-      )}
-      onClick={onOpen}
-    >
-      <div className="absolute inset-y-2 left-0 w-0.5 rounded-r-full bg-hero-gradient opacity-0 transition group-hover:opacity-100" />
-      <div className="home-history-item-top">
-        <strong className="block truncate text-[13px] font-medium text-foreground">{session.title}</strong>
-        <div className="home-history-item-actions" ref={menuRef}>
-          <button
-            type="button"
-            className="home-history-item-menu-btn"
-            title="更多操作"
-            aria-label="更多操作"
-            onClick={(e) => {
-              e.stopPropagation();
-              setMenuOpen((v) => !v);
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-              <circle cx="5" cy="12" r="1.75" />
-              <circle cx="12" cy="12" r="1.75" />
-              <circle cx="19" cy="12" r="1.75" />
-            </svg>
-          </button>
-          {menuOpen && (
-            <div className="home-history-menu" onClick={(e) => e.stopPropagation()}>
-              <div className="home-history-menu-label">移至项目</div>
-              {projects.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  className={`home-history-menu-item ${session.projectId === p.id ? 'is-current' : ''}`}
-                  onClick={() => {
-                    onMoveToProject(p.id);
-                    setMenuOpen(false);
-                  }}
-                >
-                  {p.name}
-                  {session.projectId === p.id ? ' ✓' : ''}
-                </button>
-              ))}
-              {projects.length === 0 && (
-                <div className="home-history-menu-empty">暂无项目，请先新建</div>
+    <div className="group relative">
+      <button
+        type="button"
+        className={cn(
+          'flex w-full items-start gap-2 rounded-xl border p-2 text-left transition',
+          isActive
+            ? 'border-border/60 bg-background/80 shadow-soft'
+            : 'border-transparent hover:border-border/60 hover:bg-background/80 hover:shadow-soft'
+        )}
+        onClick={onOpen}
+      >
+        <span
+          className={cn(
+            'grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gradient-to-br shadow-[0_3px_8px_-2px_rgba(59,127,191,0.4)] ring-1 ring-white/40',
+            sessionToneClasses(status)
+          )}
+        >
+          <MessageSquare className="h-3.5 w-3.5 text-white" strokeWidth={2.4} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[12px] font-medium text-foreground">{session.title}</div>
+          <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
+            {deriveSessionSubtitle(session)}
+          </div>
+          <div className="mt-1 flex items-center justify-between gap-2">
+            <span
+              className={cn(
+                'inline-flex rounded-full border px-1.5 py-0 text-[9.5px] font-medium leading-5',
+                lovableStatusClass(status)
               )}
-              {session.projectId && (
-                <button
-                  type="button"
-                  className="home-history-menu-item home-history-menu-item-muted"
-                  onClick={() => {
-                    onMoveToProject(null);
-                    setMenuOpen(false);
-                  }}
-                >
-                  移出项目
-                </button>
-              )}
-              <div className="home-history-menu-divider" />
+            >
+              {sessionStatusLabel(status)}
+            </span>
+            <span className="shrink-0 text-[10px] text-muted-foreground/80">
+              {formatSessionTime(session.updatedAt)}
+            </span>
+          </div>
+        </div>
+        <ChevronRight className="mt-1 h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition group-hover:opacity-60" />
+      </button>
+      <div className="home-history-item-actions absolute right-1 top-1" ref={menuRef}>
+        <button
+          type="button"
+          className="home-history-item-menu-btn inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition hover:bg-primary/10 hover:text-primary group-hover:opacity-100"
+          title="更多操作"
+          aria-label="更多操作"
+          onClick={(e) => {
+            e.stopPropagation();
+            setMenuOpen((v) => !v);
+          }}
+        >
+          <MoreHorizontal className="h-3.5 w-3.5" />
+        </button>
+        {menuOpen && (
+          <div className="home-history-menu" onClick={(e) => e.stopPropagation()}>
+            <div className="home-history-menu-label">移至项目</div>
+            {projects.map((p) => (
               <button
+                key={p.id}
                 type="button"
-                className="home-history-menu-item home-history-menu-item-danger"
+                className={`home-history-menu-item ${session.projectId === p.id ? 'is-current' : ''}`}
                 onClick={() => {
-                  onDelete();
+                  onMoveToProject(p.id);
                   setMenuOpen(false);
                 }}
               >
-                删除对话
+                {p.name}
+                {session.projectId === p.id ? ' ✓' : ''}
               </button>
-            </div>
-          )}
-        </div>
-      </div>
-      <div className="mt-0.5 truncate text-[10.5px] text-muted-foreground">{deriveSessionSubtitle(session)}</div>
-      <div className="mt-2 flex items-center justify-between">
-        <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-medium', lovableStatusClass(status))}>
-          {sessionStatusLabel(status)}
-        </span>
-        <span className="text-[10px] text-muted-foreground">{formatSessionTime(session.updatedAt)}</span>
+            ))}
+            {projects.length === 0 && (
+              <div className="home-history-menu-empty">暂无项目，请先新建</div>
+            )}
+            {session.projectId && (
+              <button
+                type="button"
+                className="home-history-menu-item home-history-menu-item-muted"
+                onClick={() => {
+                  onMoveToProject(null);
+                  setMenuOpen(false);
+                }}
+              >
+                移出项目
+              </button>
+            )}
+            <div className="home-history-menu-divider" />
+            <button
+              type="button"
+              className="home-history-menu-item home-history-menu-item-danger"
+              onClick={() => {
+                onDelete();
+                setMenuOpen(false);
+              }}
+            >
+              删除对话
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -189,7 +245,6 @@ export function HomeHistorySidebar({
   deriveSessionSubtitle,
   deriveSessionStatus,
   sessionStatusLabel,
-  sessionStatusBadgeClass,
   formatSessionTime,
 }: HomeHistorySidebarProps) {
   const [projects, setProjects] = useState<ChatProject[]>(() => loadAllProjects());
@@ -282,14 +337,13 @@ export function HomeHistorySidebar({
   };
 
   const renderSession = (session: ChatSession) => (
-    <SessionRow
+    <SessionSourceRow
       key={session.id}
       session={session}
       isActive={session.id === currentSessionId}
       deriveSessionSubtitle={deriveSessionSubtitle}
       deriveSessionStatus={deriveSessionStatus}
       sessionStatusLabel={sessionStatusLabel}
-      sessionStatusBadgeClass={sessionStatusBadgeClass}
       formatSessionTime={formatSessionTime}
       projects={projects}
       onOpen={() => onOpenSession(session.id)}
@@ -298,20 +352,25 @@ export function HomeHistorySidebar({
     />
   );
 
+  const sidebarShell = cn(
+    'wpanel context context-sidebar home-history-sidebar shrink-0 self-stretch transition-[width] duration-500 ease-out',
+    open ? 'open w-[20rem] animate-fade-up' : 'collapsed w-14'
+  );
+
   if (!open) {
     return (
-      <aside className="w-16 shrink-0 self-stretch transition-[width] duration-500 ease-out">
+      <aside className={sidebarShell}>
         <button
           type="button"
-          className="flex h-[calc(100vh-7rem)] w-full flex-col items-center gap-2 rounded-3xl border border-white/30 bg-white/60 py-4 shadow-soft backdrop-blur-xl transition hover:border-primary/40"
+          className="context-sidebar-expand-tab"
           onClick={onExpand}
           title="展开历史对话"
           aria-label="展开历史对话"
         >
-          <MessageSquare className="h-5 w-5 text-muted-foreground" strokeWidth={2} />
-          <span className="text-[10px] font-medium text-muted-foreground [writing-mode:vertical-rl]">历史</span>
+          <MessageSquare className="h-[18px] w-[18px]" strokeWidth={2} />
+          <span className="context-sidebar-expand-label">历史</span>
           {sessions.length > 0 && (
-            <span className="h-1.5 w-1.5 rounded-full bg-[#8AD329]" />
+            <span className="home-history-expand-dot" aria-hidden />
           )}
         </button>
       </aside>
@@ -319,35 +378,34 @@ export function HomeHistorySidebar({
   }
 
   return (
-    <aside className="w-[19rem] shrink-0 self-stretch transition-[width] duration-500 ease-out animate-fade-up">
-      <div className="flex h-[calc(100vh-7rem)] flex-col rounded-3xl border border-white/30 bg-white/60 p-3 shadow-soft backdrop-blur-xl">
-      <div className="home-history-head">
-        <div className="flex items-center justify-between px-2 pb-3 pt-1">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <span className="grid h-6 w-6 place-items-center rounded-lg bg-gradient-to-br from-sky-500 to-blue-600 shadow-[0_4px_10px_-2px_oklch(0.55_0.18_220/0.45)] ring-1 ring-white/40">
-              <MessageSquare className="h-3.5 w-3.5 text-white" strokeWidth={2.4} />
+    <aside className={sidebarShell}>
+      <div className="context-sidebar-head home-history-context-head">
+        <div className="context-sidebar-head-row">
+          <div className="context-sidebar-head-title">
+            <span className="context-sidebar-head-icon" aria-hidden>
+              <MessageSquare className="h-4 w-4" strokeWidth={2} />
             </span>
-            <span>历史对话</span>
+            <h3 className="section-title context-sidebar-title">历史对话</h3>
             {sessions.length > 0 && (
-              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+              <span className="grid h-4 min-w-[16px] place-items-center rounded-full bg-gradient-to-br from-[#4A9EE0] to-[#D8466A] px-1 text-[10px] font-bold text-white shadow-[0_2px_6px_-1px_rgba(59,127,191,0.5)]">
                 {sessions.length}
               </span>
             )}
           </div>
           <button
             type="button"
-            className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+            className="context-sidebar-collapse-btn"
             onClick={onCollapse}
             title="收起历史对话"
             aria-label="收起历史对话"
           >
-            <ChevronLeft className="h-4 w-4" />
+            <ChevronLeft className="h-3.5 w-3.5" strokeWidth={2.5} />
           </button>
         </div>
 
         <button
           type="button"
-          className="group relative mb-3 flex w-full items-center justify-center gap-2 overflow-hidden rounded-2xl bg-hero-gradient px-4 py-2.5 text-sm font-medium text-white shadow-glow transition hover:brightness-110"
+          className="btn-hero-3d group relative mt-3 mb-3 flex w-full items-center justify-center gap-2 overflow-hidden rounded-2xl px-4 py-2.5 text-sm font-medium"
           onClick={() => {
             setCreatingProject(true);
             setNewProjectName('');
@@ -381,7 +439,7 @@ export function HomeHistorySidebar({
               </button>
               <button
                 type="button"
-                className="rounded-lg bg-hero-gradient px-3 py-1.5 text-xs font-semibold text-white shadow-glow transition hover:brightness-110 disabled:opacity-50"
+                className="btn-hero-3d rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
                 onClick={handleCreateProject}
                 disabled={!newProjectName.trim()}
               >
@@ -391,10 +449,10 @@ export function HomeHistorySidebar({
           </div>
         )}
 
-        <div className="relative mb-3">
+        <div className="relative">
           <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <input
-            className="w-full rounded-xl border border-border/60 bg-background/60 py-2 pl-9 pr-3 text-xs outline-none transition focus:border-primary/50 focus:bg-background focus:ring-4 focus:ring-primary/10"
+            className="w-full rounded-xl glass-input py-2 pl-9 pr-3 text-xs outline-none transition focus:ring-4 focus:ring-primary/10"
             placeholder="搜索对话标题或内容"
             value={sessionSearch}
             onChange={(e) => onSessionSearchChange(e.target.value)}
@@ -402,136 +460,129 @@ export function HomeHistorySidebar({
         </div>
       </div>
 
-      <div className="max-h-[calc(100vh-22rem)] flex-1 space-y-1 overflow-y-auto pr-1">
-        {isSearching ? (
-          filteredSessions.length > 0 ? (
-            filteredSessions.map(renderSession)
+      <div className="context-scroll">
+        <div className="space-y-3">
+          {isSearching ? (
+            <HistorySection title="搜索结果" badge={filteredSessions.length}>
+              {filteredSessions.length > 0 ? (
+                filteredSessions.map(renderSession)
+              ) : (
+                <div className="px-2 py-3 text-center text-[11px] text-muted-foreground">未找到匹配的对话</div>
+              )}
+            </HistorySection>
           ) : (
-            <div className="home-history-empty">
-              <p>未找到匹配的对话</p>
-            </div>
-          )
-        ) : (
-          <>
-            {projects.length > 0 && (
-              <div className="home-project-section">
-                {projects.map((project) => {
-                  const projectSessions = sessionsByProject.map.get(project.id) || [];
-                  const expanded = isProjectExpanded(project.id);
-                  const isActive = activeProjectId === project.id;
-                  return (
-                    <div key={project.id} className={`home-project-group ${isActive ? 'is-active' : ''}`}>
-                      <div className="home-project-head">
+            <>
+              {projects.map((project) => {
+                const projectSessions = sessionsByProject.map.get(project.id) || [];
+                const expanded = isProjectExpanded(project.id);
+                const isActive = activeProjectId === project.id;
+                return (
+                  <HistorySection
+                    key={project.id}
+                    badge={projectSessions.length}
+                    title={
+                      <button
+                        type="button"
+                        className={cn(
+                          'flex min-w-0 flex-1 items-center gap-1.5 text-left',
+                          isActive && 'text-primary'
+                        )}
+                        onClick={() => toggleProject(project.id)}
+                        aria-expanded={expanded}
+                      >
+                        <svg
+                          className={cn('h-3 w-3 shrink-0 text-muted-foreground transition-transform', expanded && 'rotate-90')}
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M9 18l6-6-6-6" />
+                        </svg>
+                        {renamingProjectId === project.id ? (
+                          <input
+                            className="input min-w-0 flex-1 rounded-md px-1.5 py-0.5 text-[12px]"
+                            value={renameValue}
+                            autoFocus
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => setRenameValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleRenameProject(project.id);
+                              if (e.key === 'Escape') setRenamingProjectId(null);
+                            }}
+                            onBlur={() => handleRenameProject(project.id)}
+                          />
+                        ) : (
+                          <span className="truncate">{project.name}</span>
+                        )}
+                      </button>
+                    }
+                    headerActions={
+                      <div className="flex shrink-0 items-center gap-0.5">
                         <button
                           type="button"
-                          className="home-project-toggle"
-                          onClick={() => toggleProject(project.id)}
-                          aria-expanded={expanded}
+                          className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition hover:bg-primary/10 hover:text-primary"
+                          title="重命名项目"
+                          onClick={() => {
+                            setRenamingProjectId(project.id);
+                            setRenameValue(project.name);
+                          }}
                         >
-                          <svg
-                            className={`home-project-chevron ${expanded ? 'is-open' : ''}`}
-                            width="12"
-                            height="12"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2.5"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M9 18l6-6-6-6" />
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 20h9" />
+                            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
                           </svg>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="home-project-folder-icon">
-                            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                          </svg>
-                          {renamingProjectId === project.id ? (
-                            <input
-                              className="input home-project-rename-input"
-                              value={renameValue}
-                              autoFocus
-                              onClick={(e) => e.stopPropagation()}
-                              onChange={(e) => setRenameValue(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleRenameProject(project.id);
-                                if (e.key === 'Escape') setRenamingProjectId(null);
-                              }}
-                              onBlur={() => handleRenameProject(project.id)}
-                            />
-                          ) : (
-                            <span className="home-project-name">{project.name}</span>
-                          )}
-                          <span className="home-project-count">{projectSessions.length}</span>
                         </button>
-                        <div className="home-project-head-actions">
-                          <button
-                            type="button"
-                            className="home-project-action-btn"
-                            title="重命名项目"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setRenamingProjectId(project.id);
-                              setRenameValue(project.name);
-                            }}
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M12 20h9" />
-                              <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                            </svg>
-                          </button>
-                          <button
-                            type="button"
-                            className="home-project-action-btn home-project-action-btn-danger"
-                            title="删除项目"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteProject(project.id);
-                            }}
-                          >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M3 6h18" />
-                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                            </svg>
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition hover:bg-destructive/10 hover:text-destructive"
+                          title="删除项目"
+                          onClick={() => handleDeleteProject(project.id)}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 6h18" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                          </svg>
+                        </button>
                       </div>
-                      {expanded && (
-                        <div className="home-project-sessions">
-                          {projectSessions.length > 0 ? (
-                            projectSessions.map(renderSession)
-                          ) : (
-                            <div className="home-project-empty">将对话移入此项目，或在此项目下新建对话</div>
-                          )}
+                    }
+                  >
+                    {expanded ? (
+                      projectSessions.length > 0 ? (
+                        projectSessions.map(renderSession)
+                      ) : (
+                        <div className="px-2 py-3 text-center text-[11px] text-muted-foreground">
+                          将对话移入此项目，或在此项目下新建对话
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                      )
+                    ) : null}
+                  </HistorySection>
+                );
+              })}
 
-            <div className="home-ungrouped-section">
-              {projects.length > 0 && (
-                <div className="home-ungrouped-label">未分组对话</div>
+              {(projects.length > 0 || sessionsByProject.ungrouped.length > 0 || sessions.length === 0) && (
+                <HistorySection
+                  title={projects.length > 0 ? '未分组对话' : '全部对话'}
+                  badge={sessionsByProject.ungrouped.length}
+                >
+                  {sessionsByProject.ungrouped.length > 0 ? (
+                    sessionsByProject.ungrouped.map(renderSession)
+                  ) : projects.length === 0 && sessions.length === 0 ? (
+                    <div className="px-2 py-6 text-center text-[11px] text-muted-foreground">
+                      <MessageSquare className="mx-auto mb-2 h-6 w-6 opacity-40" strokeWidth={1.5} />
+                      <p>暂无历史对话</p>
+                      <span className="mt-1 block text-[10px] opacity-80">在右侧输入灵感，开始第一次创作</span>
+                    </div>
+                  ) : (
+                    <div className="px-2 py-3 text-center text-[11px] text-muted-foreground">暂无未分组对话</div>
+                  )}
+                </HistorySection>
               )}
-              {sessionsByProject.ungrouped.length > 0 ? (
-                sessionsByProject.ungrouped.map(renderSession)
-              ) : projects.length === 0 && sessions.length === 0 ? (
-                <div className="home-history-empty">
-                  <div className="home-history-empty-icon" aria-hidden>
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-                    </svg>
-                  </div>
-                  <p>暂无历史对话</p>
-                  <span>在右侧输入灵感，开始第一次创作</span>
-                </div>
-              ) : projects.length > 0 ? (
-                <div className="home-project-empty">暂无未分组对话</div>
-              ) : null}
-            </div>
-          </>
-        )}
-      </div>
+            </>
+          )}
+        </div>
       </div>
     </aside>
   );

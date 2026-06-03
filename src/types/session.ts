@@ -7,6 +7,7 @@ import type {
   PptResult,
   PptOutline,
   PptDesignVersion,
+  GeneratedImageMeta,
 } from '@/types/content';
 import type { HomeEntryContext } from '@/app/components/homeGuide';
 import type { CopyRevision, ImageReviewStatus } from '@/types/review';
@@ -59,6 +60,7 @@ export interface SessionWorkspace {
   selectedPptVersionId: string | null;
   selectedPptTemplateId: string | null;
   generatedImages: string[];
+  generatedImageMeta?: GeneratedImageMeta[];
   /** 团队审阅前或上次采纳时的原图（与 generatedImages 下标对齐） */
   imageReviewOrigins?: string[];
   /** 每张配图的采纳状态（审阅者保存后为 pending） */
@@ -72,16 +74,21 @@ export interface SessionWorkspace {
   entryContext: HomeEntryContext | null;
   pptWizard: {
     active: boolean;
-    step: 'audience' | 'scenario' | null;
+    step: 'audience' | 'scenario' | 'path' | null;
     audience: string;
     scenario: string;
     pendingNote: string;
   } | null;
+  videoWizard: {
+    active: boolean;
+    pendingNote: string;
+  } | null;
   visualWizard: {
     active: boolean;
-    step: 'ask' | 'template';
+    step: 'count' | 'ask' | 'template';
     pendingNote: string;
     templateHint: string;
+    imagesPerCopy?: number;
   } | null;
 }
 

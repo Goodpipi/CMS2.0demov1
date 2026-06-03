@@ -24,6 +24,46 @@ interface PptOutlineEditorProps {
   /** inline：右侧 PPT大纲 标签内编辑；overlay：全屏侧栏（已弃用） */
   variant?: 'inline' | 'overlay';
   onClose?: () => void;
+  /** false：生成按钮由外层 tab 底部区域渲染（inline 模式） */
+  showGenerateFooter?: boolean;
+}
+
+export function PptOutlineGenerateFooter({
+  isGenerating = false,
+  selectedTemplateId,
+  onGenerateDesigns,
+}: {
+  isGenerating?: boolean;
+  selectedTemplateId: string | null;
+  onGenerateDesigns: (mode: 'template' | 'no-template') => void;
+}) {
+  return (
+    <footer className="ppt-outline-foot ppt-outline-generate-foot">
+      <div className="ppt-generate-actions">
+        <button
+          type="button"
+          className="btn ppt-generate-btn ppt-generate-btn-alt"
+          disabled={isGenerating}
+          onClick={() => onGenerateDesigns('no-template')}
+        >
+          {isGenerating ? '生成中…' : '不选用模板直接生成'}
+        </button>
+        <button
+          type="button"
+          className="btn ppt-generate-btn primary"
+          disabled={isGenerating || !selectedTemplateId}
+          onClick={() => onGenerateDesigns('template')}
+        >
+          {isGenerating ? '生成中…' : '按模板生成 PPT'}
+        </button>
+      </div>
+      <div className="small ppt-generate-hint">
+        {selectedTemplateId
+          ? `已选「${PPT_BUILTIN_TEMPLATES.find((t) => t.id === selectedTemplateId)?.name}」· 左：3 套方案 · 右：按模板一套`
+          : '请先在上方选择模板，或点击「不选用模板直接生成」'}
+      </div>
+    </footer>
+  );
 }
 
 const CHAPTER_DRAG_TYPE = 'application/x-ppt-chapter';
@@ -68,6 +108,7 @@ export function PptOutlineEditor({
   onSaveOutlineReview,
   variant = 'inline',
   onClose,
+  showGenerateFooter = true,
 }: PptOutlineEditorProps) {
   const isInline = variant === 'inline';
   const [draggingChapterId, setDraggingChapterId] = useState<string | null>(null);
@@ -389,48 +430,26 @@ export function PptOutlineEditor({
           </section>
         )}
 
-        <footer className="ppt-outline-foot">
-          {reviewerMode ? (
-            <>
-              <button
-                type="button"
-                className="btn ppt-generate-btn primary"
-                onClick={() => onSaveOutlineReview?.()}
-              >
-                保存大纲修改
-              </button>
-              <div className="small">
-                仅需修改章节与页面要点，无需生成 PPT。保存后内容运营可在同一会话「PPT大纲」中查看。
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="ppt-generate-actions">
-                <button
-                  type="button"
-                  className="btn ppt-generate-btn ppt-generate-btn-alt"
-                  disabled={isGenerating}
-                  onClick={() => onGenerateDesigns('no-template')}
-                >
-                  {isGenerating ? '生成中…' : '不选用模板直接生成'}
-                </button>
-                <button
-                  type="button"
-                  className="btn ppt-generate-btn primary"
-                  disabled={isGenerating || !selectedTemplateId}
-                  onClick={() => onGenerateDesigns('template')}
-                >
-                  {isGenerating ? '生成中…' : '按模板生成 PPT'}
-                </button>
-              </div>
-              <div className="small ppt-generate-hint">
-                {selectedTemplateId
-                  ? `已选「${PPT_BUILTIN_TEMPLATES.find((t) => t.id === selectedTemplateId)?.name}」· 左：3 套方案 · 右：按模板一套`
-                  : '请先在上方选择模板，或点击「不选用模板直接生成」'}
-              </div>
-            </>
-          )}
-        </footer>
+        {reviewerMode ? (
+          <footer className="ppt-outline-foot">
+            <button
+              type="button"
+              className="btn ppt-generate-btn primary"
+              onClick={() => onSaveOutlineReview?.()}
+            >
+              保存大纲修改
+            </button>
+            <div className="small">
+              仅需修改章节与页面要点，无需生成 PPT。保存后内容运营可在同一会话「PPT大纲」中查看。
+            </div>
+          </footer>
+        ) : showGenerateFooter ? (
+          <PptOutlineGenerateFooter
+            isGenerating={isGenerating}
+            selectedTemplateId={selectedTemplateId}
+            onGenerateDesigns={onGenerateDesigns}
+          />
+        ) : null}
       </div>
     </div>
   );

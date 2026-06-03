@@ -2751,6 +2751,28 @@ button, input, textarea, select {
   background: linear-gradient(180deg, #fff, #fbfdff);
 }
 
+.compliance-agent-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 4px 10px;
+  border: 1px solid #c5daf5;
+  border-radius: 999px;
+  background: #edf7ff;
+  color: #2d6f9f;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.compliance-agent-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #4a9ee0;
+}
+
 .chat-title h3 {
   margin: 0;
   font-size: 16px;
@@ -2850,6 +2872,13 @@ button, input, textarea, select {
   cursor: pointer;
 }
 
+.chip.recommended {
+  border-color: #d8466a;
+  background: #d8466a;
+  color: #fff;
+  box-shadow: none;
+}
+
 button.chip {
   font-family: inherit;
   line-height: 1.25;
@@ -2869,6 +2898,11 @@ button.chip {
 
 .chip:hover {
   background: #eef7ff;
+}
+
+.chip.recommended:hover {
+  background: #c93b60;
+  color: #fff;
 }
 
 .chip.green {
@@ -3987,6 +4021,10 @@ textarea {
   background: linear-gradient(180deg, #f2f9ff 0%, #f8fcf9 35%, #fff 100%);
 }
 
+.ppt-outline-tab-layout .ppt-outline-inline-panel {
+  background: transparent;
+}
+
 .ppt-outline-inline .ppt-outline-head {
   padding: 12px 14px 10px;
   border-bottom: 1px solid var(--line);
@@ -3998,6 +4036,29 @@ textarea {
   font-size: 15px;
   font-weight: 600;
   color: var(--blue);
+}
+
+.ppt-compliance-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  color: #2b803e;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.ppt-compliance-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #38a75a;
+  flex: 0 0 auto;
+}
+
+.detail-compliance-check {
+  margin: 0 0 10px;
+  padding: 0 2px;
 }
 
 .ppt-outline-inline .ppt-outline-toolbar {
@@ -4031,17 +4092,13 @@ textarea {
 
 .ppt-outline-inline .ppt-add-page,
 .ppt-outline-inline .ppt-add-chapter {
-  border-color: #b8d4f0;
-  background: #f7fbff;
+  border-color: rgba(74, 158, 224, 0.55);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(236, 246, 255, 0.72));
   color: var(--blue);
 }
 
-.ppt-outline-inline .ppt-outline-foot {
-  position: sticky;
-  bottom: 0;
+.ppt-outline-inline .ppt-outline-foot:not(.ppt-outline-generate-foot) {
   padding: 12px 14px 16px;
-  background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(6px);
 }
 
 /* PPT outline editor overlay (legacy) */
@@ -4105,6 +4162,9 @@ textarea {
 
 .ppt-chapter {
   margin-bottom: 20px;
+  padding: 14px 12px 16px;
+  border-radius: 16px;
+  min-height: 88px;
 }
 
 .ppt-chapter.is-collapsed .ppt-chapter-head {
@@ -4264,6 +4324,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  padding-bottom: 14px;
 }
 
 .ppt-page-card {
@@ -4305,7 +4366,7 @@ textarea {
 
 .ppt-page-bullets {
   width: 100%;
-  min-height: 72px;
+  min-height: 96px;
   border: 1px solid #e4edf5;
   border-radius: 10px;
   padding: 8px 10px;
@@ -4326,6 +4387,10 @@ textarea {
   font-size: 13px;
 }
 
+.ppt-add-page {
+  margin-top: 6px;
+}
+
 .ppt-add-chapter {
   width: 100%;
   margin-top: 8px;
@@ -4333,6 +4398,7 @@ textarea {
 
 .ppt-template-section {
   margin-top: 16px;
+  margin-bottom: 8px;
   padding-top: 16px;
   border-top: 1px solid var(--line);
 }
@@ -4463,6 +4529,22 @@ textarea {
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
   margin-top: 10px;
+}
+
+.ppt-design-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ppt-design-title-row h4 {
+  margin-top: 0;
+}
+
+.ppt-design-title-row .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .ppt-version-card {
@@ -4755,6 +4837,15 @@ textarea {
 
 .ppt-slides-panel {
   margin-top: 8px;
+  margin-bottom: 4px;
+}
+
+.ppt-design-foot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+  margin-bottom: 4px;
 }
 
 .ppt-slide-grid {
@@ -4833,9 +4924,40 @@ textarea {
   border-radius: 50%;
 }
 
-.copy-review-textarea {
-  min-height: 220px;
+.copy-revision-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.copy-revision-block-label {
+  margin-bottom: 8px;
+}
+
+.copy-revision-inline-edit {
+  display: block;
   width: 100%;
+  min-height: 220px;
+  margin: 0;
+  padding: 12px 14px;
+  border: none;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1.65;
+  resize: vertical;
+  outline: none;
+  box-shadow: none;
+}
+
+.copy-revision-inline-edit:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--accent, rgba(99, 102, 241, 0.45));
+}
+
+.copy-revision-save-row {
+  margin-top: 12px;
 }
 
 .drawer-editor-toolbar {

@@ -11,6 +11,7 @@ import type {
   PptResult,
   PptOutline,
   PptDesignVersion,
+  GeneratedImageMeta,
 } from '@/types/content';
 import {
   buildTeamReviewPayload,
@@ -19,7 +20,7 @@ import {
 import { buildVideoPosterDataUrl } from '@/app/components/videoUtils';
 import { VisualEditor } from '@/app/components/VisualEditor';
 import { parseSvgFromDataUrl } from '@/app/components/svgEditorUtils';
-import { PptOutlineEditor } from '@/app/components/PptOutlineEditor';
+import { PptOutlineEditor, PptOutlineGenerateFooter } from '@/app/components/PptOutlineEditor';
 import { getPptTemplate, pptTemplateIdFromTitle } from '@/app/components/pptTemplates';
 import { getImageTemplatesByIds } from '@/app/components/imageTemplates';
 import { ImageTemplatePickerModal } from '@/app/components/ImageTemplatePickerModal';
@@ -28,6 +29,8 @@ import { MaterialDetailModal } from '@/app/components/MaterialDetailModal';
 import { ContextMaterialsPanel } from '@/app/components/ContextMaterialsPanel';
 import type { LibraryItem } from '@/types/library';
 import { materialAttachmentPill } from '@/lib/libraryUtils';
+import { assignCopyTopicTitles, ensureCopyCount, groupCopiesByTopic } from '@/lib/copyUtils';
+import { groupImagesByCopy } from '@/lib/imageUtils';
 import { buildPreviewFieldsFromTitle } from '@/lib/materialContent';
 import {
   normalizeOutline,
@@ -37,7 +40,6 @@ import {
 } from '@/app/components/pptUtils';
 import { RoleSwitcher } from '@/app/components/RoleSwitcher';
 import { ReviewerHome } from '@/app/components/ReviewerHome';
-import { CopyReviewEditor } from '@/app/components/CopyReviewEditor';
 import { CopyRevisionDisplay } from '@/app/components/CopyRevisionDisplay';
 import { OpsImageReviewPanel } from '@/app/components/OpsImageReviewPanel';
 import { alignImageReviewArrays } from '@/lib/imageReviewUtils';
@@ -57,7 +59,7 @@ import {
   sessionCopyRevisionBase,
   propagateCopyRevisionsToSession,
 } from '@/lib/reviewTasks';
-import { createCopyRevision, downloadDataUrl, latestCopyText } from '@/lib/copyRevisionUtils';
+import { createCopyRevision, downloadDataUrl, latestCopyText, saveCopyRevisionMerged, normalizeCopyRevisions } from '@/lib/copyRevisionUtils';
 import type { UserRole, ReviewTask } from '@/types/review';
 import { ROLE_PROFILES } from '@/types/review';
 import type { CopyRevision, ImageReviewStatus } from '@/types/review';
@@ -74,9 +76,19 @@ import {
 import {
   analyzeBrief,
   getMissingForPpt,
+  guideImagesPerCopy,
   guideMissingFields,
+  guideFlexibleWorkflow,
+  guidePptDirectDone,
+  guidePptPath,
+  guideVideoPath,
+  isPptDirectPath,
+  isPptOutlinePath,
   isStartAction,
   isInsightQuickAction,
+  isVideoDirectPath,
+  isVideoScriptPath,
+  parseImagesPerCopy,
   parseScenarioExplicit,
 } from '@/app/components/conversationGuide';
 import { ConfirmModal } from '@/app/components/ConfirmModal';
@@ -155,6 +167,27 @@ const tabNames = {
   submit: 'Veeva提交',
 };
 
+function comparableCopyText(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+function findCopyIndexByText(copies: CopyItem[], text: string): number {
+  const target = comparableCopyText(text);
+  if (!target) return -1;
+  return copies.findIndex((copy) => comparableCopyText(copy.body) === target);
+}
+
+function findCopyIndexForRevision(
+  copies: CopyItem[],
+  revisionBase: string,
+  revisions: CopyRevision[]
+): number {
+  const baseIndex = findCopyIndexByText(copies, revisionBase);
+  if (baseIndex >= 0) return baseIndex;
+  if (!revisionBase || revisions.length === 0) return -1;
+  return findCopyIndexByText(copies, latestCopyText(revisionBase, revisions));
+}
+
 const posterData = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 900 560'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' x2='1' y1='0' y2='1'%3E%3Cstop stop-color='%23eaf7ff'/%3E%3Cstop offset='1' stop-color='%23f4fff0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='900' height='560' fill='url(%23g)'/%3E%3Ccircle cx='720' cy='110' r='100' fill='%2369BE28' opacity='.22'/%3E%3Ccircle cx='145' cy='115' r='82' fill='%231d6bff' opacity='.16'/%3E%3Cpath d='M560 360c90-100 190-85 260-28v228H520c-35-68-27-137 40-200z' fill='%2369BE28' opacity='.24'/%3E%3Crect x='54' y='46' width='118' height='42' rx='21' fill='%23103C8F'/%3E%3Ctext x='83' y='73' font-size='24' font-weight='700' fill='white'%3EBayer%3C/text%3E%3Ctext x='70' y='175' font-size='58' font-weight='900' fill='%23103C8F'%3E%E8%82%BE%E8%84%8F%E5%81%A5%E5%BA%B7%3C/text%3E%3Ctext x='70' y='248' font-size='58' font-weight='900' fill='%23103C8F'%3E%E4%B8%8D%E6%AD%A2%E7%9C%8B%E7%97%87%E7%8A%B6%3C/text%3E%3Ctext x='74' y='316' font-size='28' fill='%2340536a'%3E%E4%BA%86%E8%A7%A3%E9%A3%8E%E9%99%A9%E5%9B%A0%E7%B4%A0%EF%BC%8C%E5%87%BA%E7%8E%B0%E7%96%91%E9%97%AE%E6%97%B6%E8%AF%B7%E5%92%A8%E8%AF%A2%E4%B8%93%E4%B8%9A%E5%8C%BB%E7%94%9F%3C/text%3E%3Crect x='70' y='410' width='420' height='64' rx='32' fill='%23fff' stroke='%23cfe0f1'/%3E%3Ctext x='100' y='452' font-size='24' fill='%231d5aa7'%3E%E7%96%BE%E7%97%85%E6%95%99%E8%82%B2%E5%86%85%E5%AE%B9%EF%BD%9C%E4%BB%85%E4%BE%9B%E7%A7%91%E6%99%AE%E5%8F%82%E8%80%83%3C/text%3E%3C/svg%3E";
 
 const HOME_CREATION_MODES: {
@@ -163,11 +196,11 @@ const HOME_CREATION_MODES: {
   gradient: string;
   Icon: typeof FileBarChart;
 }[] = [
-  { intent: 'insight', label: '洞察报告', gradient: 'from-[#54B9F9] to-[#2E8FD6]', Icon: FileBarChart },
-  { intent: 'copy', label: '文案', gradient: 'from-[#7DC8F7] to-[#54B9F9]', Icon: FileText },
-  { intent: 'visual', label: '图片', gradient: 'from-[#54B9F9] to-[#8AD329]', Icon: ImageIcon },
-  { intent: 'video', label: '视频', gradient: 'from-[#2E8FD6] to-[#54B9F9]', Icon: Video },
-  { intent: 'ppt', label: 'PPT', gradient: 'from-[#8AD329] to-[#6FCFC0]', Icon: Presentation },
+  { intent: 'insight', label: '洞察报告', gradient: 'from-[#4A9EE0] to-[#3B7FBF]', Icon: FileBarChart },
+  { intent: 'copy', label: '文案', gradient: 'from-[#4A9EE0] to-[#7762B8]', Icon: FileText },
+  { intent: 'visual', label: '图片', gradient: 'from-[#4A9EE0] via-[#7762B8] to-[#D8466A]', Icon: ImageIcon },
+  { intent: 'video', label: '视频', gradient: 'from-[#3B7FBF] to-[#4A9EE0]', Icon: Video },
+  { intent: 'ppt', label: 'PPT', gradient: 'from-[#D8466A] to-[#7762B8]', Icon: Presentation },
 ];
 
 type Screen = 'home' | 'library' | 'workspace';
@@ -215,20 +248,26 @@ export default function App() {
   const [selectedPptTemplateId, setSelectedPptTemplateId] = useState<string | null>(null);
   const [pptWizard, setPptWizard] = useState<{
     active: boolean;
-    step: 'audience' | 'scenario' | null;
+    step: 'audience' | 'scenario' | 'path' | null;
     audience: string;
     scenario: string;
     pendingNote: string;
   } | null>(null);
+  const [videoWizard, setVideoWizard] = useState<{
+    active: boolean;
+    pendingNote: string;
+  } | null>(null);
   const [visualWizard, setVisualWizard] = useState<{
     active: boolean;
-    step: 'ask';
+    step: 'count' | 'ask';
     pendingNote: string;
     templateHint: string;
+    imagesPerCopy?: number;
   } | null>(null);
   const [imageTemplateModal, setImageTemplateModal] = useState<{
     pendingNote: string;
     templateHint: string;
+    imagesPerCopy: number;
   } | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [apiReady, setApiReady] = useState<boolean | null>(null);
@@ -251,10 +290,12 @@ export default function App() {
   const [showModal, setShowModal] = useState(false);
   const [attachments, setAttachments] = useState<string[]>([]);
   const [generatedImages, setGeneratedImages] = useState<string[]>([]);
+  const [generatedImageMeta, setGeneratedImageMeta] = useState<GeneratedImageMeta[]>([]);
   const [imageReviewOrigins, setImageReviewOrigins] = useState<string[]>([]);
   const [imageReviewStatuses, setImageReviewStatuses] = useState<ImageReviewStatus[]>([]);
   const [selectedImages, setSelectedImages] = useState<boolean[]>([]);
   const [selectedTopics, setSelectedTopics] = useState<boolean[]>([true, true, false, false]);
+  const [copyCountPerTopic, setCopyCountPerTopic] = useState(3);
   const [selectedCopies, setSelectedCopies] = useState<boolean[]>([true, false, false]);
   const [editingCopy, setEditingCopy] = useState('');
   const [showCopyEditModal, setShowCopyEditModal] = useState(false);
@@ -285,9 +326,11 @@ export default function App() {
   const feedRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef(state);
   const pptWizardRef = useRef(pptWizard);
+  const videoWizardRef = useRef(videoWizard);
   const visualWizardRef = useRef(visualWizard);
   stateRef.current = state;
   pptWizardRef.current = pptWizard;
+  videoWizardRef.current = videoWizard;
   visualWizardRef.current = visualWizard;
 
   const buildWorkspaceSnapshot = useCallback(
@@ -305,6 +348,7 @@ export default function App() {
       selectedPptVersionId,
       selectedPptTemplateId,
       generatedImages,
+      generatedImageMeta,
       imageReviewOrigins,
       imageReviewStatuses,
       selectedImages,
@@ -315,6 +359,7 @@ export default function App() {
       copyRevisionBase,
       entryContext,
       pptWizard,
+      videoWizard,
       visualWizard,
     }),
     [
@@ -331,6 +376,7 @@ export default function App() {
       selectedPptVersionId,
       selectedPptTemplateId,
       generatedImages,
+      generatedImageMeta,
       imageReviewOrigins,
       imageReviewStatuses,
       selectedImages,
@@ -341,6 +387,7 @@ export default function App() {
       copyRevisionBase,
       entryContext,
       pptWizard,
+      videoWizard,
       visualWizard,
     ]
   );
@@ -410,6 +457,11 @@ export default function App() {
     setSelectedPptVersionId(w.selectedPptVersionId);
     setSelectedPptTemplateId(w.selectedPptTemplateId ?? null);
     setGeneratedImages(w.generatedImages);
+    setGeneratedImageMeta(w.generatedImageMeta ?? w.generatedImages?.map((_, i) => ({
+      copyTitle: '综合内容',
+      copyIndex: -1,
+      imageIndex: i,
+    })) ?? []);
     const imgCount = w.generatedImages?.length ?? 0;
     const { origins: loadedOrigins, statuses: loadedStatuses } = alignImageReviewArrays(
       w.generatedImages ?? [],
@@ -435,10 +487,13 @@ export default function App() {
       revisions = sessionMerged;
       revisionBase = sessionCopyRevisionBase(session.id) || revisionBase;
     }
-    setCopyRevisions(revisions);
+    setCopyRevisions(
+      revisions.length ? normalizeCopyRevisions(revisionBase, revisions) : []
+    );
     setCopyRevisionBase(revisionBase);
     setEntryContext(w.entryContext);
     setPptWizard(w.pptWizard);
+    setVideoWizard(w.videoWizard ?? null);
     setVisualWizard(w.visualWizard ?? null);
     setAttachments([]);
     setInputValue('');
@@ -454,6 +509,12 @@ export default function App() {
     const copy = copies[idx >= 0 ? idx : 0];
     return copy?.body || '';
   }, [teamResult, selectedCopies, copies]);
+
+  const getSelectedCopyTargets = useCallback(() => {
+    return copies
+      .map((copy, copyIndex) => ({ copy, copyIndex }))
+      .filter(({ copyIndex }) => selectedCopies[copyIndex]);
+  }, [copies, selectedCopies]);
 
   const buildTeamPayload = useCallback(
     (type: TeamContentType) =>
@@ -583,8 +644,37 @@ export default function App() {
     addMsg('ai', guide.html, 'DeepSeek-V3.1', guide.chips);
   };
 
+  const showFlexibleWorkflowGuide = () => {
+    const guide = guideFlexibleWorkflow();
+    addMsg('ai', guide.html, 'DeepSeek-V3.1', guide.chips);
+  };
+
   const dispatchUserIntent = (text: string, skipUserMsg = false) => {
     const lower = text.toLowerCase();
+    if (/自由探索|随便看看|还没想好|不知道做什么/.test(text)) {
+      showFlexibleWorkflowGuide();
+      return;
+    }
+    if (/标准流程|完整流程|从洞察开始/.test(text)) {
+      runInsight(text, { skipUserMsg });
+      return;
+    }
+    if (/直接生成PPT|直接做PPT/i.test(text)) {
+      startPptFlow(text, { skipUserMsg, path: 'direct' });
+      return;
+    }
+    if (/直接生成视频|直接做视频/.test(text)) {
+      startVideoFlow(text, { skipUserMsg, path: 'direct' });
+      return;
+    }
+    if (/先大纲后PPT|先大纲后生成PPT/i.test(text)) {
+      startPptFlow(text, { skipUserMsg, path: 'outline' });
+      return;
+    }
+    if (/先脚本后视频|先脚本后生成视频/.test(text)) {
+      startVideoFlow(text, { skipUserMsg, path: 'script' });
+      return;
+    }
     if (isStartAction(text) || text.includes('开始生成')) {
       if (isPptEntryIntent(entryContext) || text.includes('PPT') || text.includes('ppt')) {
         startPptFlow(text, { skipUserMsg });
@@ -603,7 +693,7 @@ export default function App() {
         return;
       }
       if (entryContext?.intent === 'video' || text.includes('视频')) {
-        runVideo(text, { skipUserMsg });
+        startVideoFlow(text, { skipUserMsg });
         return;
       }
     }
@@ -630,7 +720,7 @@ export default function App() {
     ) {
       startVisualFlow(text, { skipUserMsg });
     } else if (text.includes('视频') || lower.includes('video')) {
-      runVideo(text, { skipUserMsg });
+      startVideoFlow(text, { skipUserMsg });
     } else if (text.includes('PPT') || text.includes('ppt')) {
       startPptFlow(text, { skipUserMsg });
     } else if (text.includes('Veeva') || text.includes('veeva') || text.includes('审批') || text.includes('提交')) {
@@ -721,7 +811,16 @@ export default function App() {
     saveUserRole(role);
     setActiveReviewTaskId(null);
     if (role === 'ops') {
-      setCurrentScreen('home');
+      if (currentSessionId && (copies.length > 0 || copyRevisions.length > 0)) {
+        setCurrentScreen('workspace');
+        setState((prev) => ({
+          ...prev,
+          active: 'copy',
+          tabs: prev.tabs.includes('copy') ? prev.tabs : ['copy', ...prev.tabs],
+        }));
+      } else {
+        setCurrentScreen('home');
+      }
     }
   };
 
@@ -898,6 +997,7 @@ export default function App() {
         : null
     );
     setPptWizard(null);
+    setVideoWizard(null);
     setVisualWizard(null);
     setInsightSummary('');
     setSelectedTopics([]);
@@ -954,7 +1054,12 @@ export default function App() {
     setInputValue('');
     setSelectedPrompt('');
     if (visualWizard?.active && handleVisualWizardReply(text)) return;
+    if (videoWizard?.active && handleVideoWizardReply(text)) return;
     if (pptWizard?.active && handlePptWizardReply(text, inputValue.trim())) return;
+    if (text.includes('查看大纲')) {
+      openPptOutlineTab();
+      return;
+    }
     if (shouldPreferVisualFlow(entryContext, text)) {
       const templateHint =
         entryContext?.intent === 'visual-template' ? entryContext.templateTitle : undefined;
@@ -1018,34 +1123,92 @@ export default function App() {
       addTab('insight');
       addMsg(
         'ai',
-        `已生成 ${result.topics.length} 个候选话题。${result.summary || ''} 右侧可查看详情并勾选后继续生成文案。`,
+        `已生成 ${result.topics.length} 个候选话题。${result.summary || ''} 右侧可查看详情并勾选后继续生成文案；也可以跳过文案，直接进入图片、PPT 或视频。`,
         'DeepSeek-V3.1｜话题洞察',
-        ['生成文案', '补充小红书热点洞察']
+        ['生成文案', '直接生成图片', '生成PPT大纲', '生成视频脚本']
       );
     });
   };
 
-  const runCopy = (userNote = '', opts?: { skipUserMsg?: boolean }) => {
-    if (!opts?.skipUserMsg) addMsg('user', userNote || '生成文案', selectedModel);
-    const selected = topics.filter((_, i) => selectedTopics[i]);
+  const expandTopics = () => {
+    const selected = topics.filter((_, i) => selectedTopics[i] !== false);
+    if (selected.length === 0) {
+      toast('请先勾选至少一个话题');
+      return;
+    }
+    addMsg('user', '拓展话题', selectedModel);
+    void runWithAi('正在拓展话题', async () => {
+      const result = await api.generateInsight(library, '基于已选话题拓展更多方向', selected);
+      notifyMockIfNeeded(result);
+      const existingTitles = new Set(topics.map((t) => t.title.trim()));
+      const newTopics = result.topics
+        .filter((t) => t.title?.trim() && !existingTitles.has(t.title.trim()))
+        .slice(0, 3);
+      if (newTopics.length === 0) {
+        toast('未生成新的不重复话题，请调整已选话题后重试');
+        return;
+      }
+      setTopics((prev) => [...prev, ...newTopics]);
+      setSelectedTopics((prev) => [...prev, ...newTopics.map(() => true)]);
+      if (result.summary) {
+        setInsightSummary((prev) => (prev ? `${prev} ${result.summary}` : result.summary));
+      }
+      addMsg(
+        'ai',
+        `已基于所选话题拓展 ${newTopics.length} 个新话题，已与原有话题一起在右侧列表展示。`,
+        'DeepSeek-V3.1｜话题拓展',
+        ['生成文案']
+      );
+    });
+  };
+
+  const runCopy = (userNote = '', opts?: { skipUserMsg?: boolean; copiesPerTopic?: number }) => {
+    const count = Math.min(Math.max(opts?.copiesPerTopic ?? copyCountPerTopic, 1), 5);
+    const selected = topics.filter((_, i) => selectedTopics[i] !== false);
+    if (topics.length > 0 && selected.length === 0) {
+      toast('请先勾选至少一个话题');
+      return;
+    }
     const topicInput =
       selected.length > 0
         ? selected
         : topics.length > 0
           ? topics
           : [{ title: userNote || '基于素材与对话内容', reason: '', source: '用户描述' }];
+    if (!opts?.skipUserMsg) {
+      addMsg(
+        'user',
+        selected.length > 0
+          ? `为 ${selected.length} 个话题各生成 ${count} 篇文案`
+          : userNote || '生成文案',
+        selectedModel
+      );
+    }
     void runWithAi('正在生成文案', async () => {
-      const result = await api.generateCopy(library, topicInput, userNote);
+      const result = await api.generateCopy(library, topicInput, userNote, count);
       notifyMockIfNeeded(result);
-      setCopies(result.copies);
-      setSelectedCopies(result.copies.map((_, i) => i === 0));
+      const normalized = ensureCopyCount(result.copies, topicInput, count);
+      const selectedTitles = new Set(topicInput.map((t) => t.title.trim()));
+      setCopies((prev) => {
+        const kept = prev.filter((c) => !c.topicTitle || !selectedTitles.has(c.topicTitle));
+        const merged = [...kept, ...normalized];
+        setSelectedCopies((prevSel) => {
+          const keptFlags = prev
+            .map((c, i) => ({ c, sel: prevSel[i] ?? false }))
+            .filter(({ c }) => !c.topicTitle || !selectedTitles.has(c.topicTitle))
+            .map(({ sel }) => sel);
+          return [...keptFlags, ...normalized.map(() => true)];
+        });
+        return merged;
+      });
       setState((prev) => ({ ...prev, copy: true }));
       addTab('copy');
+      const topicCount = new Set(normalized.map((c) => c.topicTitle)).size;
       addMsg(
         'ai',
-        `已生成 ${result.copies.length} 版文案，已自动应用公众渠道合规策略。右侧可编辑文案，或继续生成图片、视频、PPT。`,
+        `已为 ${topicCount} 个话题各生成 ${count} 篇文案（共 ${normalized.length} 篇），右侧按话题分类展示。`,
         'DeepSeek-V3.1｜文案生成',
-        ['进入团队修改', '生成图片', '生成视频', '生成PPT']
+        ['生成图片', '生成PPT大纲', '生成视频脚本', '进入团队修改']
       );
     });
   };
@@ -1096,54 +1259,126 @@ export default function App() {
     });
   };
 
-  const executeVisualGeneration = (userNote: string, templateIds: string[]) => {
+  const executeVisualGeneration = (
+    userNote: string,
+    templateIds: string[],
+    imagesPerCopy = 1
+  ) => {
     setVisualWizard(null);
     setImageTemplateModal(null);
     const { brief } = buildContentBrief(userNote);
     const templates = getImageTemplatesByIds(templateIds);
+    const copyTargets = getSelectedCopyTargets();
+    const useCopyMode = copies.length > 0 && copyTargets.length > 0;
+    const perCopy = Math.min(Math.max(imagesPerCopy, 1), 5);
 
-    const genLabel =
-      templates.length > 1
+    const genLabel = useCopyMode
+      ? `正在为 ${copyTargets.length} 篇文案各生成 ${perCopy} 张配图`
+      : templates.length > 1
         ? `正在按 ${templates.length} 个模板生成配图`
         : templates.length === 1
           ? `正在按「${templates[0].name}」模板生成配图`
           : '正在生成图片方案';
 
     void runWithAi(genLabel, async () => {
-      const images: string[] = [];
+      const newImages: string[] = [];
+      const newMeta: GeneratedImageMeta[] = [];
       const titles: string[] = [];
 
-      if (templates.length === 0) {
-        const result = await api.generatePoster(brief, userNote, null);
+      const generateOne = async (
+        copyBody: string,
+        note: string,
+        templateId: string | null,
+        meta: GeneratedImageMeta
+      ) => {
+        const result = await api.generatePoster(copyBody, note, templateId);
         notifyMockIfNeeded(result);
-        images.push(result.dataUrl);
+        newImages.push(result.dataUrl);
+        newMeta.push(meta);
         titles.push(result.title);
+      };
+
+      if (useCopyMode) {
+        for (const { copy, copyIndex } of copyTargets) {
+          for (let imgIdx = 0; imgIdx < perCopy; imgIdx++) {
+            const tpl = templates.length > 0 ? templates[imgIdx % templates.length] : null;
+            const note = [
+              userNote,
+              `【文案】${copy.title}`,
+              `【配图 ${imgIdx + 1}/${perCopy}】`,
+              tpl ? `【模板】${tpl.name}：${tpl.styleHint}` : '',
+            ]
+              .filter(Boolean)
+              .join('\n');
+            await generateOne(
+              copy.body,
+              note,
+              tpl?.id ?? null,
+              { copyTitle: copy.title, copyIndex, imageIndex: imgIdx }
+            );
+          }
+        }
+      } else if (templates.length === 0) {
+        await generateOne(brief, userNote, null, {
+          copyTitle: '综合内容',
+          copyIndex: -1,
+          imageIndex: 0,
+        });
       } else {
-        for (const tpl of templates) {
-          const result = await api.generatePoster(
+        for (let i = 0; i < templates.length; i++) {
+          const tpl = templates[i];
+          await generateOne(
             brief,
             `${userNote}\n【模板】${tpl.name}：${tpl.styleHint}`,
-            tpl.id
+            tpl.id,
+            { copyTitle: '综合内容', copyIndex: -1, imageIndex: i }
           );
-          notifyMockIfNeeded(result);
-          images.push(result.dataUrl);
-          titles.push(`${tpl.name}：${result.title}`);
         }
       }
 
-      setGeneratedImages(images.length ? images : [posterData]);
+      const regenCopyIndices = new Set(copyTargets.map((t) => t.copyIndex));
+      const keptImages: string[] = [];
+      const keptMeta: GeneratedImageMeta[] = [];
+      const keptSelected: boolean[] = [];
+      generatedImages.forEach((img, i) => {
+        const m = generatedImageMeta[i];
+        if (!useCopyMode || !m || !regenCopyIndices.has(m.copyIndex)) {
+          keptImages.push(img);
+          keptMeta.push(
+            m ?? { copyTitle: '综合内容', copyIndex: -1, imageIndex: i }
+          );
+          keptSelected.push(selectedImages[i] ?? false);
+        }
+      });
+
+      const mergedImages =
+        newImages.length > 0 ? [...keptImages, ...newImages] : keptImages.length ? keptImages : [posterData];
+      const mergedMeta =
+        newImages.length > 0
+          ? [...keptMeta, ...newMeta]
+          : keptMeta.length
+            ? keptMeta
+            : [{ copyTitle: '综合内容', copyIndex: -1, imageIndex: 0 }];
+      const mergedSelected =
+        newImages.length > 0
+          ? [...keptSelected, ...newImages.map(() => true)]
+          : mergedImages.map((_, i) => i === 0);
+
+      setGeneratedImages(mergedImages);
+      setGeneratedImageMeta(mergedMeta);
       setImageReviewOrigins([]);
       setImageReviewStatuses([]);
-      setSelectedImages(images.map((_, i) => i === 0));
+      setSelectedImages(mergedSelected);
       setState((prev) => ({ ...prev, visual: true, active: 'visual' }));
       addTab('visual');
 
-      const summary =
-        templates.length > 1
-          ? `已按 ${templates.length} 个模板生成 ${images.length} 张配图（${templates.map((t) => t.name).join('、')}）。请在右侧查看。`
+      const summary = useCopyMode
+        ? `已为 ${copyTargets.length} 篇文案各生成 ${perCopy} 张配图（共 ${newImages.length} 张），右侧按文案分类展示。`
+        : templates.length > 1
+          ? `已按 ${templates.length} 个模板生成 ${newImages.length || mergedImages.length} 张配图（${templates.map((t) => t.name).join('、')}）。请在右侧查看。`
           : templates.length === 1
-            ? `已按「${templates[0].name}」模板生成配图「${titles[0]}」。请在右侧查看，可勾选后提交团队修改。`
-            : `已生成 AI 海报「${titles[0]}」。右侧可勾选图片提交团队修改，或继续生成视频、PPT。`;
+            ? `已按「${templates[0].name}」模板生成配图「${titles[0] || copyTargets[0]?.copy.title}」。请在右侧查看，可勾选后提交团队修改。`
+            : `已生成 AI 海报「${titles[0] || '配图'}」。右侧可勾选图片提交团队修改，或继续生成视频、PPT。`;
 
       addMsg('ai', summary, 'DeepSeek-V3.1｜图片生成', [
         '进入团队修改',
@@ -1154,9 +1389,13 @@ export default function App() {
     });
   };
 
-  const openImageTemplatePicker = (pendingNote: string, templateHint = '') => {
+  const openImageTemplatePicker = (
+    pendingNote: string,
+    templateHint = '',
+    imagesPerCopy = 1
+  ) => {
     setVisualWizard(null);
-    setImageTemplateModal({ pendingNote, templateHint });
+    setImageTemplateModal({ pendingNote, templateHint, imagesPerCopy });
     addMsg(
       'ai',
       '请在弹窗中浏览模板缩略图，可<strong>多选</strong>模板；右侧可查看版式与风格详情。',
@@ -1180,13 +1419,31 @@ export default function App() {
     if (!visualWizard?.active) return false;
     const wizard = visualWizard;
 
+    if (wizard.step === 'count') {
+      const n = parseImagesPerCopy(text);
+      if (n) {
+        setVisualWizard({ ...wizard, step: 'ask', imagesPerCopy: n });
+        addMsg(
+          'ai',
+          `好的，将为每个选中文案各生成 <strong>${n}</strong> 张配图。是否选用内置模板？`,
+          'DeepSeek-V3.1',
+          ['是，选择模板', '否，直接生成']
+        );
+        return true;
+      }
+      const guide = guideImagesPerCopy(getSelectedCopyTargets().length);
+      addMsg('ai', guide.html, 'DeepSeek-V3.1', guide.chips);
+      return true;
+    }
+
     if (wizard.step === 'ask') {
+      const count = wizard.imagesPerCopy ?? 1;
       if (isVisualTemplateYes(text)) {
-        openImageTemplatePicker(wizard.pendingNote, wizard.templateHint);
+        openImageTemplatePicker(wizard.pendingNote, wizard.templateHint, count);
         return true;
       }
       if (isVisualTemplateNo(text)) {
-        executeVisualGeneration(wizard.pendingNote, []);
+        executeVisualGeneration(wizard.pendingNote, [], count);
         return true;
       }
       addMsg(
@@ -1203,7 +1460,7 @@ export default function App() {
 
   const startVisualFlow = (
     userNote = '',
-    opts?: { skipUserMsg?: boolean; templateHint?: string }
+    opts?: { skipUserMsg?: boolean; templateHint?: string; imagesPerCopy?: number }
   ) => {
     if (!opts?.skipUserMsg) addMsg('user', userNote || '生成图片', selectedModel);
 
@@ -1212,6 +1469,32 @@ export default function App() {
       return;
     }
 
+    const copyTargets = getSelectedCopyTargets();
+    const hasCopies = copies.length > 0;
+
+    if (hasCopies && copyTargets.length === 0) {
+      toast('请先在「文案」标签勾选要配图的文案');
+      const guide = guideImagesPerCopy(0);
+      addMsg('ai', guide.html, 'DeepSeek-V3.1', guide.chips);
+      return;
+    }
+
+    const parsedCount = opts?.imagesPerCopy ?? parseImagesPerCopy(userNote);
+    if (hasCopies && !parsedCount) {
+      setVisualWizard({
+        active: true,
+        step: 'count',
+        pendingNote: userNote,
+        templateHint:
+          opts?.templateHint ||
+          (entryContext?.intent === 'visual-template' ? entryContext.templateTitle : ''),
+      });
+      const guide = guideImagesPerCopy(copyTargets.length);
+      addMsg('ai', guide.html, 'DeepSeek-V3.1', guide.chips);
+      return;
+    }
+
+    const imagesPerCopy = parsedCount ?? 1;
     const context = getRecentUserContext(userNote);
     const analysis = analyzeBrief(context);
     const { sufficient } = buildContentBrief(userNote);
@@ -1220,26 +1503,27 @@ export default function App() {
       openImageTemplatePicker(
         userNote,
         opts?.templateHint ||
-          (entryContext?.intent === 'visual-template' ? entryContext.templateTitle : '')
+          (entryContext?.intent === 'visual-template' ? entryContext.templateTitle : ''),
+        imagesPerCopy
       );
       return;
     }
 
     if (isVisualTemplateNo(userNote) || analysis.skipsTemplate) {
-      executeVisualGeneration(userNote, []);
+      executeVisualGeneration(userNote, [], imagesPerCopy);
       return;
     }
 
-    if (!sufficient && !analysis.isSubstantial) {
+    if (!hasCopies && !sufficient && !analysis.isSubstantial) {
       guideForMoreInfo('生成配图/海报', userNote);
       return;
     }
 
-    executeVisualGeneration(userNote, []);
+    executeVisualGeneration(userNote, [], imagesPerCopy);
   };
 
-  const runVideo = (userNote = '', opts?: { skipUserMsg?: boolean }) => {
-    if (!opts?.skipUserMsg) addMsg('user', userNote || '生成视频', selectedModel);
+  const executeVideoScript = (userNote = '', opts?: { skipUserMsg?: boolean }) => {
+    if (!opts?.skipUserMsg) addMsg('user', userNote || '生成视频脚本', selectedModel);
     const { brief, sufficient } = buildContentBrief(userNote);
     if (!sufficient) {
       guideForMoreInfo('生成视频脚本');
@@ -1255,11 +1539,87 @@ export default function App() {
       addTab('video-script');
       addMsg(
         'ai',
-        `已生成短视频脚本「${result.title}」，共 ${result.segments.length} 个分镜。请在右侧「视频脚本」中确认后点击「生成视频」。`,
+        `已生成短视频脚本「${result.title}」，共 ${result.segments.length} 个分镜。请在右侧「视频脚本」中确认后继续生成视频。`,
         'DeepSeek-V3.1｜视频脚本',
-        ['生成视频', '生成图片', '生成PPT']
+        ['生成视频', '直接生成视频', '生成图片', '生成PPT']
       );
     });
+  };
+
+  const executeVideoDirect = (userNote = '') => {
+    const { brief, sufficient } = buildContentBrief(userNote);
+    if (!sufficient) {
+      guideForMoreInfo('生成视频');
+      return;
+    }
+    void runWithAi('正在直接生成视频', async () => {
+      const script = await api.generateVideo(brief, userNote);
+      notifyMockIfNeeded(script);
+      setVideoResult(script);
+      setVideoVersions([]);
+      setSelectedVideoVersionId(null);
+
+      const res = await api.generateVideoRender(script);
+      notifyMockIfNeeded(res);
+      const versions = enrichVideoVersions(res.versions || [], script.title);
+      setVideoVersions(versions);
+      const first = versions[0];
+      if (first) setSelectedVideoVersionId(first.id);
+      setState((prev) => ({ ...prev, videoRender: true }));
+      addTab('video-render');
+      addMsg(
+        'ai',
+        `已跳过分镜编辑，直接生成 ${versions.length} 套视频方案（演示占位成片）。请在右侧「视频生成」中预览并提交 Veeva 审批。`,
+        'DeepSeek-V3.1｜视频合成',
+        ['提交当前版本到Veeva Vault']
+      );
+    });
+  };
+
+  const handleVideoWizardReply = (text: string): boolean => {
+    if (!videoWizard?.active) return false;
+    const note = videoWizard.pendingNote;
+    if (isVideoScriptPath(text)) {
+      setVideoWizard(null);
+      executeVideoScript(note, { skipUserMsg: true });
+      return true;
+    }
+    if (isVideoDirectPath(text)) {
+      setVideoWizard(null);
+      executeVideoDirect(note);
+      return true;
+    }
+    const guide = guideVideoPath();
+    addMsg('ai', guide.html, 'DeepSeek-V3.1', guide.chips);
+    return true;
+  };
+
+  const startVideoFlow = (userNote = '', opts?: { skipUserMsg?: boolean; path?: 'script' | 'direct' }) => {
+    if (!opts?.skipUserMsg) addMsg('user', userNote || '生成视频', selectedModel);
+
+    if (videoWizardRef.current?.active) {
+      handleVideoWizardReply(userNote);
+      return;
+    }
+
+    if (opts?.path === 'script' || isVideoScriptPath(userNote)) {
+      executeVideoScript(userNote, { skipUserMsg: true });
+      return;
+    }
+    if (opts?.path === 'direct' || isVideoDirectPath(userNote)) {
+      executeVideoDirect(userNote);
+      return;
+    }
+
+    const { sufficient } = buildContentBrief(userNote);
+    if (!sufficient) {
+      guideForMoreInfo('生成视频', userNote);
+      return;
+    }
+
+    setVideoWizard({ active: true, pendingNote: userNote });
+    const guide = guideVideoPath();
+    addMsg('ai', guide.html, 'DeepSeek-V3.1', guide.chips);
   };
 
   const enrichVideoVersions = (versions: VideoRenderVersion[], scriptTitle: string) =>
@@ -1296,7 +1656,7 @@ export default function App() {
     toast(`已选用「${version.name}」`);
   };
 
-  const finishPptWizardAndGenerate = (
+  const finishPptWizardAndAskPath = (
     wizard: NonNullable<typeof pptWizard>,
     scenario: string
   ) => {
@@ -1306,8 +1666,20 @@ export default function App() {
       return;
     }
     const finalScenario = scenario || wizard.scenario || '疾病教育';
-    setPptWizard(null);
-    void generatePptOutlineAndOpen(wizard.pendingNote, audience, finalScenario);
+    setPptWizard({
+      active: true,
+      step: 'path',
+      audience,
+      scenario: finalScenario,
+      pendingNote: wizard.pendingNote,
+    });
+    const guide = guidePptPath();
+    addMsg(
+      'ai',
+      `已记录受众 <strong>${audience}</strong>、场景 <strong>${finalScenario}</strong>。${guide.html}`,
+      'DeepSeek-V3.1',
+      guide.chips
+    );
   };
 
   const handlePptWizardReply = (text: string, extraAudienceHint = ''): boolean => {
@@ -1315,6 +1687,27 @@ export default function App() {
 
     const fullContext = [pptWizard.pendingNote, text, extraAudienceHint].filter(Boolean).join('\n');
     const step = pptWizard.step || 'audience';
+
+    if (step === 'path') {
+      if (isPptOutlinePath(text)) {
+        setPptWizard(null);
+        void generatePptOutlineAndOpen(
+          pptWizard.pendingNote,
+          pptWizard.audience,
+          pptWizard.scenario
+        );
+        return true;
+      }
+      if (isPptDirectPath(text)) {
+        setPptWizard(null);
+        void generatePptDirectly(pptWizard.pendingNote, pptWizard.audience, pptWizard.scenario);
+        return true;
+      }
+      const guide = guidePptPath();
+      addMsg('ai', guide.html, 'DeepSeek-V3.1', guide.chips);
+      return true;
+    }
+
     const audience =
       parseAudience(fullContext) ||
       (step === 'audience' && text.trim().length <= 24 ? text.trim() : '');
@@ -1323,10 +1716,7 @@ export default function App() {
       (step === 'scenario' && text.trim().length >= 2 && !parseAudience(text) ? text.trim() : '');
 
     if (audience && scenario) {
-      finishPptWizardAndGenerate(
-        { ...pptWizard, audience, scenario },
-        scenario
-      );
+      finishPptWizardAndAskPath({ ...pptWizard, audience, scenario }, scenario);
       return true;
     }
 
@@ -1341,7 +1731,7 @@ export default function App() {
         return true;
       }
       if (pptWizard.scenario || parseScenarioExplicit(pptWizard.pendingNote)) {
-        finishPptWizardAndGenerate(
+        finishPptWizardAndAskPath(
           { ...pptWizard, audience, scenario: pptWizard.scenario || parseScenarioExplicit(pptWizard.pendingNote) || '' },
           pptWizard.scenario || parseScenarioExplicit(pptWizard.pendingNote) || '疾病教育'
         );
@@ -1364,7 +1754,7 @@ export default function App() {
         addMsg('ai', guide.html, 'DeepSeek-V3.1', guide.chips);
         return true;
       }
-      finishPptWizardAndGenerate({ ...pptWizard, audience: audience || pptWizard.audience }, scenario);
+      finishPptWizardAndAskPath({ ...pptWizard, audience: audience || pptWizard.audience }, scenario);
       return true;
     }
 
@@ -1374,6 +1764,40 @@ export default function App() {
   function combinedIncludesGenerateOutline(t: string) {
     return t.includes('生成大纲');
   }
+
+  const generatePptDirectly = async (
+    userNote: string,
+    audience: string,
+    scenario: string
+  ) => {
+    const { brief } = buildContentBrief(userNote);
+    void runWithAi('正在直接生成 PPT', async () => {
+      const raw = await api.generatePptOutline({
+        materials: library,
+        brief,
+        audience,
+        scenario,
+        userNote,
+      });
+      notifyMockIfNeeded(raw);
+      const outline = normalizeOutline(raw, audience, scenario);
+      setPptOutline(outline);
+
+      const designs = await api.generatePptDesigns(outline, audience, scenario, null);
+      notifyMockIfNeeded(designs);
+      const { versions } = designs;
+      setPptVersions(versions);
+      const first = versions[0];
+      if (first) {
+        setSelectedPptVersionId(first.id);
+        setPptResult({ title: outline.title, slides: first.slides });
+      }
+      setState((prev) => ({ ...prev, pptDesign: true }));
+      addTab('ppt-design');
+      const doneGuide = guidePptDirectDone(versions.length, first?.slides?.length ?? 0);
+      addMsg('ai', doneGuide.html, 'DeepSeek-V3.1｜PPT 设计', doneGuide.chips);
+    });
+  };
 
   const generatePptOutlineAndOpen = async (
     userNote: string,
@@ -1403,7 +1827,10 @@ export default function App() {
     });
   };
 
-  const startPptFlow = (userNote = '', opts?: { skipUserMsg?: boolean }) => {
+  const startPptFlow = (
+    userNote = '',
+    opts?: { skipUserMsg?: boolean; path?: 'outline' | 'direct' }
+  ) => {
     if (!opts?.skipUserMsg) addMsg('user', userNote || '生成PPT', selectedModel);
 
     if (pptWizardRef.current?.active) {
@@ -1415,14 +1842,34 @@ export default function App() {
     const audience = parseAudience(fullContext);
     const scenario = parseScenarioExplicit(fullContext) || parseScenario(fullContext);
 
+    const runWithPath = (aud: string, scen: string, note: string) => {
+      if (opts?.path === 'outline' || isPptOutlinePath(note)) {
+        void generatePptOutlineAndOpen(note, aud, scen);
+        return;
+      }
+      if (opts?.path === 'direct' || isPptDirectPath(note)) {
+        void generatePptDirectly(note, aud, scen);
+        return;
+      }
+      setPptWizard({
+        active: true,
+        step: 'path',
+        audience: aud,
+        scenario: scen,
+        pendingNote: note,
+      });
+      const guide = guidePptPath();
+      addMsg('ai', guide.html, 'DeepSeek-V3.1', guide.chips);
+    };
+
     if (audience && scenario) {
-      void generatePptOutlineAndOpen(userNote || fullContext, audience, scenario);
+      runWithPath(audience, scenario, userNote || fullContext);
       return;
     }
 
     const missing = getMissingForPpt(fullContext);
     if (missing.length === 0) {
-      void generatePptOutlineAndOpen(userNote, audience || '公众', scenario || '疾病教育');
+      runWithPath(audience || '公众', scenario || '疾病教育', userNote);
       return;
     }
 
@@ -1555,14 +2002,70 @@ export default function App() {
 
     const activeTab = stateRef.current.active;
     const wizard = pptWizardRef.current;
+    const videoWiz = videoWizardRef.current;
     const visualWiz = visualWizardRef.current;
 
     if (visualWiz?.active) {
       handleVisualWizardReply(text);
       return;
     }
+    if (videoWiz?.active) {
+      handleVideoWizardReply(text);
+      return;
+    }
 
-    if (text.includes('开始生成PPT') || text === '开始生成PPT大纲') {
+    if (text === '自由探索') {
+      showFlexibleWorkflowGuide();
+      return;
+    }
+    if (text === '标准流程：洞察→文案') {
+      runInsight('按标准流程生成话题洞察', { skipUserMsg: true });
+      return;
+    }
+    if (text === '直接生成文案') {
+      runCopy(getRecentUserContext(text), { skipUserMsg: true });
+      return;
+    }
+    if (text === '直接生成图片') {
+      const templateHint =
+        entryContext?.intent === 'visual-template' ? entryContext.templateTitle : undefined;
+      startVisualFlow(getRecentUserContext(text), { skipUserMsg: true, templateHint });
+      return;
+    }
+    if (text === '先大纲后PPT' || text === '生成PPT大纲') {
+      startPptFlow(getRecentUserContext(text), { skipUserMsg: true, path: 'outline' });
+      return;
+    }
+    if (text === '直接生成PPT') {
+      startPptFlow(getRecentUserContext(text), { skipUserMsg: true, path: 'direct' });
+      return;
+    }
+    if (text === '先脚本后视频' || text === '生成视频脚本') {
+      startVideoFlow(getRecentUserContext(text), { skipUserMsg: true, path: 'script' });
+      return;
+    }
+    if (text === '直接生成视频') {
+      startVideoFlow(getRecentUserContext(text), { skipUserMsg: true, path: 'direct' });
+      return;
+    }
+
+    if (text === '先大纲后设计' || text === '开始生成PPT大纲' || text === '生成PPT大纲') {
+      startPptFlow(text, { skipUserMsg: true, path: 'outline' });
+      return;
+    }
+    if (text === '跳过大纲直接生成' || text === '直接生成PPT') {
+      startPptFlow(text, { skipUserMsg: true, path: 'direct' });
+      return;
+    }
+    if (text === '先脚本后合成' || text === '开始生成视频脚本' || text === '生成视频脚本') {
+      startVideoFlow(text, { skipUserMsg: true, path: 'script' });
+      return;
+    }
+    if (text === '跳过脚本直接生成' || text === '直接生成视频') {
+      startVideoFlow(getRecentUserContext(text), { skipUserMsg: true, path: 'direct' });
+      return;
+    }
+    if (text.includes('开始生成PPT')) {
       startPptFlow(text, { skipUserMsg: true });
       return;
     }
@@ -1580,10 +2083,6 @@ export default function App() {
       runCopy(text, { skipUserMsg: true });
       return;
     }
-    if (text.includes('开始生成视频脚本')) {
-      runVideo(text, { skipUserMsg: true });
-      return;
-    }
     if (text === '选用内置模板') {
       const note = getRecentUserContext(text);
       openImageTemplatePicker(note, entryContext?.templateTitle || '');
@@ -1595,11 +2094,16 @@ export default function App() {
     }
 
     if (text.includes('查看大纲')) {
-      setState((prev) => ({ ...prev, active: 'ppt-outline' }));
+      openPptOutlineTab();
+      return;
+    }
+    if (text === '返回 PPT 生成') {
+      setState((prev) => ({ ...prev, active: 'ppt-design' }));
       return;
     }
     if (text.includes('查看脚本') && videoResult) {
-      setState((prev) => ({ ...prev, active: 'video-script' }));
+      addTab('video-script');
+      setState((prev) => ({ ...prev, videoScript: true }));
       return;
     }
     if (text.includes('生成设计')) {
@@ -1645,11 +2149,17 @@ export default function App() {
       return;
     }
     if (text.includes('生成视频脚本') || (text.includes('视频脚本') && text.includes('生成'))) {
-      runVideo(text, { skipUserMsg: true });
+      startVideoFlow(text, { skipUserMsg: true, path: 'script' });
       return;
     }
     if (text === '生成视频' || (text.includes('生成视频') && !text.includes('脚本'))) {
-      confirmVideoRender();
+      if (videoResult) {
+        confirmVideoRender();
+      } else if (isVideoDirectPath(text)) {
+        startVideoFlow(getRecentUserContext(text), { skipUserMsg: true, path: 'direct' });
+      } else {
+        startVideoFlow(getRecentUserContext(text), { skipUserMsg: true });
+      }
       return;
     }
     if (
@@ -1685,7 +2195,7 @@ export default function App() {
       return;
     }
     if (text.includes('视频')) {
-      runVideo(text, { skipUserMsg: true });
+      startVideoFlow(text, { skipUserMsg: true });
       return;
     }
     if (text.includes('团队') && text.includes('修改')) {
@@ -1700,12 +2210,12 @@ export default function App() {
   };
 
   const nextPrompts = (): string[] => {
-    const base = ['生成图片', '生成PPT', '生成视频', '生成话题洞察', '生成文案'];
+    const base = ['生成话题洞察', '直接生成文案', '直接生成图片', '直接生成PPT', '直接生成视频'];
     if (state.visual && generatedImages.length) {
-      return ['进入团队修改', '提交当前版本到Veeva Vault', ...base.slice(0, 3)];
+      return ['进入团队修改', '提交当前版本到Veeva Vault', '直接生成PPT', '直接生成视频'];
     }
     if (state.copy || state.insight) {
-      return ['生成图片', '生成PPT', '生成视频', '提交当前版本到Veeva Vault'];
+      return ['生成图片', '生成PPT大纲', '生成视频脚本', '提交当前版本到Veeva Vault'];
     }
     return base;
   };
@@ -1717,6 +2227,24 @@ export default function App() {
       }
       return { ...prev, active: key };
     });
+  };
+
+  const openPptOutlineTab = () => {
+    if (!pptOutline) {
+      toast('暂无 PPT 大纲，请先生成 PPT');
+      return;
+    }
+    const wasHidden = !stateRef.current.tabs.includes('ppt-outline');
+    addTab('ppt-outline');
+    setState((prev) => ({ ...prev, pptOutline: true }));
+    if (wasHidden) {
+      addMsg(
+        'ai',
+        `已在右侧展示「PPT大纲」，共 ${pptOutline.chapters.length} 章。可按需编辑结构；修改后可在「PPT生成」中重新生成设计稿。`,
+        'DeepSeek-V3.1',
+        ['生成设计', '返回 PPT 生成']
+      );
+    }
   };
 
   const openDetail = (title: string, body: string) => {
@@ -1782,6 +2310,7 @@ export default function App() {
   const rejectImageReview = (index: number) => {
     const { origins } = alignImageReviewArrays(
       generatedImages,
+      generatedImageMeta,
       imageReviewOrigins,
       imageReviewStatuses
     );
@@ -1805,6 +2334,7 @@ export default function App() {
   const acceptAllImageReviews = () => {
     const { origins, statuses } = alignImageReviewArrays(
       generatedImages,
+      generatedImageMeta,
       imageReviewOrigins,
       imageReviewStatuses
     );
@@ -1818,6 +2348,7 @@ export default function App() {
   const rejectAllImageReviews = () => {
     const { origins, statuses } = alignImageReviewArrays(
       generatedImages,
+      generatedImageMeta,
       imageReviewOrigins,
       imageReviewStatuses
     );
@@ -1919,7 +2450,9 @@ export default function App() {
     const mergedRevisions = mergeSessionCopyRevisions(task.sessionId);
     if (revisionBase) setCopyRevisionBase(revisionBase);
     setCopyRevisions(
-      mergedRevisions.length ? mergedRevisions : task.copyRevisions ?? []
+      mergedRevisions.length
+        ? normalizeCopyRevisions(revisionBase, mergedRevisions)
+        : normalizeCopyRevisions(revisionBase, task.copyRevisions ?? [])
     );
   };
 
@@ -2150,19 +2683,25 @@ export default function App() {
   };
 
   const saveCopyReview = (newText: string) => {
-    const base = copyRevisionBase || getActiveCopyBody() || copies[0]?.body || '';
+    const task = activeReviewTaskId ? getReviewTask(activeReviewTaskId) : undefined;
+    const base =
+      copyRevisionBase ||
+      task?.copyRevisionBase ||
+      task?.baseCopyText ||
+      getActiveCopyBody() ||
+      copies[0]?.body ||
+      '';
     const revisionBase = copyRevisionBase || base;
     if (!copyRevisionBase) setCopyRevisionBase(revisionBase);
-    const prevText =
-      copyRevisions.length > 0
-        ? copyRevisions[copyRevisions.length - 1].resultText
-        : revisionBase;
-    const revision = createCopyRevision(prevText, newText, userRole);
-    const next = [...copyRevisions, revision];
+    const next = saveCopyRevisionMerged(copyRevisions, revisionBase, newText, userRole);
     setCopyRevisions(next);
     if (copies.length) {
-      const updated = [...copies];
-      updated[0] = { ...updated[0], body: newText };
+      const matchedIndex = findCopyIndexByText(copies, revisionBase);
+      const selectedIndex = selectedCopies.findIndex(Boolean);
+      const targetIndex = matchedIndex >= 0 ? matchedIndex : selectedIndex >= 0 ? selectedIndex : 0;
+      const updated = copies.map((copy, index) =>
+        index === targetIndex ? { ...copy, body: newText } : copy
+      );
       setCopies(updated);
     } else if (teamResult?.contentType === 'copy') {
       setTeamResult({ ...teamResult, after: newText });
@@ -2316,25 +2855,17 @@ export default function App() {
   return (
     <div className="relative min-h-screen overflow-hidden">
       <AmbientOrbs />
-      <header className="relative z-10 flex h-[72px] items-center justify-between border-b border-white/20 bg-white/50 px-6 backdrop-blur-xl lg:px-10">
-        <div
-          className="flex cursor-pointer items-center gap-3 animate-fade-up"
+      <header className="relative z-10 flex h-[72px] items-center justify-between px-6 lg:px-10">
+        <button
+          type="button"
+          className="animate-fade-up text-left"
           onClick={() => setCurrentScreen('home')}
         >
-          <div className="sparkle-surface relative grid h-11 w-11 place-items-center rounded-2xl bg-hero-gradient shadow-glow animate-gradient-pan">
-            <Sparkles className="relative z-10 h-5 w-5 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.2)]" strokeWidth={2.4} />
-            <span className="absolute inset-0 rounded-2xl shadow-inset" />
-          </div>
-          <div>
-            <h1 className="text-[15px] font-semibold leading-tight tracking-tight text-foreground">
-              可申达 <span className="text-gradient">AI 内容工作台</span>
-            </h1>
-            <p className="text-[10.5px] tracking-wide text-muted-foreground">
-              Bayer AI Content Studio · Powered by DeepSeek
-            </p>
-          </div>
-        </div>
-        <div className="hidden items-center gap-3 text-xs md:flex animate-fade-up [animation-delay:120ms]">
+          <h1 className="text-[15px] font-semibold leading-tight tracking-tight text-foreground">
+            可申达 <span className="text-gradient">AI 内容工作台</span>
+          </h1>
+        </button>
+        <div className="flex items-center gap-3 text-xs animate-fade-up [animation-delay:120ms]">
           <RoleSwitcher role={userRole} onChange={handleRoleChange} />
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground">当前品牌</span>
@@ -2379,10 +2910,10 @@ export default function App() {
               <div className="absolute right-0 top-0 z-20 animate-fade-up">
                 <button
                   type="button"
-                  className="flex items-center gap-2 rounded-full border border-white/40 bg-white/70 px-3 py-1.5 text-xs font-medium text-foreground shadow-soft backdrop-blur-md transition hover:border-primary/40 hover:text-primary"
+                  className="glass-button flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium text-foreground hover:text-primary"
                   onClick={() => setCurrentScreen('library')}
                 >
-                  <span className="grid h-5 w-5 place-items-center rounded-md bg-gradient-to-br from-[#54B9F9] to-[#8AD329] shadow-[0_3px_8px_-2px_rgba(46,143,214,0.5)] ring-1 ring-white/40">
+                  <span className="grid h-5 w-5 place-items-center rounded-md bg-gradient-to-br from-[#4A9EE0] to-[#D8466A] shadow-[0_3px_8px_-2px_rgba(59,127,191,0.5)] ring-1 ring-white/40">
                     <LibraryIcon className="h-3 w-3 text-white" strokeWidth={2.5} />
                   </span>
                   素材库
@@ -2401,7 +2932,7 @@ export default function App() {
                 <div className="relative mx-auto flex h-full max-w-3xl flex-col items-center justify-center px-2 pb-8 pt-12 lg:pt-16">
                   {activeProjectName && (
                     <div className="relative z-10 mb-5 text-center animate-fade-up">
-                      <div className="inline-flex items-center gap-2 rounded-full border border-white/40 bg-white/70 px-3 py-1.5 text-xs text-muted-foreground shadow-soft backdrop-blur-md">
+                      <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-glass px-3 py-1.5 text-xs text-muted-foreground shadow-soft">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                           <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                         </svg>
@@ -2417,20 +2948,20 @@ export default function App() {
 
                   <div
                     className={cn(
-                      'relative z-10 mb-6 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-medium shadow-soft backdrop-blur-md animate-fade-up',
+                      'relative z-10 mb-6 inline-flex items-center gap-2 rounded-full border border-border/60 bg-glass px-3 py-1 text-[11px] font-medium shadow-soft animate-fade-up',
                       apiReady === false
                         ? 'border-amber-200/80 bg-amber-50/80 text-amber-800'
-                        : 'border-white/40 bg-white/70 text-muted-foreground'
+                        : 'text-muted-foreground'
                     )}
                   >
                     <span className="relative flex h-1.5 w-1.5">
                       {apiReady !== false && (
-                        <span className="absolute inset-0 animate-ping rounded-full bg-[#8AD329] opacity-75" />
+                        <span className="absolute inset-0 animate-ping rounded-full bg-[#D8466A] opacity-75" />
                       )}
                       <span
                         className={cn(
                           'relative inline-flex h-1.5 w-1.5 rounded-full',
-                          apiReady === false ? 'bg-amber-500' : apiReady === null ? 'bg-slate-400' : 'bg-[#8AD329]'
+                          apiReady === false ? 'bg-amber-500' : apiReady === null ? 'bg-slate-400' : 'bg-[#D8466A]'
                         )}
                       />
                     </span>
@@ -2449,8 +2980,8 @@ export default function App() {
                   </p>
 
                   <div className="relative z-10 mt-9 w-full animate-fade-up [animation-delay:240ms]">
-                    <div className="absolute -inset-px rounded-[28px] bg-hero-gradient opacity-50 blur-xl" />
-                    <div className="relative rounded-[26px] border border-white/30 bg-glass-strong p-5 shadow-glow ring-1 ring-white/40">
+                    <div className="absolute inset-x-0 top-1/2 h-28 -translate-y-1/2 rounded-[30px] bg-hero-gradient opacity-20 blur-md brightness-125" />
+                    <div className="relative rounded-[26px] glass-composer p-5 shadow-glow ring-1 ring-border/60">
                       <div className="mb-4 flex flex-wrap items-center gap-2">
                         <HomeAttachMenu
                           onUpload={() => openMaterialPicker('chat')}
@@ -2499,7 +3030,7 @@ export default function App() {
                         </button>
                         <button
                           type="button"
-                          className="group inline-flex items-center gap-2 rounded-full bg-hero-gradient px-5 py-2.5 text-sm font-medium text-white shadow-glow transition hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
+                          className="btn-hero-3d group inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium disabled:opacity-50"
                           disabled={!inputValue.trim() && !homeAgentIntent}
                           onClick={submitHomeInput}
                         >
@@ -2514,7 +3045,7 @@ export default function App() {
                         <button
                           key={intent}
                           type="button"
-                          className="group overflow-hidden rounded-full border border-white/40 bg-white/60 px-3.5 py-2 text-xs font-medium text-foreground shadow-soft backdrop-blur-md transition hover:-translate-y-0.5 hover:border-primary/40 hover:bg-white/80 hover:shadow-glow"
+                          className="group overflow-hidden rounded-2xl glass-card glass-hover px-3.5 py-2 text-xs font-medium text-foreground"
                           onClick={() => startFromHome({ intent })}
                         >
                           <span className="relative flex items-center gap-2">
@@ -2572,11 +3103,11 @@ export default function App() {
 
           <div className="flex gap-5">
             <aside className="w-[18rem] shrink-0 animate-fade-up">
-              <div className="bg-glass relative flex h-[calc(100vh-12rem)] flex-col rounded-3xl border border-border/60 p-3 shadow-soft">
+              <div className="bg-glass hud-frame relative flex h-[calc(100vh-12rem)] flex-col rounded-3xl border border-border/60 p-3 shadow-soft">
                 <div className="flex gap-2 px-1 pb-3">
                   <button
                     type="button"
-                    className="group flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-br from-[#54B9F9] to-[#2E8FD6] py-2 text-[12px] font-semibold text-white shadow-[0_6px_16px_-4px_rgba(46,143,214,0.55)] ring-1 ring-white/40 transition hover:-translate-y-0.5 hover:brightness-110"
+                    className="group flex flex-1 items-center justify-center gap-1.5 rounded-xl btn-hero-3d py-2 text-[12px] font-semibold"
                     onClick={() => openMaterialPicker('workspace', activeCat)}
                   >
                     <Upload className="h-3.5 w-3.5" />
@@ -2584,7 +3115,7 @@ export default function App() {
                   </button>
                   <button
                     type="button"
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border/60 bg-background/60 py-2 text-[12px] font-medium text-foreground transition hover:border-primary/40 hover:text-primary"
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl glass-button py-2 text-[12px] font-medium text-foreground"
                     onClick={() => openMaterialPicker('workspace', activeCat, 'cms')}
                   >
                     <Search className="h-3.5 w-3.5" />
@@ -2607,12 +3138,12 @@ export default function App() {
                         className={cn(
                           'group flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left transition',
                           isActive
-                            ? 'bg-gradient-to-r from-[#54B9F9]/15 to-[#8AD329]/10 shadow-[inset_0_0_0_1px_rgba(84,185,249,0.3)]'
+                            ? 'bg-gradient-to-r from-[#4A9EE0]/15 to-[#D8466A]/10 shadow-[inset_0_0_0_1px_rgba(74,158,224,0.3)]'
                             : 'hover:bg-background/70'
                         )}
                         onClick={() => setActiveCat(c)}
                       >
-                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-[#54B9F9] to-[#2E8FD6] shadow-[0_3px_8px_-2px_rgba(46,143,214,0.4)] ring-1 ring-white/40">
+                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-[#4A9EE0] to-[#3B7FBF] shadow-[0_3px_8px_-2px_rgba(59,127,191,0.4)] ring-1 ring-white/40">
                           <FileText className="h-3.5 w-3.5 text-white" strokeWidth={2.4} />
                         </span>
                         <span className={cn('flex-1 text-[12.5px]', isActive ? 'font-semibold text-foreground' : 'font-medium text-foreground/85')}>
@@ -2620,14 +3151,14 @@ export default function App() {
                         </span>
                         <span className="flex items-center gap-1">
                           {librarySelectedByCategory[c] > 0 && (
-                            <span className="rounded-full bg-[#8AD329]/15 px-1.5 text-[10px] font-semibold text-[#4a7a18]">
+                            <span className="rounded-full bg-[#D8466A]/15 px-1.5 text-[10px] font-semibold text-[#a02d52]">
                               {librarySelectedByCategory[c]}
                             </span>
                           )}
                           <span
                             className={cn(
                               'grid h-5 min-w-[20px] place-items-center rounded-full px-1.5 text-[10.5px] font-bold',
-                              isActive ? 'bg-gradient-to-br from-[#54B9F9] to-[#8AD329] text-white shadow-[0_2px_6px_-1px_rgba(46,143,214,0.5)]' : 'bg-secondary text-muted-foreground'
+                              isActive ? 'bg-gradient-to-br from-[#4A9EE0] to-[#D8466A] text-white shadow-[0_2px_6px_-1px_rgba(59,127,191,0.5)]' : 'bg-secondary text-muted-foreground'
                             )}
                           >
                             {libraryCategoryCounts[c]}
@@ -2638,13 +3169,13 @@ export default function App() {
                   })}
                 </nav>
 
-                <div className="mt-4 flex-1 overflow-y-auto rounded-2xl border border-border/50 bg-background/40 p-2.5">
+                <div className="mt-4 flex-1 overflow-y-auto rounded-2xl glass-card p-2.5">
                   <div className="mb-1.5 flex items-center justify-between px-1">
                     <div className="flex items-center gap-1.5 text-[11.5px] font-semibold text-foreground">
                       <Star className="h-3 w-3 text-[#FFB547]" fill="#FFB547" />
                       默认素材
                     </div>
-                    <span className="grid h-4 min-w-[16px] place-items-center rounded-full bg-gradient-to-br from-[#54B9F9] to-[#8AD329] px-1 text-[10px] font-bold text-white">
+                    <span className="grid h-4 min-w-[16px] place-items-center rounded-full bg-gradient-to-br from-[#4A9EE0] to-[#D8466A] px-1 text-[10px] font-bold text-white">
                       {defaultCount}
                     </span>
                   </div>
@@ -2668,7 +3199,7 @@ export default function App() {
                                 setPreviewMaterial(i);
                               }}
                             >
-                              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gradient-to-br from-[#54B9F9] to-[#8AD329]" />
+                              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gradient-to-br from-[#4A9EE0] to-[#D8466A]" />
                               <span className="truncate">{i.title}</span>
                             </button>
                           ))}
@@ -2684,14 +3215,14 @@ export default function App() {
             </aside>
 
             <main className="relative flex-1">
-              <div className="bg-glass relative flex h-[calc(100vh-12rem)] flex-col overflow-hidden rounded-3xl border border-border/60 shadow-soft">
+              <div className="bg-glass hud-frame scanline relative flex h-[calc(100vh-12rem)] flex-col overflow-hidden rounded-3xl border border-border/60 shadow-soft">
                 <SparkleField />
 
                 <div className="relative z-10 flex items-center gap-2.5 border-b border-border/50 p-4">
                   <div className="relative flex-1">
                     <Search className="absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                     <input
-                      className="w-full rounded-xl border border-border/60 bg-white/80 py-2.5 pl-9 pr-3 text-[12.5px] placeholder:text-muted-foreground/70 focus:border-[#54B9F9]/50 focus:outline-none focus:ring-2 focus:ring-[#54B9F9]/15"
+                      className="w-full rounded-xl glass-input py-2.5 pl-9 pr-3 text-[12.5px] placeholder:text-muted-foreground/70 focus:border-[#4A9EE0]/50 focus:outline-none focus:ring-2 focus:ring-[#4A9EE0]/15"
                       placeholder="搜索素材名称、来源、标签…"
                       value={libSearch}
                       onChange={(e) => setLibSearch(e.target.value)}
@@ -2702,7 +3233,7 @@ export default function App() {
                     className={cn(
                       'inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[12px] font-medium transition',
                       onlyDefault
-                        ? 'border-[#54B9F9]/40 bg-gradient-to-r from-[#54B9F9]/15 to-[#8AD329]/10 text-[#1f6ea8] shadow-[0_3px_10px_-3px_rgba(46,143,214,0.4)]'
+                        ? 'border-[#4A9EE0]/40 bg-gradient-to-r from-[#4A9EE0]/15 to-[#D8466A]/10 text-[#2d5a8a] shadow-[0_3px_10px_-3px_rgba(59,127,191,0.4)]'
                         : 'border-border/60 bg-background/60 text-foreground hover:border-primary/40'
                     )}
                     onClick={() => setOnlyDefault(!onlyDefault)}
@@ -2714,7 +3245,7 @@ export default function App() {
 
                 <div className="relative z-10 flex items-center justify-between px-5 pb-2.5 pt-4">
                   <div className="flex items-center gap-2">
-                    <span className="grid h-7 w-7 place-items-center rounded-xl bg-gradient-to-br from-[#54B9F9] to-[#2E8FD6] shadow-[0_4px_10px_-2px_rgba(46,143,214,0.5)] ring-1 ring-white/40">
+                    <span className="grid h-7 w-7 place-items-center rounded-xl bg-gradient-to-br from-[#4A9EE0] to-[#3B7FBF] shadow-[0_4px_10px_-2px_rgba(59,127,191,0.5)] ring-1 ring-white/40">
                       <FileText className="h-3.5 w-3.5 text-white" strokeWidth={2.4} />
                     </span>
                     <h3 className="text-[14.5px] font-semibold text-foreground">{activeCat}</h3>
@@ -2724,7 +3255,7 @@ export default function App() {
                   </div>
                   <div className="flex items-center gap-2">
                     {libSelectedCount > 0 && (
-                      <span className="rounded-full border border-[#8AD329]/30 bg-[#8AD329]/10 px-2.5 py-0.5 text-[11px] font-semibold text-[#4a7a18]">
+                      <span className="rounded-full border border-[#D8466A]/30 bg-[#D8466A]/10 px-2.5 py-0.5 text-[11px] font-semibold text-[#a02d52]">
                         已选 {libSelectedCount}
                       </span>
                     )}
@@ -2766,7 +3297,7 @@ export default function App() {
                       <div className="mt-4 flex gap-2">
                         <button
                           type="button"
-                          className="inline-flex items-center gap-1.5 rounded-xl bg-hero-gradient px-4 py-2 text-[12px] font-semibold text-white shadow-glow transition hover:brightness-110"
+                          className="inline-flex items-center gap-1.5 rounded-xl btn-hero-3d px-4 py-2 text-[12px] font-semibold"
                           onClick={() => openMaterialPicker('workspace', activeCat)}
                         >
                           <Upload className="h-3.5 w-3.5" />
@@ -2800,7 +3331,7 @@ export default function App() {
                         </button>
                         <button
                           type="button"
-                          className="inline-flex items-center gap-1.5 rounded-xl bg-hero-gradient px-4 py-2 text-[12.5px] font-semibold text-white shadow-glow transition hover:brightness-110 active:scale-[0.98]"
+                          className="inline-flex items-center gap-1.5 rounded-xl btn-hero-3d px-4 py-2 text-[12.5px] font-semibold active:scale-[0.98]"
                           onClick={startChatWithSelectedMaterials}
                         >
                           <Sparkles className="h-3.5 w-3.5" />
@@ -2909,6 +3440,10 @@ export default function App() {
                 )}
                 <div className="small">点击标题可手动修改；AI 仅在首次对话后自动命名一次</div>
               </div>
+              <div className="compliance-agent-status" aria-label="合规智能体正在运行中">
+                <span className="compliance-agent-dot" aria-hidden />
+                合规智能体正在运行中
+              </div>
             </div>
 
             {activeReviewTaskId && activeReviewTask && (
@@ -2949,7 +3484,7 @@ export default function App() {
                           <button
                             key={i}
                             type="button"
-                            className="chip"
+                            className={`chip ${msg.role === 'ai' && i === 0 ? 'recommended' : ''}`}
                             onClick={() => fillQuick(q)}
                           >
                             {q}
@@ -3054,6 +3589,7 @@ export default function App() {
             toast={toast}
             setDrawerOpen={setDrawerOpen}
             generatedImages={generatedImages}
+            generatedImageMeta={generatedImageMeta}
             imageReviewOrigins={imageReviewOrigins}
             imageReviewStatuses={imageReviewStatuses}
             onAcceptImageReview={acceptImageReview}
@@ -3079,6 +3615,8 @@ export default function App() {
             insightSummary={insightSummary}
             selectedTopics={selectedTopics}
             setSelectedTopics={setSelectedTopics}
+            copyCountPerTopic={copyCountPerTopic}
+            setCopyCountPerTopic={setCopyCountPerTopic}
             selectedCopies={selectedCopies}
             setSelectedCopies={setSelectedCopies}
             selectedImages={selectedImages}
@@ -3088,6 +3626,7 @@ export default function App() {
             teamModificationInProgress={teamModificationInProgress}
             runCopy={runCopy}
             runInsight={runInsight}
+            expandTopics={expandTopics}
             onOpenImageEditor={openImageEditor}
             onOpenTeamReview={openTeamReview}
             videoVersions={videoVersions}
@@ -3207,11 +3746,19 @@ export default function App() {
         onClose={() => setImageTemplateModal(null)}
         onSkip={() => {
           if (!imageTemplateModal) return;
-          executeVisualGeneration(imageTemplateModal.pendingNote, []);
+          executeVisualGeneration(
+            imageTemplateModal.pendingNote,
+            [],
+            imageTemplateModal.imagesPerCopy
+          );
         }}
         onConfirm={(templateIds) => {
           if (!imageTemplateModal) return;
-          executeVisualGeneration(imageTemplateModal.pendingNote, templateIds);
+          executeVisualGeneration(
+            imageTemplateModal.pendingNote,
+            templateIds,
+            imageTemplateModal.imagesPerCopy
+          );
         }}
       />
 
@@ -3383,6 +3930,7 @@ function WorkspaceRightPanel({
   toast,
   setDrawerOpen,
   generatedImages,
+  generatedImageMeta,
   imageReviewOrigins,
   imageReviewStatuses,
   onAcceptImageReview,
@@ -3408,6 +3956,8 @@ function WorkspaceRightPanel({
   insightSummary,
   selectedTopics,
   setSelectedTopics,
+  copyCountPerTopic,
+  setCopyCountPerTopic,
   selectedCopies,
   setSelectedCopies,
   selectedImages,
@@ -3422,6 +3972,7 @@ function WorkspaceRightPanel({
   onSelectVideoVersion,
   runCopy,
   runInsight,
+  expandTopics,
   onOpenImageEditor,
   userRole,
   reviewerMode,
@@ -3441,6 +3992,7 @@ function WorkspaceRightPanel({
   toast: (text: string) => void;
   setDrawerOpen: (open: boolean) => void;
   generatedImages: string[];
+  generatedImageMeta: GeneratedImageMeta[];
   imageReviewOrigins: string[];
   imageReviewStatuses: ImageReviewStatus[];
   onAcceptImageReview: (index: number) => void;
@@ -3466,6 +4018,8 @@ function WorkspaceRightPanel({
   insightSummary: string;
   selectedTopics: boolean[];
   setSelectedTopics: React.Dispatch<React.SetStateAction<boolean[]>>;
+  copyCountPerTopic: number;
+  setCopyCountPerTopic: React.Dispatch<React.SetStateAction<number>>;
   selectedCopies: boolean[];
   setSelectedCopies: React.Dispatch<React.SetStateAction<boolean[]>>;
   selectedImages: boolean[];
@@ -3478,8 +4032,9 @@ function WorkspaceRightPanel({
   selectedVideoVersionId: string | null;
   onConfirmVideoRender: () => void;
   onSelectVideoVersion: (v: VideoRenderVersion) => void;
-  runCopy: (note?: string) => void;
+  runCopy: (note?: string, opts?: { copiesPerTopic?: number }) => void;
   runInsight: (note?: string) => void;
+  expandTopics: () => void;
   onOpenImageEditor: (src: string, index: number) => void;
   userRole: UserRole;
   reviewerMode: boolean;
@@ -3496,6 +4051,17 @@ function WorkspaceRightPanel({
     reviewerMode && reviewerAllowedTabs?.length
       ? state.tabs.filter((t) => reviewerAllowedTabs.includes(t))
       : state.tabs;
+  const [selectedCopyRevisionIndex, setSelectedCopyRevisionIndex] = useState<number | null>(null);
+  const revisedCopyIndex = useMemo(
+    () => findCopyIndexForRevision(copies, copyRevisionBase, copyRevisions),
+    [copies, copyRevisionBase, copyRevisions]
+  );
+
+  useEffect(() => {
+    if (selectedCopyRevisionIndex !== null && selectedCopyRevisionIndex !== revisedCopyIndex) {
+      setSelectedCopyRevisionIndex(null);
+    }
+  }, [revisedCopyIndex, selectedCopyRevisionIndex]);
 
   const teamReviewButton = (contentType: TeamContentType) => (
     reviewerMode ? null : (
@@ -3564,6 +4130,32 @@ function WorkspaceRightPanel({
       </>
     );
 
+    const exportAllPptPages = () => {
+      const slides = pptResult?.slides || [];
+      if (!slides.length) {
+        toast('暂无可导出的 PPT 页面');
+        return;
+      }
+      const deckTitle = (pptResult?.title || pptOutline?.title || 'PPT')
+        .replace(/[\\/:*?"<>|]/g, '-')
+        .replace(/\s+/g, ' ')
+        .trim() || 'PPT';
+      slides.forEach((slide, index) => {
+        const pageNo = slide.page || index + 1;
+        const slideTitle = (slide.title || '')
+          .replace(/[\\/:*?"<>|]/g, '-')
+          .replace(/\s+/g, ' ')
+          .trim();
+        setTimeout(() => {
+          downloadDataUrl(
+            slideToPreviewUrl(slide),
+            `${deckTitle}-第${pageNo}页${slideTitle ? `-${slideTitle}` : ''}.png`
+          );
+        }, index * 200);
+      });
+      toast(`正在导出 ${slides.length} 页 PPT`);
+    };
+
     switch (k) {
       case 'insight':
         if (!topics.length) {
@@ -3618,12 +4210,32 @@ function WorkspaceRightPanel({
                 </div>
               </label>
             ))}
+            <div className="copy-generate-options">
+              <label className="copy-per-topic-control">
+                <span className="small">每话题生成</span>
+                <select
+                  className="copy-per-topic-select"
+                  value={copyCountPerTopic}
+                  onChange={(e) => setCopyCountPerTopic(Number(e.target.value))}
+                >
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+                <span className="small">篇文案</span>
+              </label>
+            </div>
             <div className="quick-row">
-              <button className="btn primary" onClick={() => runCopy()}>
+              <button
+                className="btn primary"
+                onClick={() => runCopy(undefined, { copiesPerTopic: copyCountPerTopic })}
+              >
                 基于选中话题生成文案
               </button>
-              <button className="btn" onClick={() => runInsight('补充更多小红书话题')}>
-                扩展话题
+              <button className="btn" onClick={() => expandTopics()}>
+                拓展话题
               </button>
             </div>
           </>
@@ -3658,51 +4270,32 @@ function WorkspaceRightPanel({
           }
           const editText = latestCopyText(revisionBase, copyRevisions);
           return (
-            <>
-              {copyRevisions.length > 0 && (
-                <div className="detail-card" style={{ background: '#f0f7ff', borderColor: '#c5daf5' }}>
-                  <h4 style={{ marginTop: 0 }}>团队审阅修改（含其他审阅人）</h4>
-                  <div className="small">
-                    医学部与市场部的修改均会同步显示；下方编辑器已载入最新合并正文，保存后将追加你的修改记录。
-                  </div>
-                </div>
-              )}
-              {copyRevisions.length > 0 && (
-                <CopyRevisionDisplay baseText={revisionBase} revisions={copyRevisions} />
-              )}
-              <CopyReviewEditor
-                key={
-                  copyRevisions.length
-                    ? copyRevisions[copyRevisions.length - 1].id
-                    : 'copy-base'
-                }
-                baseText={editText}
-                role={userRole}
-                onSave={onSaveCopyReview}
-              />
-            </>
+            <CopyRevisionDisplay
+              key={
+                copyRevisions.length
+                  ? copyRevisions[copyRevisions.length - 1].id
+                  : 'copy-base'
+              }
+              baseText={revisionBase}
+              revisions={copyRevisions}
+              editable
+              editText={editText}
+              role={userRole}
+              onSave={onSaveCopyReview}
+            />
           );
         }
         return (
           <>
             <div className="detail-card">
               <h4>文案生成详情</h4>
-              <div className="small">已生成 {copies.length} 版文案（DeepSeek）。点击编辑或勾选进入团队修改。</div>
-            </div>
-            {copyRevisions.length > 0 && (
-              <div className="detail-card" style={{ background: '#f0f7ff', borderColor: '#c5daf5' }}>
-                <h4 style={{ marginTop: 0 }}>团队审阅修改</h4>
-                <div className="small">
-                  医学部 / 市场部已保存修改，下方为按角色着色的增删记录。
-                </div>
+              <div className="small">
+                已生成 {copies.length} 篇文案，按 {groupCopiesByTopic(copies).length} 个话题分类。
+                {copyRevisions.length > 0 && revisedCopyIndex >= 0
+                  ? ' 带「有修改」标记的文案可点击查看修改详情。'
+                  : ' 点击编辑或勾选进入团队修改。'}
               </div>
-            )}
-            {copyRevisions.length > 0 && (
-              <CopyRevisionDisplay
-                baseText={copyRevisionBase || copies[0]?.body || ''}
-                revisions={copyRevisions}
-              />
-            )}
+            </div>
             <label className="option" style={{ marginBottom: '10px' }}>
               <input
                 type="checkbox"
@@ -3711,31 +4304,55 @@ function WorkspaceRightPanel({
               />
               <div><strong>全选</strong></div>
             </label>
-            {copies.map((c, i) => (
-              <label
-                key={i}
-                className="option content-tile"
-                onClick={() => {
-                  setEditingCopy(c.body);
-                  setShowCopyEditModal(true);
-                }}
-              >
-                <input
-                  type="checkbox"
-                  onClick={(e) => e.stopPropagation()}
-                  checked={selectedCopies[i] ?? false}
-                  onChange={(e) => {
-                    const newSelected = [...selectedCopies];
-                    newSelected[i] = e.target.checked;
-                    setSelectedCopies(newSelected);
-                  }}
-                />
-                <div>
-                  <strong>{c.title}</strong>
-                  <div className="small">{c.compliance}</div>
+            {groupCopiesByTopic(copies).map((group) => (
+              <div key={group.topicTitle} className="copy-topic-group glass-card-subtle">
+                <div className="copy-topic-group-head">
+                  <strong>{group.topicTitle}</strong>
+                  <span className="small">{group.items.length} 篇</span>
                 </div>
-              </label>
+                {group.items.map(({ copy: c, index: i }) => (
+                  <label
+                    key={`${group.topicTitle}-${i}`}
+                    className="option content-tile copy-topic-item"
+                    onClick={() => {
+                      if (copyRevisions.length > 0 && i === revisedCopyIndex) {
+                        setSelectedCopyRevisionIndex(i);
+                        return;
+                      }
+                      setSelectedCopyRevisionIndex(null);
+                      setEditingCopy(c.body);
+                      setShowCopyEditModal(true);
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      onClick={(e) => e.stopPropagation()}
+                      checked={selectedCopies[i] ?? false}
+                      onChange={(e) => {
+                        const newSelected = [...selectedCopies];
+                        newSelected[i] = e.target.checked;
+                        setSelectedCopies(newSelected);
+                      }}
+                    />
+                    <div>
+                      <strong>{c.title}</strong>
+                      <div className="small">{c.compliance}</div>
+                      {copyRevisions.length > 0 && i === revisedCopyIndex && (
+                        <span className="badge green" style={{ marginTop: 6 }}>
+                          有修改，点击查看详情
+                        </span>
+                      )}
+                    </div>
+                  </label>
+                ))}
+              </div>
             ))}
+            {copyRevisions.length > 0 && selectedCopyRevisionIndex === revisedCopyIndex && (
+              <CopyRevisionDisplay
+                baseText={copyRevisionBase || copies[revisedCopyIndex]?.body || ''}
+                revisions={copyRevisions}
+              />
+            )}
             <div className="quick-row" style={{ marginTop: '10px' }}>
               <button className="btn soft" onClick={() => fillQuick('生成图片')}>生成图片</button>
               <button className="btn soft" onClick={() => fillQuick('生成视频')}>生成视频</button>
@@ -3831,8 +4448,8 @@ function WorkspaceRightPanel({
               <h4>图片生成详情</h4>
               <div className="small">
                 {hasGenerated
-                  ? `已生成 ${generatedImages.length} 张图片。勾选后提交团队修改；点击图片可进入编辑。`
-                  : '尚未生成配图，以下为示意预览。请先在对话中生成图片。'}
+                  ? `已生成 ${generatedImages.length} 张配图，按 ${groupImagesByCopy(generatedImages, generatedImageMeta).length} 篇文案分类。勾选后提交团队修改；点击图片可进入编辑。`
+                  : '尚未生成配图，以下为示意预览。请先在对话中生成图片，并说明每个文案想生成几张。'}
               </div>
             </div>
             {hasGenerated && (
@@ -3856,57 +4473,82 @@ function WorkspaceRightPanel({
                 <div><strong>全选</strong></div>
               </label>
             )}
-            {displayImages.map((img, idx) => (
+            {hasGenerated
+              ? groupImagesByCopy(generatedImages, generatedImageMeta).map((group) => (
+                  <div
+                    key={`${group.copyIndex}:${group.copyTitle}`}
+                    className="copy-image-group glass-card-subtle"
+                  >
+                    <div className="copy-image-group-head">
+                      <strong>{group.copyTitle}</strong>
+                      <span className="small">{group.items.length} 张</span>
+                    </div>
+                    {group.items.map(({ dataUrl: img, index: idx }) => (
+                      <label
+                        key={idx}
+                        className="option generated-img-option copy-image-item"
+                        style={{ marginBottom: '10px' }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selection[idx] ?? false}
+                          onChange={(e) => {
+                            const next = [...selection];
+                            next[idx] = e.target.checked;
+                            setSelectedImages(next);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <div
+                          className="generated-img-wrap content-tile"
+                          onClick={() => onOpenImageEditor(img, idx)}
+                        >
+                          {alignedStatuses[idx] === 'pending' && (
+                            <span className="img-review-badge">待采纳</span>
+                          )}
+                          {alignedStatuses[idx] === 'rejected' && (
+                            <span className="img-review-badge rejected">已恢复原图</span>
+                          )}
+                          <img className="generated-img" src={img} alt={`生成的图片 ${idx + 1}`} />
+                          <span className="img-edit-hint">点击进入图片编辑</span>
+                          {alignedStatuses[idx] === 'pending' && (
+                            <div
+                              className="img-review-inline-actions"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                type="button"
+                                className="btn primary"
+                                onClick={() => onAcceptImageReview(idx)}
+                              >
+                                采纳
+                              </button>
+                              <button
+                                type="button"
+                                className="btn soft"
+                                onClick={() => onRejectImageReview(idx)}
+                              >
+                                恢复原图
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                ))
+              : displayImages.map((img, idx) => (
               <label
                 key={idx}
                 className="option generated-img-option"
                 style={{ marginBottom: '10px' }}
               >
-                {hasGenerated && (
-                  <input
-                    type="checkbox"
-                    checked={selection[idx] ?? false}
-                    onChange={(e) => {
-                      const next = [...selection];
-                      next[idx] = e.target.checked;
-                      setSelectedImages(next);
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                )}
                 <div
                   className="generated-img-wrap content-tile"
                   onClick={() => onOpenImageEditor(img, idx)}
                 >
-                  {hasGenerated && alignedStatuses[idx] === 'pending' && (
-                    <span className="img-review-badge">待采纳</span>
-                  )}
-                  {hasGenerated && alignedStatuses[idx] === 'rejected' && (
-                    <span className="img-review-badge rejected">已恢复原图</span>
-                  )}
                   <img className="generated-img" src={img} alt={`生成的图片 ${idx + 1}`} />
                   <span className="img-edit-hint">点击进入图片编辑</span>
-                  {hasGenerated && alignedStatuses[idx] === 'pending' && (
-                    <div
-                      className="img-review-inline-actions"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <button
-                        type="button"
-                        className="btn primary"
-                        onClick={() => onAcceptImageReview(idx)}
-                      >
-                        采纳
-                      </button>
-                      <button
-                        type="button"
-                        className="btn soft"
-                        onClick={() => onRejectImageReview(idx)}
-                      >
-                        恢复原图
-                      </button>
-                    </div>
-                  )}
                 </div>
               </label>
             ))}
@@ -4099,13 +4741,15 @@ function WorkspaceRightPanel({
                 </div>
               ))}
             </div>
-            <button
-              type="button"
-              className="btn soft"
-              onClick={() => setState((prev) => ({ ...prev, active: 'video-script' }))}
-            >
-              返回编辑脚本
-            </button>
+            {state.tabs.includes('video-script') && (
+              <button
+                type="button"
+                className="btn soft"
+                onClick={() => setState((prev) => ({ ...prev, active: 'video-script' }))}
+              >
+                返回编辑脚本
+              </button>
+            )}
             <button type="button" className="btn soft" onClick={onConfirmVideoRender}>
               重新生成视频
             </button>
@@ -4132,7 +4776,7 @@ function WorkspaceRightPanel({
           );
         }
         return (
-          <>
+          <div className="ppt-outline-tab-layout">
             <PptOutlineEditor
               variant="inline"
               outline={pptOutline}
@@ -4144,9 +4788,19 @@ function WorkspaceRightPanel({
               isGenerating={isGenerating}
               reviewerMode={reviewerMode}
               onSaveOutlineReview={onSavePptOutlineReview}
+              showGenerateFooter={false}
             />
-            {!reviewerMode && teamAndVeevaActions('ppt')}
-          </>
+            {!reviewerMode && (
+              <div className="ppt-outline-tab-foot">
+                {teamAndVeevaActions('ppt')}
+                <PptOutlineGenerateFooter
+                  isGenerating={isGenerating}
+                  selectedTemplateId={selectedPptTemplateId}
+                  onGenerateDesigns={onConfirmPptDesigns}
+                />
+              </div>
+            )}
+          </div>
         );
 
       case 'ppt-design': {
@@ -4191,16 +4845,30 @@ function WorkspaceRightPanel({
           <>
             {singleVersion ? (
               <div className="detail-card detail-card-ppt-design">
-                <h4>{activeVersion?.name || 'PPT 成品'}</h4>
-                <div className="small">
-                  {activeVersion?.styleTag || '拜耳蓝绿'}
-                  {activeVersion?.description ? ` · ${activeVersion.description}` : ''}
+                <div className="ppt-design-title-row">
+                  <div>
+                    <h4>{activeVersion?.name || 'PPT 成品'}</h4>
+                    <div className="small">
+                      {activeVersion?.styleTag || '拜耳蓝绿'}
+                      {activeVersion?.description ? ` · ${activeVersion.description}` : ''}
+                    </div>
+                  </div>
+                  <button type="button" className="btn primary" onClick={exportAllPptPages}>
+                    一键导出全部页面
+                  </button>
                 </div>
               </div>
             ) : (
               <div className="detail-card detail-card-ppt-design">
-                <h4>选择 PPT 设计方案</h4>
-                <div className="small">共 {pptVersions.length} 套拜耳蓝绿风格方案</div>
+                <div className="ppt-design-title-row">
+                  <div>
+                    <h4>选择 PPT 设计方案</h4>
+                    <div className="small">共 {pptVersions.length} 套拜耳蓝绿风格方案</div>
+                  </div>
+                  <button type="button" className="btn primary" onClick={exportAllPptPages}>
+                    一键导出全部页面
+                  </button>
+                </div>
                 <div className="ppt-version-grid">
                   {pptVersions.map((v) => (
                     <div
@@ -4229,18 +4897,22 @@ function WorkspaceRightPanel({
                 onEditSlide={onOpenPptSlideEditor}
               />
             )}
-            <button
-              type="button"
-              className="btn soft"
-              onClick={() => setState((prev) => ({ ...prev, active: 'ppt-outline' }))}
-            >
-              返回编辑大纲
-            </button>
-            {!singleVersion && (
-              <button type="button" className="btn soft" onClick={() => fillQuick('生成设计')}>
-                重新生成设计
-              </button>
-            )}
+            <div className="ppt-design-foot-actions">
+              {state.tabs.includes('ppt-outline') && (
+                <button
+                  type="button"
+                  className="btn soft"
+                  onClick={() => setState((prev) => ({ ...prev, active: 'ppt-outline' }))}
+                >
+                  返回编辑大纲
+                </button>
+              )}
+              {!singleVersion && (
+                <button type="button" className="btn soft" onClick={() => fillQuick('生成设计')}>
+                  重新生成设计
+                </button>
+              )}
+            </div>
             {teamAndVeevaActions('ppt')}
           </>
         );
@@ -4307,6 +4979,12 @@ function WorkspaceRightPanel({
         </div>
       </div>
       <div className="detail">
+        {visibleTabs.length > 0 && (
+          <div className="ppt-compliance-check detail-compliance-check">
+            <span className="ppt-compliance-dot" aria-hidden />
+            生成内容已通过智能合规校验
+          </div>
+        )}
         {renderDetail()}
       </div>
     </aside>

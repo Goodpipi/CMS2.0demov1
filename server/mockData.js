@@ -4,8 +4,49 @@ const SLIDE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540"
 
 const POSTER_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 560"><rect width="900" height="560" fill="#f2f9ff"/><text x="60" y="120" font-size="48" font-weight="900" fill="#103C8F">肾脏健康科普</text><text x="60" y="180" font-size="22" fill="#40536a">仅供疾病教育参考</text></svg>`;
 
+const COPY_ANGLES = ['小红书科普版', '患者教育长图版', 'HCP沟通简版', '渠道短文案版', '问答互动版'];
+
+export function getMockCopy(topics = [], copiesPerTopic = 3, userNote = '') {
+  const perTopic = Math.min(Math.max(Number(copiesPerTopic) || 3, 1), 5);
+  const list =
+    topics.length > 0
+      ? topics
+      : [{ title: userNote?.slice(0, 40) || '肾脏健康科普', reason: '', source: '演示' }];
+  const copies = [];
+  for (const topic of list) {
+    const title = topic.title || String(topic);
+    for (let i = 0; i < perTopic; i++) {
+      const angle = COPY_ANGLES[i % COPY_ANGLES.length];
+      copies.push({
+        topicTitle: title,
+        title: `${angle}`,
+        body: `【话题】${title}\n\n【标题】${title} — ${angle.replace(/版$/, '')}\n\n【正文】围绕「${title}」展开公众疾病教育，强调风险认知与就医建议，避免疗效承诺。\n\n【免责声明】本文为疾病教育内容，不构成诊疗建议。${userNote ? `\n\n【备注】${userNote.slice(0, 80)}` : ''}`,
+        compliance: '已弱化营销表述，补充免责声明占位。',
+      });
+    }
+  }
+  return { copies };
+}
+
+function parseCopyPrompt(note = '') {
+  const perTopicMatch = note.match(/每个话题恰好 (\d+) 篇|分别生成 (\d+) 篇/);
+  const perTopic = perTopicMatch
+    ? Math.min(Number(perTopicMatch[1] || perTopicMatch[2]) || 3, 5)
+    : 3;
+  const topicSection = note.includes('选中话题')
+    ? note.split('选中话题')[1]?.split('\n\n')[0] || ''
+    : note;
+  const lines = [...topicSection.matchAll(/^\d+\.\s*(.+?)(?:\s*—|$)/gm)].map((m) => ({
+    title: m[1].trim(),
+    reason: '',
+    source: '演示',
+  }));
+  return { topics: lines, perTopic };
+}
+
 export function getMockData(kind, userNote = '') {
-  const note = String(userNote || '').slice(0, 40);
+  const fullNote = String(userNote || '');
+  const note = fullNote.slice(0, 40);
 
   switch (kind) {
     case 'insight':
@@ -36,26 +77,34 @@ export function getMockData(kind, userNote = '') {
           '（演示数据）公众渠道宜采用轻科普、强共情表达，突出风险认知与就医建议，避免治疗承诺。',
       };
 
-    case 'copy':
+    case 'insight-expand': {
+      const seedLabel = note.includes('1.') ? note.split('\n')[0].replace(/^\d+\.\s*/, '').slice(0, 24) : '已选话题';
       return {
-        copies: [
+        topics: [
           {
-            title: '小红书科普版',
-            body: `【标题】了解肾脏健康，从不忽视小信号开始\n\n【正文】肾脏承担重要代谢功能。出现持续乏力、浮肿等情况时，建议咨询专业医生，不要自行判断或延误就诊。\n\n【免责声明】本文为疾病教育内容，不构成诊疗建议。\n\n${note ? `【备注】${note}` : ''}`,
-            compliance: '已弱化营销表述，补充免责声明占位。',
+            title: `延伸：${seedLabel}相关的公众常见误区`,
+            reason: '从误区澄清角度延伸，与已选话题形成互补。',
+            source: '基于已选话题拓展',
           },
           {
-            title: '患者教育长图版',
-            body: '【要点1】认识慢性肾病风险\n【要点2】日常可做的健康习惯\n【要点3】何时需要就医\n\n本文为疾病教育材料，请咨询医生获取个体化建议。',
-            compliance: '结构适合长图拆解，无疗效承诺。',
+            title: `延伸：${seedLabel}背景下的日常健康管理`,
+            reason: '生活方式切入，适合小红书轻科普表达。',
+            source: '基于已选话题拓展',
           },
           {
-            title: 'HCP沟通简版',
-            body: '面向医疗卫生专业人士的疾病教育要点摘要，侧重机制与临床关注点，不含公众向承诺表述。',
-            compliance: 'HCP 场景用语更严谨。',
+            title: `延伸：出现哪些信号应咨询专业医生`,
+            reason: '强调就医建议，避免自我诊断与疗效承诺。',
+            source: '基于已选话题拓展',
           },
         ],
+        summary: '（演示）已基于所选话题拓展三个新方向，可与原列表一并勾选生成文案。',
       };
+    }
+
+    case 'copy': {
+      const { topics, perTopic } = parseCopyPrompt(fullNote);
+      return getMockCopy(topics.length ? topics : undefined, perTopic, fullNote);
+    }
 
     case 'team':
       return {

@@ -59,7 +59,9 @@ export function buildTeamReviewPayload(
     case 'copy': {
       const selected = ctx.copies.filter((_, i) => ctx.selectedCopies[i]);
       const list = selected.length > 0 ? selected : ctx.copies;
-      const body = list.map((c) => `【${c.title}】\n${c.body}`).join('\n\n');
+      const body = list
+        .map((c) => `【${c.topicTitle ? `${c.topicTitle} · ` : ''}${c.title}】\n${c.body}`)
+        .join('\n\n');
       const fromActive = ctx.getCopyBody();
       const finalBody = body || fromActive;
       if (!finalBody.trim()) return null;

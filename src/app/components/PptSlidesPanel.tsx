@@ -8,42 +8,28 @@ interface PptSlidesPanelProps {
   onEditSlide: (index: number, previewUrl: string) => void;
 }
 
+function safeFilename(text: string): string {
+  return text.replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim() || 'PPT';
+}
+
 export function PptSlidesPanel({ slides, title, onEditSlide }: PptSlidesPanelProps) {
+  const deckTitle = safeFilename(title || 'PPT');
+
   const exportSlide = (slide: PptSlide, index: number) => {
     const url = slideToPreviewUrl(slide);
-    downloadDataUrl(url, `${title || 'PPT'}-第${slide.page || index + 1}页.png`);
-  };
-
-  const exportAll = () => {
-    slides.forEach((s, i) => {
-      setTimeout(() => exportSlide(s, i), i * 200);
-    });
+    const pageNo = slide.page || index + 1;
+    downloadDataUrl(url, `${deckTitle}-第${pageNo}页-${safeFilename(slide.title || '')}.png`);
   };
 
   return (
     <div className="ppt-slides-panel">
-      <div className="detail-card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-          <h4 style={{ margin: 0 }}>PPT 分页预览与编辑</h4>
-          <button type="button" className="btn soft" onClick={exportAll}>
-            导出全部页面
-          </button>
-        </div>
-        <div className="small" style={{ marginTop: 6 }}>
-          点击页面进入与配图相同的视觉编辑器；支持单页导出 PNG。
-        </div>
-      </div>
       <div className="ppt-slide-grid">
         {slides.map((slide, index) => {
           const preview = slideToPreviewUrl(slide);
           return (
             <div key={slide.page ?? index} className="ppt-slide-card">
-              <div
-                className="ppt-slide-preview content-tile"
-                onClick={() => onEditSlide(index, preview)}
-              >
+              <div className="ppt-slide-preview">
                 <img src={preview} alt={slide.title} />
-                <span className="img-edit-hint">点击编辑本页</span>
               </div>
               <div className="ppt-slide-card-meta">
                 <strong>

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Brush, Eraser } from 'lucide-react';
 import {
   applyElementProps,
   prepareEditableSvg,
@@ -12,6 +13,7 @@ import {
 } from './svgEditorUtils';
 
 export type EditMode = 'brush' | 'drag';
+export type BrushTool = 'brush' | 'eraser';
 
 /** @deprecated 保留 API 兼容 */
 export interface DragLayer {
@@ -92,6 +94,7 @@ export function VisualEditor({
   isGenerating = false,
 }: VisualEditorProps) {
   const [mode, setMode] = useState<EditMode>('brush');
+  const [brushTool, setBrushTool] = useState<BrushTool>('brush');
   const [editPrompt, setEditPrompt] = useState(
     '把圈选区域调整得更清爽，减少营销感，保持拜耳蓝绿风格。'
   );
@@ -259,6 +262,20 @@ export function VisualEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅切换模式时选中首个
   }, [mode]);
 
+  const applyCanvasToolStyle = useCallback((ctx: CanvasRenderingContext2D) => {
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    if (brushTool === 'eraser') {
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.strokeStyle = 'rgba(0, 0, 0, 1)';
+      ctx.lineWidth = 18;
+    } else {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = 'rgba(255, 51, 79, 0.85)';
+      ctx.lineWidth = 14;
+    }
+  }, [brushTool]);
+
   const syncCanvasSize = useCallback(() => {
     const stage = stageRef.current;
     const canvas = canvasRef.current;
@@ -272,12 +289,9 @@ export function VisualEditor({
     const ctx = canvas.getContext('2d');
     if (ctx) {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.strokeStyle = 'rgba(255, 51, 79, 0.85)';
-      ctx.lineWidth = 14;
+      applyCanvasToolStyle(ctx);
     }
-  }, []);
+  }, [applyCanvasToolStyle]);
 
   useLayoutEffect(() => {
     syncCanvasSize();
@@ -296,6 +310,11 @@ export function VisualEditor({
     };
   }, [syncCanvasSize, svgHtml, showRasterBack, loadFailed]);
 
+  useEffect(() => {
+    const ctx = canvasRef.current?.getContext('2d');
+    if (ctx) applyCanvasToolStyle(ctx);
+  }, [applyCanvasToolStyle]);
+
   const getCanvasPoint = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current!;
     const rect = canvas.getBoundingClientRect();
@@ -307,6 +326,7 @@ export function VisualEditor({
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
+    applyCanvasToolStyle(ctx);
     drawing.current = true;
     canvas.setPointerCapture(e.pointerId);
     strokeHistory.current.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
@@ -369,20 +389,48 @@ export function VisualEditor({
     <div className="visual-editor-layout">
       <aside className="wpanel visual-editor-side visual-editor-props">
         <h3 className="section-title">视觉编辑</h3>
-        <div className="chips" style={{ marginTop: 8 }}>
-          <span className={`chip ${mode === 'brush' ? 'green' : ''}`} onClick={() => setMode('brush')}>
+
+        <div className="visual-editor-mode-tabs" role="tablist" aria-label="编辑方式">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'brush'}
+            className={`visual-editor-mode-tab ${mode === 'brush' ? 'active' : ''}`}
+            onClick={() => setMode('brush')}
+          >
             画笔圈选
-          </span>
-          <span className={`chip ${mode === 'drag' ? 'green' : ''}`} onClick={() => setMode('drag')}>
-            拖拽精调
-          </span>
-          {mode === 'brush' && (
-            <>
-              <span className="chip" onClick={clearMask}>清除圈选</span>
-              <span className="chip" onClick={undoStroke}>撤销笔画</span>
-            </>
-          )}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === 'drag'}
+            className={`visual-editor-mode-tab ${mode === 'drag' ? 'active' : ''}`}
+            onClick={() => setMode('drag')}
+          >
+            拖拽精修
+          </button>
         </div>
+
+        {mode === 'brush' && (
+          <div className="visual-editor-tool-row" role="group" aria-label="圈选工具">
+            <button
+              type="button"
+              className={`visual-editor-tool-btn ${brushTool === 'brush' ? 'active' : ''}`}
+              onClick={() => setBrushTool('brush')}
+            >
+              <Brush className="h-3.5 w-3.5" strokeWidth={2.2} />
+              画笔
+            </button>
+            <button
+              type="button"
+              className={`visual-editor-tool-btn ${brushTool === 'eraser' ? 'active' : ''}`}
+              onClick={() => setBrushTool('eraser')}
+            >
+              <Eraser className="h-3.5 w-3.5" strokeWidth={2.2} />
+              橡皮擦
+            </button>
+          </div>
+        )}
 
         {mode === 'drag' && (
           <>
@@ -555,7 +603,9 @@ export function VisualEditor({
 
         {mode === 'brush' && (
           <div className="small" style={{ marginTop: 10 }}>
-            用画笔圈出需 AI 重绘的区域（红色笔迹）。
+            {brushTool === 'brush'
+              ? '用画笔圈出需 AI 重绘的区域（红色笔迹）。'
+              : '用橡皮擦擦除已圈选区域。'}
           </div>
         )}
       </aside>

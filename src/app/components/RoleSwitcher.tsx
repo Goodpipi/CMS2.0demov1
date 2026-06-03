@@ -14,7 +14,7 @@ export function RoleSwitcher({ role, onChange }: RoleSwitcherProps) {
       <select
         className={cn(
           'rounded-lg border border-border/70 bg-glass px-3 py-1.5 font-medium text-foreground shadow-soft',
-          'transition hover:border-primary/40 focus:border-[#54B9F9]/50 focus:outline-none focus:ring-4 focus:ring-[#54B9F9]/10'
+          'transition hover:border-primary/40 focus:border-[#4A9EE0]/50 focus:outline-none focus:ring-4 focus:ring-[#4A9EE0]/10'
         )}
         value={role}
         onChange={(e) => onChange(e.target.value as UserRole)}

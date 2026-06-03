@@ -157,6 +157,20 @@
   transform: translateY(-1px);
 }
 
+.chat-feed .chip.recommended {
+  background: #d8466a;
+  border-color: #d8466a;
+  color: #fff;
+  box-shadow: none;
+}
+
+.chat-feed .chip.recommended:hover {
+  background: #c93b60;
+  border-color: #c93b60;
+  color: #fff;
+  box-shadow: none;
+}
+
 .chat-feed .chip:active {
   transform: translateY(0);
   box-shadow: 0 1px 3px rgba(16, 60, 143, 0.16);

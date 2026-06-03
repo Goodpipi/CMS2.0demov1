@@ -78,6 +78,49 @@ export function latestCopyText(base: string, revisions: CopyRevision[]): string 
   return revisions[revisions.length - 1].resultText;
 }
 
+function contributorRolesFromRevisions(revisions: CopyRevision[]): UserRole[] {
+  const roles: UserRole[] = [];
+  for (const rev of revisions) {
+    for (const role of rev.contributorRoles ?? [rev.authorRole]) {
+      if (!roles.includes(role)) roles.push(role);
+    }
+  }
+  return roles;
+}
+
+/** 合并为单一展示版本：相对原文一次 diff，图例按角色去重 */
+export function normalizeCopyRevisions(
+  baseText: string,
+  revisions: CopyRevision[]
+): CopyRevision[] {
+  if (!revisions.length) return [];
+  const resultText = latestCopyText(baseText, revisions);
+  const contributorRoles = contributorRolesFromRevisions(revisions);
+  const lastEditor = revisions[revisions.length - 1];
+  const merged = createCopyRevision(baseText, resultText, lastEditor.authorRole);
+  merged.id = 'copy_revision_merged';
+  merged.contributorRoles = contributorRoles.length
+    ? contributorRoles
+    : [lastEditor.authorRole];
+  return [merged];
+}
+
+/** 保存时更新为单一合并记录（非版本链） */
+export function saveCopyRevisionMerged(
+  revisions: CopyRevision[],
+  baseText: string,
+  newText: string,
+  authorRole: UserRole
+): CopyRevision[] {
+  const contributorRoles = [
+    ...new Set([...contributorRolesFromRevisions(revisions), authorRole]),
+  ];
+  const merged = createCopyRevision(baseText, newText, authorRole);
+  merged.id = 'copy_revision_merged';
+  merged.contributorRoles = contributorRoles;
+  return [merged];
+}
+
 export function downloadDataUrl(dataUrl: string, filename: string) {
   const a = document.createElement('a');
   a.href = dataUrl;

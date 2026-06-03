@@ -17,6 +17,8 @@ export interface CopyItem {
   title: string;
   body: string;
   compliance: string;
+  /** 所属话题标题，用于按话题分组展示 */
+  topicTitle?: string;
 }
 
 export type TeamContentType = 'copy' | 'visual' | 'video' | 'ppt';
@@ -101,4 +103,11 @@ export interface PosterResult {
   title: string;
   svg: string;
   dataUrl: string;
+}
+
+/** 与 generatedImages 下标对齐，标记配图所属文案 */
+export interface GeneratedImageMeta {
+  copyTitle: string;
+  copyIndex: number;
+  imageIndex: number;
 }

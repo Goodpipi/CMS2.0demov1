@@ -65,15 +65,87 @@ export function buildUnderstoodSummary(analysis: BriefAnalysis): string {
 }
 
 const ACTION_CHIPS: Record<HomeEntryIntent, string[]> = {
-  general: ['生成话题洞察', '生成文案', '生成图片', '生成PPT', '生成视频'],
-  insight: ['开始生成话题洞察', '补充热点关键词'],
-  copy: ['开始生成文案', '基于默认素材生成文案'],
-  visual: ['开始生成配图', '选用内置模板'],
-  video: ['开始生成视频脚本', '30秒科普短视频'],
-  ppt: ['开始生成PPT大纲', '补充内容要求'],
-  'visual-template': ['开始生成配图', '选用内置模板'],
-  'ppt-template': ['开始生成PPT大纲', '补充内容要求'],
+  general: ['生成话题洞察', '直接生成文案', '直接生成图片', '直接生成PPT', '直接生成视频'],
+  insight: ['开始生成话题洞察', '直接生成文案', '直接生成图片', '生成PPT大纲'],
+  copy: ['开始生成文案', '生成话题洞察', '直接生成图片', '生成视频脚本'],
+  visual: ['开始生成配图', '选用内置模板', '直接生成文案', '生成话题洞察'],
+  video: ['生成视频脚本', '直接生成视频', '直接生成文案', '生成话题洞察'],
+  ppt: ['生成PPT大纲', '直接生成PPT', '直接生成文案', '生成话题洞察'],
+  'visual-template': ['开始生成配图', '选用内置模板', '直接生成文案', '生成话题洞察'],
+  'ppt-template': ['生成PPT大纲', '直接生成PPT', '直接生成文案', '生成话题洞察'],
 };
+
+export const FLEXIBLE_WORKFLOW_CHIPS = ACTION_CHIPS.general;
+
+export function guideFlexibleWorkflow(): { html: string; chips: string[] } {
+  return {
+    html:
+      '可按推荐顺序推进：<strong>洞察 → 文案 → 图片 / 大纲 / 脚本 → PPT / 视频</strong>；也可以直接描述要生成的内容，我会从对应步骤开始。',
+    chips: FLEXIBLE_WORKFLOW_CHIPS,
+  };
+}
+
+export function isPptOutlinePath(text: string): boolean {
+  const t = text.trim();
+  return (
+    t === '先大纲后设计' ||
+    t === '生成PPT大纲' ||
+    /先.*大纲|大纲.*(后|再)|编辑大纲|生成大纲|分步/.test(t) ||
+    t === '开始生成PPT大纲' ||
+    (t.includes('开始生成') && t.includes('大纲'))
+  );
+}
+
+export function isPptDirectPath(text: string): boolean {
+  const t = text.trim();
+  return (
+    t === '跳过大纲直接生成' ||
+    /跳过.*大纲|直接.*(生成|做).*ppt|不要大纲|跳过大纲/i.test(t) ||
+    (t.includes('直接') && t.includes('PPT'))
+  );
+}
+
+export function guidePptPath(): { html: string; chips: string[] } {
+  return {
+    html: '可以先生成并编辑<strong>PPT 大纲</strong>，也可以直接生成 PPT 方案。',
+    chips: ['生成PPT大纲', '直接生成PPT', '直接生成文案', '生成话题洞察'],
+  };
+}
+
+/** 跳过大纲直接生成 PPT 完成后的引导 */
+export function guidePptDirectDone(versionCount: number, slideCount: number): { html: string; chips: string[] } {
+  return {
+    html: `已跳过大纲编辑，直接生成 ${versionCount} 套 PPT 设计方案，每套 ${slideCount} 页。请在右侧「PPT生成」中预览与选用。如需查看或编辑后台自动生成的大纲，可点击「查看大纲」。`,
+    chips: ['查看大纲', '提交当前版本到Veeva Vault'],
+  };
+}
+
+export function isVideoScriptPath(text: string): boolean {
+  const t = text.trim();
+  return (
+    t === '先脚本后合成' ||
+    t === '生成视频脚本' ||
+    /先.*脚本|脚本.*(后|再)|分镜.*(后|再)|写脚本|生成脚本/.test(t) ||
+    t === '开始生成视频脚本' ||
+    (t.includes('开始生成') && t.includes('脚本'))
+  );
+}
+
+export function isVideoDirectPath(text: string): boolean {
+  const t = text.trim();
+  return (
+    t === '跳过脚本直接生成' ||
+    /跳过.*脚本|直接.*(生成|做).*视频|不要脚本|跳过脚本/i.test(t) ||
+    (t.includes('直接') && t.includes('视频') && !t.includes('脚本'))
+  );
+}
+
+export function guideVideoPath(): { html: string; chips: string[] } {
+  return {
+    html: '可以先生成并确认<strong>视频脚本</strong>，也可以直接生成视频方案。',
+    chips: ['生成视频脚本', '直接生成视频', '直接生成文案', '生成话题洞察'],
+  };
+}
 
 export function getActionChips(intent: HomeEntryIntent): string[] {
   return ACTION_CHIPS[intent] || ACTION_CHIPS.general;
@@ -81,6 +153,34 @@ export function getActionChips(intent: HomeEntryIntent): string[] {
 
 export function isStartAction(text: string): boolean {
   return /^(开始|直接开始|马上|立即)/.test(text.trim()) || /开始生成/.test(text);
+}
+
+const CN_NUM: Record<string, number> = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5 };
+
+/** 从用户输入解析「每个文案 N 张」配图数量 */
+export function parseImagesPerCopy(text: string): number | null {
+  const t = text.trim();
+  if (!t) return null;
+
+  const digitMatch = t.match(/(?:每个|每篇|每版|每条|每则)?(?:文案|稿子)?\s*(\d+)\s*张/);
+  if (digitMatch) return Math.min(Math.max(Number(digitMatch[1]), 1), 5);
+
+  const cnMatch = t.match(/(?:每个|每篇|每版|每条|每则)?(?:文案|稿子)?\s*([一二两三四五])\s*张/);
+  if (cnMatch) return Math.min(Math.max(CN_NUM[cnMatch[1]] ?? 1, 1), 5);
+
+  if (/^([1-5])$/.test(t)) return Number(t);
+
+  return null;
+}
+
+export function guideImagesPerCopy(selectedCount: number): { html: string; chips: string[] } {
+  return {
+    html:
+      selectedCount > 0
+        ? `你已勾选 <strong>${selectedCount}</strong> 篇文案。请告诉我<strong>每个文案想生成几张配图</strong>（例如：「每个文案 2 张」）。`
+        : '请先在右侧「文案」中勾选需要配图的文案，并告诉我每个文案想生成几张配图。',
+    chips: ['每个文案 1 张', '每个文案 2 张', '每个文案 3 张'],
+  };
 }
 
 /** 对话内洞察类快捷引导：点击后应直接生成话题洞察 */

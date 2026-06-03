@@ -53,6 +53,8 @@ export interface CopyRevision {
   createdAt: number;
   segments: CopyDiffSegment[];
   resultText: string;
+  /** 参与修改的角色（合并展示用，同一角色只出现一次） */
+  contributorRoles?: UserRole[];
 }
 
 /** 配图团队审阅：待运营采纳 / 已采纳 / 已拒绝恢复原图 */

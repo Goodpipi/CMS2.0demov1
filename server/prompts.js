@@ -22,25 +22,52 @@ ${userNote ? `用户补充：${userNote}` : ''}
 }`;
 }
 
-export function promptCopy(materials, topics, userNote = '') {
-  const topicText =
-    topics.length > 0
-      ? topics.map((t, i) => `${i + 1}. ${t.title || t}`).join('\n')
-      : '（无单独话题列表，请结合素材与用户说明自由确定角度）';
-  return `基于以下话题或创作说明，生成 3 版不同角度的文案（小红书科普 / 患者教育长图 / HCP沟通）。
+export function promptExpandInsight(materials, seedTopics = [], userNote = '') {
+  const seedText =
+    seedTopics.length > 0
+      ? seedTopics.map((t, i) => `${i + 1}. ${t.title}${t.reason ? `（${t.reason}）` : ''}`).join('\n')
+      : '（无）';
+  return `基于用户已选话题，再拓展生成 3 个相关但角度不同的小红书公众疾病教育话题。不要与已有话题标题重复或高度雷同。
+
+已选话题：
+${seedText}
 
 引用素材：
 ${materials}
 
-选中话题：
+${userNote ? `用户补充：${userNote}` : ''}
+
+请以 JSON 返回，topics 数组恰好 3 项，格式：
+{
+  "topics": [
+    { "title": "话题标题", "reason": "推荐理由（1-2句）", "source": "素材来源说明" }
+  ],
+  "summary": "拓展说明（1-2句）"
+}`;
+}
+
+export function promptCopy(materials, topics, userNote = '', copiesPerTopic = 3) {
+  const perTopic = Math.min(Math.max(Number(copiesPerTopic) || 3, 1), 5);
+  const topicCount = topics.length > 0 ? topics.length : 1;
+  const totalCopies = topicCount * perTopic;
+  const topicText =
+    topics.length > 0
+      ? topics.map((t, i) => `${i + 1}. ${t.title || t}${t.reason ? ` — ${t.reason}` : ''}`).join('\n')
+      : '（无单独话题列表，请结合素材与用户说明自由确定角度）';
+  return `基于以下每个话题，分别生成 ${perTopic} 篇不同角度的文案（角度可含：小红书科普 / 患者教育长图 / HCP沟通 / 渠道短文案 / 问答互动等，同一话题内各篇需有明显差异）。
+
+引用素材：
+${materials}
+
+选中话题（须逐条覆盖，每个话题恰好 ${perTopic} 篇，合计 ${totalCopies} 篇）：
 ${topicText}
 
 ${userNote ? `用户要求：${userNote}` : ''}
 
-请以 JSON 返回：
+请以 JSON 返回。copies 数组长度必须为 ${totalCopies}，每项必须包含 topicTitle（与上文话题标题完全一致）：
 {
   "copies": [
-    { "title": "文案版本名称", "body": "完整正文（含标题、正文、免责声明占位）", "compliance": "合规处理说明" }
+    { "topicTitle": "话题标题", "title": "文案版本名称", "body": "完整正文（含标题、正文、免责声明占位）", "compliance": "合规处理说明" }
   ]
 }`;
 }

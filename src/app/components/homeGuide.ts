@@ -1,8 +1,10 @@
 import {
   analyzeBrief,
   buildUnderstoodSummary,
+  FLEXIBLE_WORKFLOW_CHIPS,
   getActionChips,
   getMissingForPpt,
+  guideFlexibleWorkflow,
 } from './conversationGuide';
 
 export type HomeEntryIntent =
@@ -81,17 +83,18 @@ export function getHomeInputGuidance(
   const understood = buildUnderstoodSummary(analysis);
 
   if (detected === 'unknown') {
+    const flexible = guideFlexibleWorkflow();
     if (analysis.isSubstantial) {
       return {
         suggestedIntent: 'general',
-        html: `收到：「${quoted}」。${understood ? `已识别 ${understood}。` : ''}请直接点下方按钮选择产出类型，或一句话说明要生成什么。`,
-        chips: ['生成话题洞察', '生成文案', '生成图片', '生成PPT', '生成视频'],
+        html: `收到：「${quoted}」。${understood ? `已识别 ${understood}。` : ''}${flexible.html}`,
+        chips: flexible.chips,
       };
     }
     return {
       suggestedIntent: 'general',
-      html: `收到：「${quoted}」。请用一句话说明想做的产出（洞察 / 文案 / 配图 / PPT / 视频），或点下方按钮。`,
-      chips: ['生成话题洞察', '生成文案', '生成图片', '生成PPT', '生成视频'],
+      html: `收到：「${quoted}」。${flexible.html}`,
+      chips: flexible.chips,
     };
   }
 
@@ -102,8 +105,8 @@ export function getHomeInputGuidance(
     if (missing.length === 0) {
       return {
         suggestedIntent: detected === 'ppt-template' ? 'ppt-template' : 'ppt',
-        html: `明白，你要做<strong>${label}</strong>。${understood ? `已识别 ${understood}。` : ''}点击下方即可开始生成大纲。`,
-        chips: ['开始生成PPT大纲', '补充内容要求'],
+        html: `明白，你要做<strong>${label}</strong>。${understood ? `已识别 ${understood}。` : ''}可以先生成大纲，也可以直接生成 PPT。`,
+        chips: ['生成PPT大纲', '直接生成PPT', '补充内容要求'],
       };
     }
     if (missing.length === 1 && missing[0] === 'audience') {
@@ -144,43 +147,44 @@ export function getEntryWelcome(ctx: HomeEntryContext): { html: string; chips: s
   switch (intent) {
     case 'insight':
       return {
-        html: '默认素材已就绪。说出主题、渠道或疾病领域，即可开始洞察。',
-        chips: ['开始生成话题洞察', '小红书肾脏健康热点', '公众疾病教育洞察'],
+        html: '默认素材已就绪。可按标准流程先生成洞察，也可以跳过洞察直接生成文案、图片、PPT 或视频。',
+        chips: ['开始生成话题洞察', '直接生成文案', '直接生成图片', '直接生成PPT'],
       };
     case 'copy':
       return {
-        html: '说出文案类型、受众与核心信息，即可开始生成。',
-        chips: ['开始生成文案', '小红书科普文案', '患者教育长图文案'],
+        html: '你可以先生成洞察再写文案，也可以直接基于默认素材和你的 brief 生成文案。',
+        chips: ['开始生成文案', '生成话题洞察', '直接生成图片', '直接生成PPT'],
       };
     case 'visual':
       return {
-        html: '描述配图主题、受众与风格，即可开始生成。',
-        chips: ['开始生成配图', '肾脏健康科普配图', '清爽蓝绿品牌风'],
+        html: '可以从文案生成配图，也可以跳过前置步骤，直接描述画面主题、受众与风格生成图片。',
+        chips: ['开始生成配图', '直接生成文案', '选用内置模板', '生成话题洞察'],
       };
     case 'visual-template':
       return {
-        html: `已选模板「${templateTitle || '图片'}」。补充主题与画面要求后即可生成。`,
-        chips: ['开始生成配图', '选用内置模板', '公众科普风格'],
+        html: `已选模板「${templateTitle || '图片'}」。可直接补充主题生成，也可以先生成文案再配图。`,
+        chips: ['开始生成配图', '直接生成文案', '选用内置模板', '生成话题洞察'],
       };
     case 'video':
       return {
-        html: '说明视频主题、受众与时长偏好，即可开始写脚本。',
-        chips: ['开始生成视频脚本', '30秒科普短视频', '患者教育口播脚本'],
+        html: '可按标准流程先有文案再做脚本，也可直接从视频开始。',
+        chips: ['生成视频脚本', '直接生成视频', '直接生成文案', '生成话题洞察'],
       };
     case 'ppt':
       return {
-        html: '说明受众与使用场景，即可生成可编辑大纲。',
-        chips: ['开始生成PPT大纲', '医生-作用机制', '公众-疾病教育'],
+        html: '可按标准流程先有文案再出大纲，也可直接从 PPT 开始。',
+        chips: ['生成PPT大纲', '直接生成PPT', '直接生成文案', '生成话题洞察'],
       };
     case 'ppt-template':
       return {
-        html: `已选模板「${templateTitle || 'PPT'}」。说明受众与场景后即可生成大纲。`,
-        chips: ['开始生成PPT大纲', '医生/HCP', '疾病教育'],
+        html: `已选模板「${templateTitle || 'PPT'}」。可直接补充受众与场景生成，也可以先生成文案再进入 PPT。`,
+        chips: ['生成PPT大纲', '直接生成PPT', '直接生成文案', '生成话题洞察'],
       };
     default:
+      const flexible = guideFlexibleWorkflow();
       return {
-        html: '默认素材已就绪。直接说目标，或点下方按钮开始。',
-        chips: ['生成话题洞察', '生成文案', '生成图片', '生成PPT', '生成视频'],
+        html: `默认素材已就绪。${flexible.html}`,
+        chips: FLEXIBLE_WORKFLOW_CHIPS,
       };
   }
 }

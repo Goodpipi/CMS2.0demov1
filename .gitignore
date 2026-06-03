@@ -11,3 +11,6 @@ dist/
 # 参考设计稿（非运行必需，可减小仓库体积）
 src/lovable/
 src/imports/
+
+# 本地嵌套参考工程，勿提交
+src/22/

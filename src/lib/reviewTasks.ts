@@ -4,6 +4,7 @@ import type { TeamContentType } from '@/types/content';
 import type { TabKey } from '@/types/session';
 import type { SessionWorkspace } from '@/types/session';
 import { DEMO_SESSION_ID } from '@/lib/chatSessions';
+import { normalizeCopyRevisions } from '@/lib/copyRevisionUtils';
 
 /** 审阅任务默认聚焦的标签（单标签类型） */
 export function reviewerTabForContentType(contentType: TeamContentType): TabKey {
@@ -76,7 +77,7 @@ export function copyReviewTasksForSession(sessionId: string): ReviewTask[] {
   );
 }
 
-/** 合并会话内各审阅任务的文案修改记录（按时间排序、按 id 去重） */
+/** 合并会话内各审阅任务的文案修改记录为单一展示版本 */
 export function mergeSessionCopyRevisions(sessionId: string): CopyRevision[] {
   const byId = new Map<string, CopyRevision>();
   for (const task of copyReviewTasksForSession(sessionId)) {
@@ -84,7 +85,10 @@ export function mergeSessionCopyRevisions(sessionId: string): CopyRevision[] {
       byId.set(rev.id, rev);
     }
   }
-  return [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
+  const all = [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
+  if (!all.length) return [];
+  const base = sessionCopyRevisionBase(sessionId);
+  return normalizeCopyRevisions(base, all);
 }
 
 /** 会话文案审阅的共用基准正文 */
