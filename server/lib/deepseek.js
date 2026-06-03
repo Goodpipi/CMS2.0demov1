@@ -6,6 +6,22 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function isNetworkError(e) {
+  const msg = String(e?.message || e || '').toLowerCase();
+  const cause = String(e?.cause?.message || e?.cause || '').toLowerCase();
+  const blob = `${msg} ${cause}`;
+  return (
+    e?.name === 'TypeError' ||
+    blob.includes('fetch failed') ||
+    blob.includes('failed to fetch') ||
+    blob.includes('econnrefused') ||
+    blob.includes('enotfound') ||
+    blob.includes('etimedout') ||
+    blob.includes('socket') ||
+    blob.includes('network')
+  );
+}
+
 function friendlyApiError(status, bodyText) {
   if (status === 503 || bodyText.includes('service_unavailable') || bodyText.includes('too busy')) {
     return 'DeepSeek 服务当前繁忙，请稍等 1–2 分钟后重试。';
@@ -58,7 +74,13 @@ async function chatCompletionOnce({ messages, temperature = 0.7, jsonMode = fals
       err.status = 504;
       throw err;
     }
-    throw e;
+    const err = e instanceof Error ? e : new Error(String(e));
+    if (isNetworkError(err)) {
+      err.message = err.message || 'DeepSeek 网络连接失败';
+      err.status = 502;
+      err.retryable = true;
+    }
+    throw err;
   } finally {
     clearTimeout(timer);
   }
@@ -88,7 +110,8 @@ export async function chatCompletion(opts) {
     } catch (e) {
       lastError = e;
       const busy = String(e.message || '').includes('繁忙') || String(e.message || '').includes('503');
-      const retryable = !busy && (e.retryable || e.status === 504);
+      const retryable =
+        !busy && (e.retryable || e.status === 504 || isNetworkError(e));
       if (retryable && attempt < maxAttempts) {
         await sleep(1500 * attempt);
         continue;

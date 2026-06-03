@@ -328,6 +328,7 @@ export default function App() {
   const pptWizardRef = useRef(pptWizard);
   const videoWizardRef = useRef(videoWizard);
   const visualWizardRef = useRef(visualWizard);
+  const lastAiRetryRef = useRef<(() => void) | null>(null);
   stateRef.current = state;
   pptWizardRef.current = pptWizard;
   videoWizardRef.current = videoWizard;
@@ -738,7 +739,18 @@ export default function App() {
   };
 
   useEffect(() => {
-    api.checkHealth().then((h) => setApiReady(h.deepseekConfigured)).catch(() => setApiReady(false));
+    let cancelled = false;
+    void (async () => {
+      try {
+        const h = await api.waitForApiHealth();
+        if (!cancelled) setApiReady(h.deepseekConfigured ?? false);
+      } catch {
+        if (!cancelled) setApiReady(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -752,6 +764,10 @@ export default function App() {
     setShowToast(true);
     setTimeout(() => setShowToast(false), 1800);
   };
+
+  const goToHome = useCallback(() => {
+    setCurrentScreen('home');
+  }, []);
 
   const openSession = useCallback(
     (id: string) => {
@@ -1091,9 +1107,19 @@ export default function App() {
     }
   };
 
-  const runWithAi = async (title: string, fn: () => Promise<void>) => {
+  const runWithAi = async (
+    title: string,
+    fn: () => Promise<void>,
+    onRetry?: () => void
+  ) => {
     if (isGenerating) {
       toast('请等待当前 AI 生成完成');
+      return;
+    }
+    try {
+      await api.waitForApiHealth(6, 300);
+    } catch {
+      toast('AI 服务尚未就绪，请确认已启动 API（npm start）后重试');
       return;
     }
     setIsGenerating(true);
@@ -1101,9 +1127,11 @@ export default function App() {
     try {
       await fn();
       clearLoadingMessages();
+      lastAiRetryRef.current = null;
     } catch (e) {
       clearLoadingMessages();
       const msg = e instanceof Error ? e.message : '生成失败';
+      lastAiRetryRef.current = onRetry ?? null;
       addMsg('ai', `<span style="color:#b72c3e">生成失败：${msg}</span>`, 'DeepSeek-V3.1', ['重试']);
       toast(msg);
     } finally {
@@ -1111,9 +1139,20 @@ export default function App() {
     }
   };
 
+  const retryLastAi = () => {
+    const retry = lastAiRetryRef.current;
+    if (!retry) {
+      toast('暂无失败任务可重试');
+      return;
+    }
+    retry();
+  };
+
   const runInsight = (userNote = '', opts?: { skipUserMsg?: boolean }) => {
     if (!opts?.skipUserMsg) addMsg('user', userNote || '生成话题洞察', selectedModel);
-    void runWithAi('正在生成话题洞察', async () => {
+    void runWithAi(
+      '正在生成话题洞察',
+      async () => {
       const result = await api.generateInsight(library, userNote);
       notifyMockIfNeeded(result);
       setTopics(result.topics);
@@ -1127,7 +1166,9 @@ export default function App() {
         'DeepSeek-V3.1｜话题洞察',
         ['生成文案', '直接生成图片', '生成PPT大纲', '生成视频脚本']
       );
-    });
+    },
+      () => runInsight(userNote, { skipUserMsg: true })
+    );
   };
 
   const expandTopics = () => {
@@ -1137,7 +1178,9 @@ export default function App() {
       return;
     }
     addMsg('user', '拓展话题', selectedModel);
-    void runWithAi('正在拓展话题', async () => {
+    void runWithAi(
+      '正在拓展话题',
+      async () => {
       const result = await api.generateInsight(library, '基于已选话题拓展更多方向', selected);
       notifyMockIfNeeded(result);
       const existingTitles = new Set(topics.map((t) => t.title.trim()));
@@ -1159,7 +1202,9 @@ export default function App() {
         'DeepSeek-V3.1｜话题拓展',
         ['生成文案']
       );
-    });
+    },
+      () => expandTopics()
+    );
   };
 
   const runCopy = (userNote = '', opts?: { skipUserMsg?: boolean; copiesPerTopic?: number }) => {
@@ -1184,7 +1229,9 @@ export default function App() {
         selectedModel
       );
     }
-    void runWithAi('正在生成文案', async () => {
+    void runWithAi(
+      '正在生成文案',
+      async () => {
       const result = await api.generateCopy(library, topicInput, userNote, count);
       notifyMockIfNeeded(result);
       const normalized = ensureCopyCount(result.copies, topicInput, count);
@@ -1210,7 +1257,9 @@ export default function App() {
         'DeepSeek-V3.1｜文案生成',
         ['生成图片', '生成PPT大纲', '生成视频脚本', '进入团队修改']
       );
-    });
+    },
+      () => runCopy(userNote, { skipUserMsg: true, copiesPerTopic: count })
+    );
   };
 
   const runTeam = (opts?: {
@@ -1228,7 +1277,9 @@ export default function App() {
       addMsg('user', `提交${TEAM_CONTENT_LABELS[type]}团队修改`, selectedModel);
     }
     setTeamModificationInProgress(true);
-    void runWithAi(`正在整合${TEAM_CONTENT_LABELS[type]}团队修改`, async () => {
+    void runWithAi(
+      `正在整合${TEAM_CONTENT_LABELS[type]}团队修改`,
+      async () => {
       try {
         const result = await api.generateTeam(payload.body, {
           feedback: opts?.feedback,
@@ -1256,7 +1307,14 @@ export default function App() {
       } finally {
         setTeamModificationInProgress(false);
       }
-    });
+    },
+      () =>
+        runTeam({
+          skipUserMsg: true,
+          contentType: type,
+          feedback: opts?.feedback,
+        })
+    );
   };
 
   const executeVisualGeneration = (
@@ -1386,7 +1444,7 @@ export default function App() {
         '生成PPT',
         '提交当前版本到Veeva Vault',
       ]);
-    });
+    }, () => executeVisualGeneration(userNote, templateIds, imagesPerCopy));
   };
 
   const openImageTemplatePicker = (
@@ -1529,7 +1587,9 @@ export default function App() {
       guideForMoreInfo('生成视频脚本');
       return;
     }
-    void runWithAi('正在生成视频脚本', async () => {
+    void runWithAi(
+      '正在生成视频脚本',
+      async () => {
       const result = await api.generateVideo(brief, userNote);
       notifyMockIfNeeded(result);
       setVideoResult(result);
@@ -1543,7 +1603,9 @@ export default function App() {
         'DeepSeek-V3.1｜视频脚本',
         ['生成视频', '直接生成视频', '生成图片', '生成PPT']
       );
-    });
+    },
+      () => executeVideoScript(userNote, { skipUserMsg: true })
+    );
   };
 
   const executeVideoDirect = (userNote = '') => {
@@ -1552,7 +1614,9 @@ export default function App() {
       guideForMoreInfo('生成视频');
       return;
     }
-    void runWithAi('正在直接生成视频', async () => {
+    void runWithAi(
+      '正在直接生成视频',
+      async () => {
       const script = await api.generateVideo(brief, userNote);
       notifyMockIfNeeded(script);
       setVideoResult(script);
@@ -1573,7 +1637,9 @@ export default function App() {
         'DeepSeek-V3.1｜视频合成',
         ['提交当前版本到Veeva Vault']
       );
-    });
+    },
+      () => executeVideoDirect(userNote)
+    );
   };
 
   const handleVideoWizardReply = (text: string): boolean => {
@@ -1633,7 +1699,9 @@ export default function App() {
       toast('请先生成视频脚本');
       return;
     }
-    void runWithAi('正在合成视频', async () => {
+    void runWithAi(
+      '正在合成视频',
+      async () => {
       const res = await api.generateVideoRender(videoResult);
       notifyMockIfNeeded(res);
       const versions = enrichVideoVersions(res.versions || [], videoResult.title);
@@ -1648,7 +1716,9 @@ export default function App() {
         'DeepSeek-V3.1｜视频合成',
         ['查看脚本', '提交当前版本到Veeva Vault']
       );
-    });
+    },
+      () => confirmVideoRender()
+    );
   };
 
   const selectVideoVersion = (version: VideoRenderVersion) => {
@@ -1721,7 +1791,33 @@ export default function App() {
     }
 
     if (step === 'audience') {
+      if (isPptOutlinePath(text) || isPptDirectPath(text)) {
+        setPptWizard(null);
+        const aud = audience || pptWizard.audience || '公众';
+        const scen =
+          scenario ||
+          pptWizard.scenario ||
+          parseScenarioExplicit(pptWizard.pendingNote) ||
+          '疾病教育';
+        if (isPptDirectPath(text)) {
+          void generatePptDirectly(pptWizard.pendingNote, aud, scen);
+        } else {
+          void generatePptOutlineAndOpen(pptWizard.pendingNote, aud, scen);
+        }
+        return true;
+      }
       if (combinedIncludesGenerateOutline(text)) {
+        const aud = audience || parseAudience(fullContext) || pptWizard.audience;
+        const scen =
+          scenario ||
+          parseScenarioExplicit(fullContext) ||
+          pptWizard.scenario ||
+          parseScenarioExplicit(pptWizard.pendingNote);
+        if (aud && scen) {
+          setPptWizard(null);
+          void generatePptOutlineAndOpen(pptWizard.pendingNote, aud, scen);
+          return true;
+        }
         toast('还差一项信息：请补充目标受众或使用场景');
         return true;
       }
@@ -1771,7 +1867,9 @@ export default function App() {
     scenario: string
   ) => {
     const { brief } = buildContentBrief(userNote);
-    void runWithAi('正在直接生成 PPT', async () => {
+    void runWithAi(
+      '正在直接生成 PPT',
+      async () => {
       const raw = await api.generatePptOutline({
         materials: library,
         brief,
@@ -1796,7 +1894,9 @@ export default function App() {
       addTab('ppt-design');
       const doneGuide = guidePptDirectDone(versions.length, first?.slides?.length ?? 0);
       addMsg('ai', doneGuide.html, 'DeepSeek-V3.1｜PPT 设计', doneGuide.chips);
-    });
+    },
+      () => void generatePptDirectly(userNote, audience, scenario)
+    );
   };
 
   const generatePptOutlineAndOpen = async (
@@ -1805,7 +1905,9 @@ export default function App() {
     scenario: string
   ) => {
     const { brief } = buildContentBrief(userNote);
-    void runWithAi('正在智能生成 PPT 大纲', async () => {
+    void runWithAi(
+      '正在智能生成 PPT 大纲',
+      async () => {
       const raw = await api.generatePptOutline({
         materials: library,
         brief,
@@ -1824,23 +1926,50 @@ export default function App() {
         'DeepSeek-V3.1｜PPT 大纲',
         ['查看大纲']
       );
-    });
+    },
+      () => void generatePptOutlineAndOpen(userNote, audience, scenario)
+    );
   };
 
   const startPptFlow = (
     userNote = '',
     opts?: { skipUserMsg?: boolean; path?: 'outline' | 'direct' }
   ) => {
+    if (isGenerating) {
+      toast('请等待当前 AI 生成完成');
+      return;
+    }
     if (!opts?.skipUserMsg) addMsg('user', userNote || '生成PPT', selectedModel);
+
+    const fullContext = getRecentUserContext(userNote);
+    const audience =
+      parseAudience(fullContext) || parseAudience(userNote) || '公众';
+    const scenario =
+      parseScenarioExplicit(fullContext) ||
+      parseScenarioExplicit(userNote) ||
+      parseScenario(fullContext) ||
+      '疾病教育';
+    const note = userNote || fullContext;
+
+    // 快捷按钮「生成PPT大纲 / 直接生成PPT」须绕过向导，否则会卡在 audience 步骤反复提示
+    if (opts?.path === 'outline') {
+      setPptWizard(null);
+      void generatePptOutlineAndOpen(note, audience, scenario);
+      return;
+    }
+    if (opts?.path === 'direct') {
+      setPptWizard(null);
+      void generatePptDirectly(note, audience, scenario);
+      return;
+    }
 
     if (pptWizardRef.current?.active) {
       handlePptWizardReply(userNote, '');
       return;
     }
 
-    const fullContext = getRecentUserContext(userNote);
-    const audience = parseAudience(fullContext);
-    const scenario = parseScenarioExplicit(fullContext) || parseScenario(fullContext);
+    const parsedAudience = parseAudience(fullContext);
+    const parsedScenario = parseScenarioExplicit(fullContext) || parseScenario(fullContext);
 
     const runWithPath = (aud: string, scen: string, note: string) => {
       if (opts?.path === 'outline' || isPptOutlinePath(note)) {
@@ -1862,14 +1991,14 @@ export default function App() {
       addMsg('ai', guide.html, 'DeepSeek-V3.1', guide.chips);
     };
 
-    if (audience && scenario) {
-      runWithPath(audience, scenario, userNote || fullContext);
+    if (parsedAudience && parsedScenario) {
+      runWithPath(parsedAudience, parsedScenario, note);
       return;
     }
 
     const missing = getMissingForPpt(fullContext);
     if (missing.length === 0) {
-      runWithPath(audience || '公众', scenario || '疾病教育', userNote);
+      runWithPath(parsedAudience || '公众', parsedScenario || '疾病教育', note);
       return;
     }
 
@@ -1902,7 +2031,9 @@ export default function App() {
     }
     const audience = pptOutline?.audience || '公众';
     const scenario = pptOutline?.scenario || '疾病教育';
-    void runWithAi('正在根据文案生成大纲', async () => {
+    void runWithAi(
+      '正在根据文案生成大纲',
+      async () => {
       const raw = await api.generatePptOutline({
         materials: library,
         brief: copy,
@@ -1916,7 +2047,9 @@ export default function App() {
       setState((prev) => ({ ...prev, pptOutline: true, active: 'ppt-outline' }));
       addTab('ppt-outline');
       toast('已根据文案更新大纲');
-    });
+    },
+      () => outlineFromCopy()
+    );
   };
 
   const confirmPptDesigns = (mode?: 'template' | 'no-template') => {
@@ -1936,7 +2069,9 @@ export default function App() {
     const loadingLabel = tpl
       ? `正在按「${tpl.name}」模板生成 PPT`
       : '正在生成 3 套 PPT 设计方案';
-    void runWithAi(loadingLabel, async () => {
+    void runWithAi(
+      loadingLabel,
+      async () => {
       const designs = await api.generatePptDesigns(
         pptOutline,
         pptOutline.audience,
@@ -1969,7 +2104,9 @@ export default function App() {
           ['查看大纲', '提交当前版本到Veeva Vault']
         );
       }
-    });
+    },
+      () => confirmPptDesigns(effectiveMode)
+    );
   };
 
   const selectPptVersion = (version: PptDesignVersion) => {
@@ -2049,12 +2186,8 @@ export default function App() {
       return;
     }
 
-    if (text === '先大纲后设计' || text === '开始生成PPT大纲' || text === '生成PPT大纲') {
-      startPptFlow(text, { skipUserMsg: true, path: 'outline' });
-      return;
-    }
-    if (text === '跳过大纲直接生成' || text === '直接生成PPT') {
-      startPptFlow(text, { skipUserMsg: true, path: 'direct' });
+    if (text === '重试') {
+      retryLastAi();
       return;
     }
     if (text === '先脚本后合成' || text === '开始生成视频脚本' || text === '生成视频脚本') {
@@ -2856,15 +2989,27 @@ export default function App() {
     <div className="relative min-h-screen overflow-hidden">
       <AmbientOrbs />
       <header className="relative z-10 flex h-[72px] items-center justify-between px-6 lg:px-10">
-        <button
-          type="button"
-          className="animate-fade-up text-left"
-          onClick={() => setCurrentScreen('home')}
-        >
-          <h1 className="text-[15px] font-semibold leading-tight tracking-tight text-foreground">
-            可申达 <span className="text-gradient">AI 内容工作台</span>
-          </h1>
-        </button>
+        <div className="flex min-w-0 items-center gap-4 animate-fade-up">
+          <button
+            type="button"
+            className="text-left"
+            onClick={goToHome}
+          >
+            <h1 className="text-[15px] font-semibold leading-tight tracking-tight text-foreground">
+              可申达 <span className="text-gradient">AI 内容工作台</span>
+            </h1>
+          </button>
+          {currentScreen !== 'home' && (
+            <button
+              type="button"
+              className="home-back-btn shrink-0"
+              onClick={goToHome}
+            >
+              <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
+              返回首页
+            </button>
+          )}
+        </div>
         <div className="flex items-center gap-3 text-xs animate-fade-up [animation-delay:120ms]">
           <RoleSwitcher role={userRole} onChange={handleRoleChange} />
           <div className="flex items-center gap-2">
@@ -3071,7 +3216,7 @@ export default function App() {
             <button
               type="button"
               className="inline-flex items-center gap-1 text-[12px] font-medium text-muted-foreground transition hover:text-primary"
-              onClick={() => setCurrentScreen('home')}
+              onClick={goToHome}
             >
               <ChevronLeft className="h-3.5 w-3.5" />
               返回首页
@@ -3460,10 +3605,10 @@ export default function App() {
                       className="btn soft"
                       onClick={() => {
                         setActiveReviewTaskId(null);
-                        setCurrentScreen('home');
+                        goToHome();
                       }}
                     >
-                      返回任务列表
+                      返回首页
                     </button>
                   </div>
                 </div>
@@ -3569,10 +3714,10 @@ export default function App() {
                       className="btn soft"
                       onClick={() => {
                         setActiveReviewTaskId(null);
-                        setCurrentScreen('home');
+                        goToHome();
                       }}
                     >
-                      返回任务列表
+                      返回首页
                     </button>
                   </div>
                 </div>

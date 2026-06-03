@@ -2748,7 +2748,31 @@ button, input, textarea, select {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   background: linear-gradient(180deg, #fff, #fbfdff);
+}
+
+.home-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  padding: 4px 8px;
+  margin-top: 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.home-back-btn:hover {
+  color: var(--primary);
+  border-color: #c5daf5;
+  background: #f5faff;
 }
 
 .compliance-agent-status {

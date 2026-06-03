@@ -14,15 +14,49 @@ import type {
 
 const API_BASE = '/api';
 const CLIENT_TIMEOUT_MS = 120_000;
+const API_CONNECT_RETRIES = 4;
+const API_CONNECT_RETRY_MS = 450;
 
 export type ApiMeta = { mockUsed?: boolean; mockReason?: string };
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isConnectionError(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  const msg = e.message.toLowerCase();
+  return (
+    e.name === 'TypeError' ||
+    msg.includes('fetch failed') ||
+    msg.includes('failed to fetch') ||
+    msg.includes('networkerror') ||
+    msg.includes('econnrefused') ||
+    msg.includes('connection')
+  );
+}
+
+/** 首次请求常遇 API 进程/代理未就绪，自动短暂重试避免误报 fetch failed */
+async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= API_CONNECT_RETRIES; attempt++) {
+    try {
+      return await fetch(url, init);
+    } catch (e) {
+      lastError = e;
+      if (!isConnectionError(e) || attempt === API_CONNECT_RETRIES) break;
+      await sleep(API_CONNECT_RETRY_MS * attempt);
+    }
+  }
+  throw lastError;
+}
 
 async function post<T>(path: string, body: unknown): Promise<T & ApiMeta> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), CLIENT_TIMEOUT_MS);
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, {
+    res = await fetchWithRetry(`${API_BASE}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -31,6 +65,11 @@ async function post<T>(path: string, body: unknown): Promise<T & ApiMeta> {
   } catch (e) {
     if (e instanceof Error && e.name === 'AbortError') {
       throw new Error('请求超时，请稍后重试或检查演示站服务是否可用');
+    }
+    if (isConnectionError(e)) {
+      throw new Error(
+        '无法连接本地 AI 服务（API 可能仍在启动）。请确认已运行 npm start，或稍等几秒后重试。'
+      );
     }
     throw new Error('无法连接 AI 服务，请检查网络或联系管理员确认演示站 API 是否正常');
   } finally {
@@ -53,9 +92,31 @@ async function post<T>(path: string, body: unknown): Promise<T & ApiMeta> {
   };
 }
 
-export async function checkHealth() {
-  const res = await fetch(`${API_BASE}/health`);
+export type HealthStatus = {
+  ok?: boolean;
+  deepseekConfigured?: boolean;
+  model?: string;
+  mockOnly?: boolean;
+  fallbackMock?: boolean;
+};
+
+export async function checkHealth(): Promise<HealthStatus> {
+  const res = await fetchWithRetry(`${API_BASE}/health`, { method: 'GET' });
   return res.json();
+}
+
+/** 启动阶段轮询，直到 API 可访问（开发时 Vite 常早于 Express 就绪） */
+export async function waitForApiHealth(maxAttempts = 12, intervalMs = 400): Promise<HealthStatus> {
+  let lastError: unknown;
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      return await checkHealth();
+    } catch (e) {
+      lastError = e;
+      if (i < maxAttempts - 1) await sleep(intervalMs);
+    }
+  }
+  throw lastError;
 }
 
 export function generateInsight(materials: LibraryItem[], userNote?: string, seedTopics?: TopicItem[]) {
