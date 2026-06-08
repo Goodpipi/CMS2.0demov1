@@ -27,8 +27,7 @@ export function ReviewerVisualPanel({
       <div className="detail-card">
         <h4>配图审阅</h4>
         <div className="small">
-          共 {entries.length} 张。点击「编辑配图」进入全屏编辑器，可改文字、拖拽元素或 AI
-          局部重绘；保存后由内容运营采纳或恢复原图。
+          共 {entries.length} 张。点击「编辑配图」进入全屏编辑器，可插入形状、删除/复制元素、调整图层与属性，或使用 AI 局部重绘。
         </div>
       </div>
       <div className="reviewer-visual-grid">

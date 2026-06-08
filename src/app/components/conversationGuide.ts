@@ -67,10 +67,10 @@ export function buildUnderstoodSummary(analysis: BriefAnalysis): string {
 const ACTION_CHIPS: Record<HomeEntryIntent, string[]> = {
   general: ['生成话题洞察', '直接生成文案', '直接生成图片', '直接生成PPT', '直接生成视频'],
   insight: ['开始生成话题洞察', '直接生成文案', '直接生成图片', '生成PPT大纲'],
-  copy: ['开始生成文案', '生成话题洞察', '直接生成图片', '生成视频脚本'],
+  copy: ['开始生成文案', '生成话题洞察', '直接生成图片', '直接生成视频'],
   visual: ['开始生成配图', '选用内置模板', '直接生成文案', '生成话题洞察'],
-  video: ['生成视频脚本', '直接生成视频', '直接生成文案', '生成话题洞察'],
-  ppt: ['生成PPT大纲', '直接生成PPT', '直接生成文案', '生成话题洞察'],
+  video: ['直接生成视频', '直接生成文案', '生成话题洞察', '直接生成PPT'],
+  ppt: ['生成PPT大纲', '直接生成PPT', '直接生成文案', '直接生成视频'],
   'visual-template': ['开始生成配图', '选用内置模板', '直接生成文案', '生成话题洞察'],
   'ppt-template': ['生成PPT大纲', '直接生成PPT', '直接生成文案', '生成话题洞察'],
 };
@@ -80,7 +80,7 @@ export const FLEXIBLE_WORKFLOW_CHIPS = ACTION_CHIPS.general;
 export function guideFlexibleWorkflow(): { html: string; chips: string[] } {
   return {
     html:
-      '可按推荐顺序推进：<strong>洞察 → 文案 → 图片 / 大纲 / 脚本 → PPT / 视频</strong>；也可以直接描述要生成的内容，我会从对应步骤开始。',
+      '可按推荐顺序推进：<strong>洞察 → 文案 → 图片 / PPT 大纲 → PPT / 视频</strong>；也可以直接描述要生成的内容，我会从对应步骤开始。',
     chips: FLEXIBLE_WORKFLOW_CHIPS,
   };
 }
@@ -120,30 +120,26 @@ export function guidePptDirectDone(versionCount: number, slideCount: number): { 
   };
 }
 
-export function isVideoScriptPath(text: string): boolean {
-  const t = text.trim();
-  return (
-    t === '先脚本后合成' ||
-    t === '生成视频脚本' ||
-    /先.*脚本|脚本.*(后|再)|分镜.*(后|再)|写脚本|生成脚本/.test(t) ||
-    t === '开始生成视频脚本' ||
-    (t.includes('开始生成') && t.includes('脚本'))
-  );
+export function isVideoScriptPath(_text: string): boolean {
+  return false;
 }
 
 export function isVideoDirectPath(text: string): boolean {
   const t = text.trim();
   return (
     t === '跳过脚本直接生成' ||
+    t === '直接生成视频' ||
+    t === '生成视频' ||
     /跳过.*脚本|直接.*(生成|做).*视频|不要脚本|跳过脚本/i.test(t) ||
-    (t.includes('直接') && t.includes('视频') && !t.includes('脚本'))
+    (t.includes('直接') && t.includes('视频')) ||
+    (t.includes('视频') && !t.includes('脚本'))
   );
 }
 
 export function guideVideoPath(): { html: string; chips: string[] } {
   return {
-    html: '可以先生成并确认<strong>视频脚本</strong>，也可以直接生成视频方案。',
-    chips: ['生成视频脚本', '直接生成视频', '直接生成文案', '生成话题洞察'],
+    html: '请补充视频主题、受众与风格，我将直接生成视频方案。',
+    chips: ['直接生成视频', '直接生成文案', '生成话题洞察', '直接生成PPT'],
   };
 }
 
@@ -191,6 +187,7 @@ export function isInsightQuickAction(text: string): boolean {
   if (t.includes('话题') && t.includes('洞察')) return true;
   if (/热点洞察|话题洞察|洞察报告|补充.*洞察/.test(t)) return true;
   if (t.includes('洞察') && !/文案|PPT|ppt|视频|配图|图片/.test(t)) return true;
+  if (t.includes('基于素材') && /洞察|话题|热点/.test(t)) return true;
   if (t.includes('基于默认素材') && /洞察|话题|热点/.test(t)) return true;
   if (t === '补充热点关键词' || t === '扩展话题') return true;
   if (/热点|话题分析|趋势观察|高互动标题/.test(t) && !/文案|配图|图片|PPT|ppt|视频/.test(t)) {

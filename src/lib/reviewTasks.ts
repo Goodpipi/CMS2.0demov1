@@ -30,9 +30,7 @@ export function reviewerTabsForContentType(
     case 'ppt':
       return ['ppt-outline'];
     case 'video':
-      return (workspace?.videoVersions?.length ?? 0) > 0
-        ? ['video-render']
-        : ['video-script'];
+      return ['video-render'];
     default:
       return ['copy'];
   }
@@ -162,19 +160,6 @@ export function seedReviewTasksIfEmpty(): void {
       deadline: new Date(now + 86400000 * 2).toISOString().slice(0, 16),
       status: 'pending',
       createdAt: now - 1800000,
-      updatedAt: now - 1800000,
-    },
-    {
-      id: 'rt_demo_marketing',
-      sessionId: DEMO_SESSION_ID,
-      title: '可申达｜HCP拜访材料改写',
-      contentType: 'ppt',
-      assigneeRole: 'marketing',
-      assigneeName: '小李',
-      assignerName: '小张',
-      deadline: new Date(now + 86400000 * 3).toISOString().slice(0, 16),
-      status: 'in_progress',
-      createdAt: now - 7200000,
       updatedAt: now - 1800000,
     },
   ]);

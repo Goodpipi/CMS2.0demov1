@@ -1,6 +1,31 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import * as api from '@/lib/api';
+import {
+  isDemoMode,
+  loadAppMode,
+  loadDemoScenario,
+  saveAppMode,
+  saveDemoScenario,
+  subscribeDemoMode,
+  type AppMode,
+  type DemoScenario,
+} from '@/lib/demoMode';
+import { DemoModeControl } from '@/app/components/DemoModeControl';
+import {
+  ACADEMIC_DEMO_BUTTONS,
+  ACADEMIC_DEMO_TEXT,
+  HCP_PPT_DEMO_BUTTONS,
+  HCP_PPT_DEMO_TEXT,
+  HCP_PPT_OUTLINE_01,
+  HCP_PPT_RESULT_01,
+  PATIENT_EDUCATION_VIDEO_SCRIPT_01,
+  PATIENT_VIDEO_DEMO_BUTTONS,
+  PATIENT_VIDEO_DEMO_TEXT,
+  getPatientEducationVideoVersion,
+  getAcademicDemoImage,
+  type DemoScriptStep,
+} from '@/lib/demoScenarioFlow';
 import type {
   TopicItem,
   CopyItem,
@@ -16,6 +41,7 @@ import type {
 import {
   buildTeamReviewPayload,
   TEAM_CONTENT_LABELS,
+  teamReviewSupported,
 } from '@/app/components/teamReviewUtils';
 import { buildVideoPosterDataUrl } from '@/app/components/videoUtils';
 import { VisualEditor } from '@/app/components/VisualEditor';
@@ -60,6 +86,22 @@ import {
   propagateCopyRevisionsToSession,
 } from '@/lib/reviewTasks';
 import { createCopyRevision, downloadDataUrl, latestCopyText, saveCopyRevisionMerged, normalizeCopyRevisions } from '@/lib/copyRevisionUtils';
+import {
+  HOT_INSIGHT_CATEGORY,
+  WORKSPACE_QUICK_PROMPTS,
+  TOPIC_INSIGHT_BRANCH_CHIPS,
+  buildHotInsightReport,
+  buildTopicRecommendations,
+  downloadInsightReport,
+  getTaskHotInsightMaterials,
+  getTaskMaterials,
+  isTopicInsightAgentIntent,
+  recommendationsToTopicItems,
+  reportTopicsToTopicItems,
+  type HotInsightReport,
+  type TopicRecommendationItem,
+} from '@/lib/topicInsightAgent';
+import { HotInsightReportPanel, TopicRecommendationPanel } from '@/app/components/TopicInsightPanels';
 import type { UserRole, ReviewTask } from '@/types/review';
 import { ROLE_PROFILES } from '@/types/review';
 import type { CopyRevision, ImageReviewStatus } from '@/types/review';
@@ -81,13 +123,10 @@ import {
   guideFlexibleWorkflow,
   guidePptDirectDone,
   guidePptPath,
-  guideVideoPath,
   isPptDirectPath,
   isPptOutlinePath,
   isStartAction,
   isInsightQuickAction,
-  isVideoDirectPath,
-  isVideoScriptPath,
   parseImagesPerCopy,
   parseScenarioExplicit,
 } from '@/app/components/conversationGuide';
@@ -157,6 +196,7 @@ const initialLibrary: LibraryItem[] = [
 
 const tabNames = {
   insight: '话题洞察',
+  'topic-recommendation': '话题推荐',
   copy: '文案生成',
   team: '团队修改',
   visual: '图片生成',
@@ -213,6 +253,7 @@ const emptyWorkspaceState = (): AppState => ({
   tabs: [],
   active: null,
   insight: false,
+  topicRecommendation: false,
   copy: false,
   team: false,
   visual: false,
@@ -233,14 +274,21 @@ export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [homeAgentIntent, setHomeAgentIntent] = useState<HomeEntryIntent | null>(null);
-  const [selectedModel, setSelectedModel] = useState('DeepSeek-V3.1');
+  const [selectedModel, setSelectedModel] = useState('GPT-5.5');
   const [topics, setTopics] = useState<TopicItem[]>([]);
   const [insightSummary, setInsightSummary] = useState('');
+  const [hotInsightReport, setHotInsightReport] = useState<HotInsightReport | null>(null);
+  const [recommendedTopics, setRecommendedTopics] = useState<TopicRecommendationItem[]>([]);
   const [copies, setCopies] = useState<CopyItem[]>([]);
   const [teamResult, setTeamResult] = useState<TeamResult | null>(null);
   const [videoResult, setVideoResult] = useState<VideoResult | null>(null);
   const [videoVersions, setVideoVersions] = useState<VideoRenderVersion[]>([]);
   const [selectedVideoVersionId, setSelectedVideoVersionId] = useState<string | null>(null);
+  const [selectedVideoIds, setSelectedVideoIds] = useState<string[]>([]);
+  const [draggingVideoId, setDraggingVideoId] = useState<string | null>(null);
+  const [showVideoScriptEditModal, setShowVideoScriptEditModal] = useState(false);
+  const [videoScriptDraft, setVideoScriptDraft] = useState('');
+  const [videoScriptEditTargetId, setVideoScriptEditTargetId] = useState<string | null>(null);
   const [pptResult, setPptResult] = useState<PptResult | null>(null);
   const [pptOutline, setPptOutline] = useState<PptOutline | null>(null);
   const [pptVersions, setPptVersions] = useState<PptDesignVersion[]>([]);
@@ -271,6 +319,9 @@ export default function App() {
   } | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [apiReady, setApiReady] = useState<boolean | null>(null);
+  const [appMode, setAppMode] = useState<AppMode>(() => loadAppMode());
+  const [demoScenario, setDemoScenario] = useState<DemoScenario>(() => loadDemoScenario());
+  const [demoScriptStep, setDemoScriptStep] = useState<DemoScriptStep>('idle');
   const [state, setState] = useState<AppState>(emptyWorkspaceState());
   const [guides, setGuides] = useState<string[]>(['基于默认素材生成话题洞察:']);
   const [selectedPrompt, setSelectedPrompt] = useState('');
@@ -329,6 +380,9 @@ export default function App() {
   const videoWizardRef = useRef(videoWizard);
   const visualWizardRef = useRef(visualWizard);
   const lastAiRetryRef = useRef<(() => void) | null>(null);
+  const demoTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const pendingTopicInsightNoteRef = useRef('');
+  const topicInsightUploadPendingRef = useRef(false);
   stateRef.current = state;
   pptWizardRef.current = pptWizard;
   videoWizardRef.current = videoWizard;
@@ -354,6 +408,8 @@ export default function App() {
       imageReviewStatuses,
       selectedImages,
       insightSummary,
+      hotInsightReport,
+      recommendedTopics,
       selectedTopics,
       selectedCopies,
       copyRevisions,
@@ -382,6 +438,8 @@ export default function App() {
       imageReviewStatuses,
       selectedImages,
       insightSummary,
+      hotInsightReport,
+      recommendedTopics,
       selectedTopics,
       selectedCopies,
       copyRevisions,
@@ -434,16 +492,22 @@ export default function App() {
     setMessages(session.messages);
     const w = session.workspace;
     const legacy = w.state as AppState & { video?: boolean };
-    const normalizedTabs = (legacy.tabs || []).map((t) =>
-      (t as string) === 'video' ? 'video-script' : t
-    ) as TabKey[];
+    const normalizeTabKey = (t: string): TabKey => {
+      if (t === 'video' || t === 'video-script') return 'video-render';
+      return t as TabKey;
+    };
+    const normalizedTabs = [...new Set((legacy.tabs || []).map(normalizeTabKey))] as TabKey[];
+    const normalizedActive =
+      legacy.active === ('video' as TabKey) || legacy.active === 'video-script'
+        ? 'video-render'
+        : normalizeTabKey(legacy.active as string);
     const normalizedState: AppState = {
       ...legacy,
       tabs: normalizedTabs,
-      videoScript: legacy.videoScript ?? Boolean(legacy.video),
-      videoRender: legacy.videoRender ?? false,
-      active:
-        legacy.active === ('video' as TabKey) ? 'video-script' : legacy.active,
+      videoScript: false,
+      videoRender: legacy.videoRender ?? legacy.videoScript ?? Boolean(legacy.video),
+      topicRecommendation: legacy.topicRecommendation ?? false,
+      active: normalizedActive,
     };
     setState(normalizedState);
     setTopics(w.topics);
@@ -479,6 +543,8 @@ export default function App() {
           : []
     );
     setInsightSummary(w.insightSummary);
+    setHotInsightReport(w.hotInsightReport ?? null);
+    setRecommendedTopics(w.recommendedTopics ?? []);
     setSelectedTopics(w.selectedTopics);
     setSelectedCopies(w.selectedCopies);
     let revisions = w.copyRevisions || [];
@@ -543,16 +609,30 @@ export default function App() {
 
   const resolveTeamReviewType = (text: string, activeTab: TabKey | null): TeamContentType => {
     if (text.includes('图片') || text.includes('配图') || text.includes('海报')) return 'visual';
-    if (text.includes('视频')) return 'video';
-    if (text.includes('PPT') || text.includes('ppt')) return 'ppt';
+    if (text.includes('视频')) {
+      if (activeTab === 'video-render') return 'video';
+      return 'copy';
+    }
+    if (text.includes('PPT') || text.includes('ppt')) {
+      if (activeTab === 'ppt-design') return 'ppt';
+      return 'copy';
+    }
     if (activeTab === 'visual') return 'visual';
-    if (activeTab === 'video-script' || activeTab === 'video-render') return 'video';
-    if (activeTab === 'ppt-outline' || activeTab === 'ppt-design') return 'ppt';
+    if (activeTab === 'video-render') return 'video';
+    if (activeTab === 'ppt-design') return 'ppt';
     return 'copy';
   };
 
   const openTeamReview = useCallback(
     (type: TeamContentType) => {
+      if (!teamReviewSupported(type, stateRef.current.active)) {
+        toast(
+          type === 'video'
+            ? '请先在「视频生成」中生成视频后再提交团队修改'
+            : 'PPT 大纲阶段不支持团队修改，请生成 PPT 后在「PPT生成」中提交'
+        );
+        return;
+      }
       if (type === 'visual' && generatedImages.length > 0 && !selectedImages.some(Boolean)) {
         toast('请至少勾选一张图片后再提交团队修改');
         return;
@@ -665,15 +745,11 @@ export default function App() {
       return;
     }
     if (/直接生成视频|直接做视频/.test(text)) {
-      startVideoFlow(text, { skipUserMsg, path: 'direct' });
+      startVideoFlow(text, { skipUserMsg });
       return;
     }
     if (/先大纲后PPT|先大纲后生成PPT/i.test(text)) {
       startPptFlow(text, { skipUserMsg, path: 'outline' });
-      return;
-    }
-    if (/先脚本后视频|先脚本后生成视频/.test(text)) {
-      startVideoFlow(text, { skipUserMsg, path: 'script' });
       return;
     }
     if (isStartAction(text) || text.includes('开始生成')) {
@@ -698,12 +774,16 @@ export default function App() {
         return;
       }
     }
+    if (isTopicInsightAgentIntent(text)) {
+      runTopicInsightAgent(text, { skipUserMsg });
+      return;
+    }
     if (isInsightQuickAction(text)) {
-      runInsight(text, { skipUserMsg });
+      runTopicInsightAgent(text, { skipUserMsg });
       return;
     }
     if ((text.includes('话题') || lower.includes('topic')) && text.includes('洞察')) {
-      runInsight(text, { skipUserMsg });
+      runTopicInsightAgent(text, { skipUserMsg });
     } else if (text.includes('文案') || lower.includes('copy')) {
       runCopy(text, { skipUserMsg });
     } else if (text.includes('团队') && text.includes('修改')) {
@@ -739,8 +819,19 @@ export default function App() {
   };
 
   useEffect(() => {
+    return subscribeDemoMode(() => {
+      setAppMode(loadAppMode());
+      setDemoScenario(loadDemoScenario());
+    });
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     void (async () => {
+      if (isDemoMode()) {
+        if (!cancelled) setApiReady(true);
+        return;
+      }
       try {
         const h = await api.waitForApiHealth();
         if (!cancelled) setApiReady(h.deepseekConfigured ?? false);
@@ -751,7 +842,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [appMode]);
 
   useEffect(() => {
     if (feedRef.current) {
@@ -765,12 +856,41 @@ export default function App() {
     setTimeout(() => setShowToast(false), 1800);
   };
 
-  const goToHome = useCallback(() => {
-    setCurrentScreen('home');
+  const closeTransientInteractionLayers = useCallback(() => {
+    setDrawerOpen(false);
+    setEditorSrc('');
+    setEditorSvg(undefined);
+    setEditorTarget(null);
+    setPickerOpen(false);
+    setPreviewMaterial(null);
+    setShowModal(false);
+    setShowCopyEditModal(false);
+    setShowTeamModal(false);
+    setTeamAssigneeRoles([]);
+    setDeleteConfirm(null);
+    setImageTemplateModal(null);
+    setShowVideoScriptEditModal(false);
+    setVideoScriptEditTargetId(null);
   }, []);
+
+  const stopDemoScriptPlayback = useCallback(() => {
+    demoTimersRef.current.forEach((timer) => clearTimeout(timer));
+    demoTimersRef.current = [];
+    setMessages((prev) => prev.filter((m) => !m.loading));
+    setIsGenerating(false);
+    setDemoScriptStep('idle');
+  }, []);
+
+  const goToHome = useCallback(() => {
+    stopDemoScriptPlayback();
+    closeTransientInteractionLayers();
+    setCurrentScreen('home');
+  }, [closeTransientInteractionLayers, stopDemoScriptPlayback]);
 
   const openSession = useCallback(
     (id: string) => {
+      stopDemoScriptPlayback();
+      closeTransientInteractionLayers();
       const session = getSession(id);
       if (!session) {
         toast('会话不存在或已被删除');
@@ -781,8 +901,16 @@ export default function App() {
       setCurrentScreen('workspace');
       loadSessionIntoApp(session);
     },
-    [loadSessionIntoApp, refreshSessionList]
+    [closeTransientInteractionLayers, loadSessionIntoApp, refreshSessionList, stopDemoScriptPlayback]
   );
+
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeTransientInteractionLayers();
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [closeTransientInteractionLayers]);
 
   const handleDeleteSession = () => {
     if (!deleteConfirm) return;
@@ -918,10 +1046,13 @@ export default function App() {
     toast('已从 CMS 加入候选素材');
   };
 
-  const startFromHome = (ctx: HomeEntryContext, prompt = '') => {
+  const startFromHome = (ctx: HomeEntryContext, prompt = '', opts?: { silent?: boolean }) => {
     setCurrentScreen('workspace');
     const trimmed = prompt.trim();
-    reset('', ctx, trimmed ? { homeDraft: trimmed } : undefined);
+    reset('', ctx, {
+      ...(trimmed ? { homeDraft: trimmed } : {}),
+      ...(opts?.silent ? { silent: true } : {}),
+    });
   };
 
   const newTask = (prompt = '', intent: HomeEntryIntent = 'general') =>
@@ -949,6 +1080,11 @@ export default function App() {
     if (!text && !homeAgentIntent) return;
     const intent = homeAgentIntent || 'general';
     setHomeAgentIntent(null);
+    if (isDemoMode()) {
+      startFromHome({ intent }, '', { silent: true });
+      void runDemoScenarioScript(text || '帮我生成一张图片', { addUserMessage: true, forceStart: true });
+      return;
+    }
     newTask(text, intent);
   };
 
@@ -980,7 +1116,7 @@ export default function App() {
   const reset = (
     initialPrompt = '',
     entry?: HomeEntryContext,
-    opts?: { homeDraft?: string; attachedMaterials?: LibraryItem[] }
+    opts?: { homeDraft?: string; attachedMaterials?: LibraryItem[]; silent?: boolean }
   ) => {
     const sessionId = `sess_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     setCurrentSessionId(sessionId);
@@ -989,6 +1125,7 @@ export default function App() {
     autoTitleSessionRef.current = null;
     setMessages([]);
     setState(emptyWorkspaceState());
+    setDemoScriptStep('idle');
     setGuides([]);
     setAttachments([]);
     setSelectedPrompt('');
@@ -1003,6 +1140,11 @@ export default function App() {
     setVideoResult(null);
     setVideoVersions([]);
     setSelectedVideoVersionId(null);
+    setSelectedVideoIds([]);
+    setDraggingVideoId(null);
+    setShowVideoScriptEditModal(false);
+    setVideoScriptDraft('');
+    setVideoScriptEditTargetId(null);
     setPptResult(null);
     setPptOutline(null);
     setPptVersions([]);
@@ -1016,16 +1158,23 @@ export default function App() {
     setVideoWizard(null);
     setVisualWizard(null);
     setInsightSummary('');
+    setHotInsightReport(null);
+    setRecommendedTopics([]);
     setSelectedTopics([]);
     setSelectedCopies([]);
     setCopyRevisions([]);
     setCopyRevisionBase('');
-    setActiveReviewTaskId(null);
-
-    const apiHint =
+    pendingTopicInsightNoteRef.current = '';
+    topicInsightUploadPendingRef.current = false;
       apiReady === false
         ? '<br><span style="color:#b72c3e">⚠ 未检测到 DeepSeek API Key，请在项目根目录配置 .env 后重启服务。</span>'
         : '';
+
+    if (opts?.silent) {
+      const ctx = entry || { intent: 'general' as const };
+      setEntryContext(ctx);
+      return;
+    }
 
     if (opts?.homeDraft) {
       const detected = detectHomeIntent(opts.homeDraft);
@@ -1060,7 +1209,7 @@ export default function App() {
   };
 
   const addMsg = (role: 'user' | 'ai', html: string, model = '用户', quick: string[] = []) => {
-    setMessages(prev => [...prev, { role, html, model, quick }]);
+    setMessages(prev => [...prev, { role, html, model: role === 'ai' ? 'GPT-5.5' : model, quick }]);
   };
 
   const send = () => {
@@ -1069,8 +1218,8 @@ export default function App() {
     addMsg('user', text, selectedModel);
     setInputValue('');
     setSelectedPrompt('');
+    if (runDemoScenarioScript(text, { addUserMessage: false })) return;
     if (visualWizard?.active && handleVisualWizardReply(text)) return;
-    if (videoWizard?.active && handleVideoWizardReply(text)) return;
     if (pptWizard?.active && handlePptWizardReply(text, inputValue.trim())) return;
     if (text.includes('查看大纲')) {
       openPptOutlineTab();
@@ -1090,19 +1239,23 @@ export default function App() {
   };
 
   const showLoading = (title: string) => {
+    const statusLine = isDemoMode()
+      ? '正在生成，请稍候…'
+      : '正在调用 DeepSeek，请稍候…';
+    const modelLabel = 'GPT-5.5';
     setMessages((prev) => [
       ...prev.filter((m) => !m.loading),
       {
         role: 'ai',
-        html: `<div class="agent-card"><strong>${title}</strong><div class="progress"><div class="bar" style="width:78%"></div></div><div class="small">正在调用 DeepSeek，请稍候…</div></div>`,
-        model: 'DeepSeek Agent',
+        html: `<div class="agent-card"><strong>${title}</strong><div class="progress"><div class="bar" style="width:78%"></div></div><div class="small">${statusLine}</div></div>`,
+        model: modelLabel,
         loading: true,
       },
     ]);
   };
 
   const notifyMockIfNeeded = (meta?: { mockUsed?: boolean }) => {
-    if (meta?.mockUsed) {
+    if (meta?.mockUsed && !isDemoMode()) {
       toast('DeepSeek 暂不可用，已使用演示数据（可继续体验流程）');
     }
   };
@@ -1148,27 +1301,124 @@ export default function App() {
     retry();
   };
 
-  const runInsight = (userNote = '', opts?: { skipUserMsg?: boolean }) => {
-    if (!opts?.skipUserMsg) addMsg('user', userNote || '生成话题洞察', selectedModel);
+  const insertWorkspaceGuide = (prefix: string) => {
+    setInputValue(prefix);
+    setSelectedPrompt(prefix.replace(/[：:]\s*$/, ''));
+  };
+
+  const executeHotInsightReportSkill = (userNote = '') => {
+    const hotMaterials = getTaskHotInsightMaterials(library);
     void runWithAi(
-      '正在生成话题洞察',
+      '正在生成话题洞察报告',
       async () => {
-      const result = await api.generateInsight(library, userNote);
-      notifyMockIfNeeded(result);
-      setTopics(result.topics);
-      setInsightSummary(result.summary || '');
-      setSelectedTopics(result.topics.map((_, i) => i < 2));
-      setState((prev) => ({ ...prev, insight: true }));
-      addTab('insight');
+        const result = await api.generateInsight(library, userNote);
+        notifyMockIfNeeded(result);
+        const report = buildHotInsightReport({
+          hotMaterials,
+          allMaterials: getTaskMaterials(library),
+          userNote,
+          apiTopics: result.topics,
+          apiSummary: result.summary || '',
+        });
+        const topicItems = reportTopicsToTopicItems(report);
+        setHotInsightReport(report);
+        setRecommendedTopics([]);
+        setTopics(topicItems);
+        setInsightSummary(report.summary);
+        setSelectedTopics(topicItems.map((_, i) => i < 2));
+        setState((prev) => ({ ...prev, insight: true, topicRecommendation: false, active: 'insight' }));
+        addTab('insight');
+        addMsg(
+          'ai',
+          `已使用热点洞察素材：${report.usedHotMaterials.join('、')}。共生成 <strong>${topicItems.length}</strong> 个话题方向，完整报告已展示在右侧「话题洞察」Tab。建议下一步：生成文案、配图或 PPT 大纲。`,
+          'DeepSeek-V3.1｜Hot Insight Report',
+          ['生成文案', '直接生成图片', '生成PPT大纲', '直接生成视频']
+        );
+      },
+      () => executeHotInsightReportSkill(userNote)
+    );
+  };
+
+  const executeTopicRecommendationSkill = (
+    userNote = '',
+    opts?: { skipUserMsg?: boolean }
+  ) => {
+    addMsg(
+      'ai',
+      '好的，我将基于当前任务中已添加的素材生成话题推荐。由于本次未提供专门的热点洞察材料，结果将更侧重品牌资料、参考知识与当前内容资产中的可传播主题。',
+      'DeepSeek-V3.1'
+    );
+    void runWithAi(
+      '正在生成话题推荐',
+      async () => {
+        const result = await api.generateInsight(library, userNote);
+        notifyMockIfNeeded(result);
+        const recommendations = buildTopicRecommendations({
+          materials: getTaskMaterials(library),
+          userNote,
+          apiTopics: result.topics,
+        });
+        const topicItems = recommendationsToTopicItems(recommendations);
+        setRecommendedTopics(recommendations);
+        setHotInsightReport(null);
+        setTopics(topicItems);
+        setInsightSummary('');
+        setSelectedTopics(topicItems.map((_, i) => i < 2));
+        setState((prev) => ({
+          ...prev,
+          topicRecommendation: true,
+          insight: false,
+          active: 'topic-recommendation',
+        }));
+        addTab('topic-recommendation');
+        addMsg(
+          'ai',
+          `本次未使用热点洞察素材，已基于任务已有素材生成 <strong>${recommendations.length}</strong> 条话题推荐。请在右侧「话题推荐」中勾选后继续生成文案、PPT 或图片。`,
+          'DeepSeek-V3.1｜Topic Recommendation',
+          ['基于所选话题生成文案', '基于所选话题生成PPT大纲', '基于所选话题生成图片']
+        );
+      },
+      () => executeTopicRecommendationSkill(userNote, { skipUserMsg: true })
+    );
+  };
+
+  const runTopicInsightAgent = (
+    userNote = '',
+    opts?: { skipUserMsg?: boolean; forceSkill?: 'A' | 'B' }
+  ) => {
+    const note = userNote.replace(/^基于素材生成话题洞察[：:]?\s*/i, '').trim() || userNote;
+    if (!opts?.skipUserMsg) {
+      addMsg('user', userNote || '基于素材生成话题洞察', selectedModel);
+    }
+
+    const hotMaterials = getTaskHotInsightMaterials(library);
+
+    if (opts?.forceSkill === 'B') {
+      executeTopicRecommendationSkill(note, { skipUserMsg: true });
+      return;
+    }
+
+    if (opts?.forceSkill === 'A' || hotMaterials.length > 0) {
       addMsg(
         'ai',
-        `已生成 ${result.topics.length} 个候选话题。${result.summary || ''} 右侧可查看详情并勾选后继续生成文案；也可以跳过文案，直接进入图片、PPT 或视频。`,
-        'DeepSeek-V3.1｜话题洞察',
-        ['生成文案', '直接生成图片', '生成PPT大纲', '生成视频脚本']
+        '已检测到您在「热点洞察」分类下上传了素材，我将优先基于这些材料，并结合当前任务中的默认素材，为您生成话题洞察报告。',
+        'DeepSeek-V3.1'
       );
-    },
-      () => runInsight(userNote, { skipUserMsg: true })
+      executeHotInsightReportSkill(note);
+      return;
+    }
+
+    pendingTopicInsightNoteRef.current = note;
+    addMsg(
+      'ai',
+      '检测到您尚未在「热点洞察」分类下上传素材。您可以上传热点洞察素材，以获得更完整的趋势分析；也可以直接基于当前任务已有素材生成话题推荐。',
+      'DeepSeek-V3.1',
+      [...TOPIC_INSIGHT_BRANCH_CHIPS]
     );
+  };
+
+  const runInsight = (userNote = '', opts?: { skipUserMsg?: boolean }) => {
+    runTopicInsightAgent(userNote, opts);
   };
 
   const expandTopics = () => {
@@ -1255,7 +1505,7 @@ export default function App() {
         'ai',
         `已为 ${topicCount} 个话题各生成 ${count} 篇文案（共 ${normalized.length} 篇），右侧按话题分类展示。`,
         'DeepSeek-V3.1｜文案生成',
-        ['生成图片', '生成PPT大纲', '生成视频脚本', '进入团队修改']
+        ['生成图片', '生成PPT大纲', '直接生成视频', '进入团队修改']
       );
     },
       () => runCopy(userNote, { skipUserMsg: true, copiesPerTopic: count })
@@ -1580,42 +1830,15 @@ export default function App() {
     executeVisualGeneration(userNote, [], imagesPerCopy);
   };
 
-  const executeVideoScript = (userNote = '', opts?: { skipUserMsg?: boolean }) => {
-    if (!opts?.skipUserMsg) addMsg('user', userNote || '生成视频脚本', selectedModel);
+  const executeVideoDirect = (userNote = '', opts?: { skipUserMsg?: boolean }) => {
+    if (!opts?.skipUserMsg) addMsg('user', userNote || '直接生成视频', selectedModel);
     const { brief, sufficient } = buildContentBrief(userNote);
     if (!sufficient) {
-      guideForMoreInfo('生成视频脚本');
+      guideForMoreInfo('生成视频', userNote);
       return;
     }
     void runWithAi(
-      '正在生成视频脚本',
-      async () => {
-      const result = await api.generateVideo(brief, userNote);
-      notifyMockIfNeeded(result);
-      setVideoResult(result);
-      setVideoVersions([]);
-      setSelectedVideoVersionId(null);
-      setState((prev) => ({ ...prev, videoScript: true, active: 'video-script' }));
-      addTab('video-script');
-      addMsg(
-        'ai',
-        `已生成短视频脚本「${result.title}」，共 ${result.segments.length} 个分镜。请在右侧「视频脚本」中确认后继续生成视频。`,
-        'DeepSeek-V3.1｜视频脚本',
-        ['生成视频', '直接生成视频', '生成图片', '生成PPT']
-      );
-    },
-      () => executeVideoScript(userNote, { skipUserMsg: true })
-    );
-  };
-
-  const executeVideoDirect = (userNote = '') => {
-    const { brief, sufficient } = buildContentBrief(userNote);
-    if (!sufficient) {
-      guideForMoreInfo('生成视频');
-      return;
-    }
-    void runWithAi(
-      '正在直接生成视频',
+      '正在生成视频',
       async () => {
       const script = await api.generateVideo(brief, userNote);
       notifyMockIfNeeded(script);
@@ -1625,86 +1848,7 @@ export default function App() {
 
       const res = await api.generateVideoRender(script);
       notifyMockIfNeeded(res);
-      const versions = enrichVideoVersions(res.versions || [], script.title);
-      setVideoVersions(versions);
-      const first = versions[0];
-      if (first) setSelectedVideoVersionId(first.id);
-      setState((prev) => ({ ...prev, videoRender: true }));
-      addTab('video-render');
-      addMsg(
-        'ai',
-        `已跳过分镜编辑，直接生成 ${versions.length} 套视频方案（演示占位成片）。请在右侧「视频生成」中预览并提交 Veeva 审批。`,
-        'DeepSeek-V3.1｜视频合成',
-        ['提交当前版本到Veeva Vault']
-      );
-    },
-      () => executeVideoDirect(userNote)
-    );
-  };
-
-  const handleVideoWizardReply = (text: string): boolean => {
-    if (!videoWizard?.active) return false;
-    const note = videoWizard.pendingNote;
-    if (isVideoScriptPath(text)) {
-      setVideoWizard(null);
-      executeVideoScript(note, { skipUserMsg: true });
-      return true;
-    }
-    if (isVideoDirectPath(text)) {
-      setVideoWizard(null);
-      executeVideoDirect(note);
-      return true;
-    }
-    const guide = guideVideoPath();
-    addMsg('ai', guide.html, 'DeepSeek-V3.1', guide.chips);
-    return true;
-  };
-
-  const startVideoFlow = (userNote = '', opts?: { skipUserMsg?: boolean; path?: 'script' | 'direct' }) => {
-    if (!opts?.skipUserMsg) addMsg('user', userNote || '生成视频', selectedModel);
-
-    if (videoWizardRef.current?.active) {
-      handleVideoWizardReply(userNote);
-      return;
-    }
-
-    if (opts?.path === 'script' || isVideoScriptPath(userNote)) {
-      executeVideoScript(userNote, { skipUserMsg: true });
-      return;
-    }
-    if (opts?.path === 'direct' || isVideoDirectPath(userNote)) {
-      executeVideoDirect(userNote);
-      return;
-    }
-
-    const { sufficient } = buildContentBrief(userNote);
-    if (!sufficient) {
-      guideForMoreInfo('生成视频', userNote);
-      return;
-    }
-
-    setVideoWizard({ active: true, pendingNote: userNote });
-    const guide = guideVideoPath();
-    addMsg('ai', guide.html, 'DeepSeek-V3.1', guide.chips);
-  };
-
-  const enrichVideoVersions = (versions: VideoRenderVersion[], scriptTitle: string) =>
-    versions.map((v) => ({
-      ...v,
-      posterDataUrl: v.posterDataUrl || buildVideoPosterDataUrl(scriptTitle, v.styleTag),
-    }));
-
-  const confirmVideoRender = () => {
-    if (!videoResult) {
-      toast('请先生成视频脚本');
-      return;
-    }
-    void runWithAi(
-      '正在合成视频',
-      async () => {
-      const res = await api.generateVideoRender(videoResult);
-      notifyMockIfNeeded(res);
-      const versions = enrichVideoVersions(res.versions || [], videoResult.title);
+      const versions = enrichVideoVersions(res.versions || [], script);
       setVideoVersions(versions);
       const first = versions[0];
       if (first) setSelectedVideoVersionId(first.id);
@@ -1712,9 +1856,47 @@ export default function App() {
       addTab('video-render');
       addMsg(
         'ai',
-        `已根据脚本生成 ${versions.length} 套视频方案（演示占位成片）。请在右侧「视频生成」中预览并提交 Veeva 审批。`,
+        `已生成 ${versions.length} 套视频方案（演示占位成片）。请在右侧「视频生成」中预览并提交 Veeva 审批。`,
         'DeepSeek-V3.1｜视频合成',
-        ['查看脚本', '提交当前版本到Veeva Vault']
+        ['提交当前版本到Veeva Vault', '重新生成视频']
+      );
+    },
+      () => executeVideoDirect(userNote, { skipUserMsg: true })
+    );
+  };
+
+  const startVideoFlow = (userNote = '', opts?: { skipUserMsg?: boolean }) => {
+    executeVideoDirect(userNote, opts);
+  };
+
+  const enrichVideoVersions = (versions: VideoRenderVersion[], script: VideoResult) =>
+    versions.map((v) => ({
+      ...v,
+      script,
+      posterDataUrl: v.posterDataUrl || buildVideoPosterDataUrl(script.title, v.styleTag),
+    }));
+
+  const confirmVideoRender = () => {
+    if (!videoResult) {
+      toast('请先在对话中生成视频');
+      return;
+    }
+    void runWithAi(
+      '正在合成视频',
+      async () => {
+      const res = await api.generateVideoRender(videoResult);
+      notifyMockIfNeeded(res);
+      const versions = enrichVideoVersions(res.versions || [], videoResult);
+      setVideoVersions(versions);
+      const first = versions[0];
+      if (first) setSelectedVideoVersionId(first.id);
+      setState((prev) => ({ ...prev, videoRender: true, active: 'video-render' }));
+      addTab('video-render');
+      addMsg(
+        'ai',
+        `已重新生成 ${versions.length} 套视频方案（演示占位成片）。请在右侧「视频生成」中预览并提交 Veeva 审批。`,
+        'DeepSeek-V3.1｜视频合成',
+        ['提交当前版本到Veeva Vault']
       );
     },
       () => confirmVideoRender()
@@ -1724,6 +1906,205 @@ export default function App() {
   const selectVideoVersion = (version: VideoRenderVersion) => {
     setSelectedVideoVersionId(version.id);
     toast(`已选用「${version.name}」`);
+  };
+
+  useEffect(() => {
+    setSelectedVideoIds((prev) => {
+      const valid = new Set(videoVersions.map((v) => v.id));
+      const kept = prev.filter((id) => valid.has(id));
+      return kept.length ? kept : videoVersions.map((v) => v.id);
+    });
+  }, [videoVersions]);
+
+  const formatVideoScriptDraft = (script: VideoResult | null): string => {
+    if (!script) return '';
+    const lines = [`标题：${script.title}`, `封面建议：${script.coverSuggestion || ''}`, ''];
+    script.segments.forEach((segment, index) => {
+      lines.push(
+        `#${index + 1}`,
+        `时间：${segment.time}`,
+        `画面：${segment.scene}`,
+        `旁白：${segment.narration}`,
+        `合规：${segment.compliance || ''}`,
+        ''
+      );
+    });
+    return lines.join('\n');
+  };
+
+  const parseVideoScriptDraft = (draft: string, fallback: VideoResult): VideoResult => {
+    const title = draft.match(/^标题：(.+)$/m)?.[1]?.trim() || fallback.title;
+    const coverSuggestion = draft.match(/^封面建议：(.*)$/m)?.[1]?.trim() || fallback.coverSuggestion;
+    const blocks = draft
+      .split(/\n(?=#\d+)/)
+      .map((block) => block.trim())
+      .filter((block) => /^#\d+/m.test(block));
+    const segments = blocks
+      .map((block, index) => ({
+        time: block.match(/^时间：(.+)$/m)?.[1]?.trim() || fallback.segments[index]?.time || `0:0${index}-0:0${index + 1}`,
+        scene: block.match(/^画面：([\s\S]*?)(?:\n旁白：|\n合规：|$)/)?.[1]?.trim() || fallback.segments[index]?.scene || '画面',
+        narration:
+          block.match(/^旁白：([\s\S]*?)(?:\n合规：|$)/m)?.[1]?.trim() ||
+          fallback.segments[index]?.narration ||
+          '',
+        compliance: block.match(/^合规：(.*)$/m)?.[1]?.trim() || fallback.segments[index]?.compliance,
+      }))
+      .filter((segment) => segment.scene || segment.narration);
+    return {
+      title,
+      coverSuggestion,
+      segments: segments.length ? segments : fallback.segments,
+    };
+  };
+
+  const openVideoScriptEditor = (videoId?: string) => {
+    const targetVersion = videoId ? videoVersions.find((v) => v.id === videoId) : null;
+    const script = targetVersion?.script || videoResult;
+    if (!script) {
+      toast('暂无视频脚本可编辑');
+      return;
+    }
+    setVideoScriptEditTargetId(videoId || null);
+    setVideoScriptDraft(formatVideoScriptDraft(script));
+    setShowVideoScriptEditModal(true);
+  };
+
+  const saveVideoScriptAndRegenerate = () => {
+    const targetId = videoScriptEditTargetId;
+    const baseScript = targetId ? videoVersions.find((v) => v.id === targetId)?.script || videoResult : videoResult;
+    if (!baseScript) {
+      toast('暂无视频脚本可保存');
+      return;
+    }
+    const edited = parseVideoScriptDraft(videoScriptDraft, baseScript);
+    setShowVideoScriptEditModal(false);
+    setVideoScriptEditTargetId(null);
+    void runWithAi(
+      '正在根据修改后的脚本重新生成视频',
+      async () => {
+        setVideoResult(edited);
+        if (targetId) {
+          const current = videoVersions.find((v) => v.id === targetId);
+          const fallback = getPatientEducationVideoVersion();
+          const nextVersion: VideoRenderVersion = {
+            ...(current || fallback),
+            id: targetId,
+            name: current?.name || fallback.name,
+            description: `已根据修改后脚本重新生成：${edited.title}`,
+            posterDataUrl: current?.posterDataUrl || fallback.posterDataUrl,
+            videoUrl: current?.videoUrl || fallback.videoUrl,
+            script: edited,
+            isDemo: current?.isDemo ?? fallback.isDemo,
+          };
+          setVideoVersions((prev) => prev.map((v) => (v.id === targetId ? nextVersion : v)));
+          setSelectedVideoVersionId(targetId);
+          setState((prev) => ({ ...prev, videoRender: true, active: 'video-render' }));
+          addTab('video-render');
+          addMsg('ai', '已根据修改后的视频脚本重新生成该视频，并覆盖原有结果。', 'GPT-5.5', [
+            '提交当前版本到Veeva Vault',
+            '重新生成视频',
+          ]);
+          return;
+        }
+        const res = await api.generateVideoRender(edited);
+        notifyMockIfNeeded(res);
+        const versions = enrichVideoVersions(res.versions || [], edited);
+        setVideoVersions(versions);
+        setSelectedVideoIds(versions.map((v) => v.id));
+        const first = versions[0];
+        setSelectedVideoVersionId(first?.id || null);
+        setState((prev) => ({ ...prev, videoRender: true, active: 'video-render' }));
+        addTab('video-render');
+        addMsg('ai', '已根据修改后的视频脚本重新生成视频，并覆盖原有视频结果。', 'GPT-5.5', [
+          '提交当前版本到Veeva Vault',
+          '重新生成视频',
+        ]);
+      },
+      () => saveVideoScriptAndRegenerate()
+    );
+  };
+
+  const regenerateSingleVideoVersion = (videoId: string) => {
+    const current = videoVersions.find((v) => v.id === videoId);
+    const script = current?.script || videoResult;
+    if (!script) {
+      toast('暂无视频脚本可用于重新生成');
+      return;
+    }
+    void runWithAi(
+      '正在重新生成视频',
+      async () => {
+        const res = await api.generateVideoRender(script);
+        notifyMockIfNeeded(res);
+        const [generated] = enrichVideoVersions(res.versions || [], script);
+        if (!generated && !current) {
+          toast('未生成新的视频结果');
+          return;
+        }
+        const nextVersion: VideoRenderVersion = {
+          ...(generated || current!),
+          id: videoId,
+          name: current?.name || generated?.name || '重新生成视频',
+          description: generated?.description || current?.description || '已重新生成的视频',
+        };
+        setVideoVersions((prev) => prev.map((v) => (v.id === videoId ? nextVersion : v)));
+        setSelectedVideoVersionId(videoId);
+        addMsg('ai', `已重新生成「${nextVersion.name}」，并覆盖该视频结果。`, 'GPT-5.5', [
+          '提交当前版本到Veeva Vault',
+        ]);
+      },
+      () => regenerateSingleVideoVersion(videoId)
+    );
+  };
+
+  const toggleVideoSelection = (id: string, checked: boolean) => {
+    setSelectedVideoIds((prev) => {
+      if (checked) return prev.includes(id) ? prev : [...prev, id];
+      return prev.filter((x) => x !== id);
+    });
+  };
+
+  const reorderVideoVersion = (dragId: string, targetId: string) => {
+    if (dragId === targetId) return;
+    setVideoVersions((prev) => {
+      const from = prev.findIndex((v) => v.id === dragId);
+      const to = prev.findIndex((v) => v.id === targetId);
+      if (from < 0 || to < 0) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next;
+    });
+  };
+
+  const exportMergedVideos = () => {
+    const selected = videoVersions.filter((v) => selectedVideoIds.includes(v.id));
+    if (!selected.length) {
+      toast('请先勾选要合并导出的视频');
+      return;
+    }
+    const content = [
+      '合并导出视频清单',
+      `生成时间：${new Date().toLocaleString('zh-CN')}`,
+      '',
+      ...selected.map((v, index) =>
+        [
+          `${index + 1}. ${v.name}`,
+          `   风格：${v.styleTag}`,
+          `   时长：${v.duration}`,
+          `   描述：${v.description}`,
+          `   视频地址：${v.videoUrl || '演示占位/预览图'}`,
+        ].join('\n')
+      ),
+    ].join('\n');
+    const blob = new Blob(['\ufeff', content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'merged-video-export-list.txt';
+    a.click();
+    URL.revokeObjectURL(url);
+    toast(`已导出 ${selected.length} 个视频的合并清单`);
   };
 
   const finishPptWizardAndAskPath = (
@@ -2135,19 +2516,39 @@ export default function App() {
       toast('请等待当前 AI 生成完成');
       return;
     }
+    if (runDemoScenarioScript(text, { addUserMessage: true })) return;
     addMsg('user', text, selectedModel);
 
     const activeTab = stateRef.current.active;
     const wizard = pptWizardRef.current;
-    const videoWiz = videoWizardRef.current;
     const visualWiz = visualWizardRef.current;
 
     if (visualWiz?.active) {
       handleVisualWizardReply(text);
       return;
     }
-    if (videoWiz?.active) {
-      handleVideoWizardReply(text);
+
+    if (text === '上传热点洞察素材') {
+      topicInsightUploadPendingRef.current = true;
+      openMaterialPicker('workspace', HOT_INSIGHT_CATEGORY);
+      return;
+    }
+    if (text === '使用已有素材继续') {
+      const note = pendingTopicInsightNoteRef.current || getRecentUserContext(text);
+      pendingTopicInsightNoteRef.current = '';
+      runTopicInsightAgent(note, { skipUserMsg: true, forceSkill: 'B' });
+      return;
+    }
+    if (text === '基于所选话题生成文案') {
+      runCopy(undefined, { skipUserMsg: true });
+      return;
+    }
+    if (text === '基于所选话题生成PPT大纲') {
+      startPptFlow(getRecentUserContext(text), { skipUserMsg: true, path: 'outline' });
+      return;
+    }
+    if (text === '基于所选话题生成图片') {
+      startVisualFlow(getRecentUserContext(text), { skipUserMsg: true });
       return;
     }
 
@@ -2177,25 +2578,12 @@ export default function App() {
       startPptFlow(getRecentUserContext(text), { skipUserMsg: true, path: 'direct' });
       return;
     }
-    if (text === '先脚本后视频' || text === '生成视频脚本') {
-      startVideoFlow(getRecentUserContext(text), { skipUserMsg: true, path: 'script' });
+    if (text === '直接生成视频' || text === '跳过脚本直接生成') {
+      startVideoFlow(getRecentUserContext(text), { skipUserMsg: true });
       return;
     }
-    if (text === '直接生成视频') {
-      startVideoFlow(getRecentUserContext(text), { skipUserMsg: true, path: 'direct' });
-      return;
-    }
-
     if (text === '重试') {
       retryLastAi();
-      return;
-    }
-    if (text === '先脚本后合成' || text === '开始生成视频脚本' || text === '生成视频脚本') {
-      startVideoFlow(text, { skipUserMsg: true, path: 'script' });
-      return;
-    }
-    if (text === '跳过脚本直接生成' || text === '直接生成视频') {
-      startVideoFlow(getRecentUserContext(text), { skipUserMsg: true, path: 'direct' });
       return;
     }
     if (text.includes('开始生成PPT')) {
@@ -2234,9 +2622,8 @@ export default function App() {
       setState((prev) => ({ ...prev, active: 'ppt-design' }));
       return;
     }
-    if (text.includes('查看脚本') && videoResult) {
-      addTab('video-script');
-      setState((prev) => ({ ...prev, videoScript: true }));
+    if (text === '重新生成视频') {
+      confirmVideoRender();
       return;
     }
     if (text.includes('生成设计')) {
@@ -2281,15 +2668,14 @@ export default function App() {
       openImageEditor(generatedImages[pick] || posterData, pick);
       return;
     }
-    if (text.includes('生成视频脚本') || (text.includes('视频脚本') && text.includes('生成'))) {
-      startVideoFlow(text, { skipUserMsg: true, path: 'script' });
-      return;
-    }
-    if (text === '生成视频' || (text.includes('生成视频') && !text.includes('脚本'))) {
-      if (videoResult) {
+    if (
+      text === '生成视频' ||
+      text.includes('生成视频') ||
+      text.includes('视频脚本') ||
+      text.includes('视频')
+    ) {
+      if (text === '重新生成视频' && videoResult) {
         confirmVideoRender();
-      } else if (isVideoDirectPath(text)) {
-        startVideoFlow(getRecentUserContext(text), { skipUserMsg: true, path: 'direct' });
       } else {
         startVideoFlow(getRecentUserContext(text), { skipUserMsg: true });
       }
@@ -2327,10 +2713,6 @@ export default function App() {
       startPptFlow(text, { skipUserMsg: true });
       return;
     }
-    if (text.includes('视频')) {
-      startVideoFlow(text, { skipUserMsg: true });
-      return;
-    }
     if (text.includes('团队') && text.includes('修改')) {
       if (text.includes('整合') || text.includes('反馈')) {
         runTeam({ skipUserMsg: true, feedback: text });
@@ -2348,7 +2730,7 @@ export default function App() {
       return ['进入团队修改', '提交当前版本到Veeva Vault', '直接生成PPT', '直接生成视频'];
     }
     if (state.copy || state.insight) {
-      return ['生成图片', '生成PPT大纲', '生成视频脚本', '提交当前版本到Veeva Vault'];
+      return ['生成图片', '生成PPT大纲', '直接生成视频', '提交当前版本到Veeva Vault'];
     }
     return base;
   };
@@ -2361,6 +2743,451 @@ export default function App() {
       return { ...prev, active: key };
     });
   };
+
+  const clearDemoTimers = () => {
+    demoTimersRef.current.forEach((timer) => clearTimeout(timer));
+    demoTimersRef.current = [];
+  };
+
+  const demoSleep = (ms: number) =>
+    new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        demoTimersRef.current = demoTimersRef.current.filter((item) => item !== timer);
+        resolve();
+      }, ms);
+      demoTimersRef.current.push(timer);
+    });
+
+  const escapeDemoHtml = (value: string) =>
+    value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+  const formatDemoStreamText = (value: string) =>
+    escapeDemoHtml(value)
+      .replace(/\n/g, '<br>')
+      .replace(/• /g, '&bull; ');
+
+  const streamDemoAiMessage = async (text: string, quick: string[] = []) => {
+    const streamId = `demo-stream-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const marker = `<!--${streamId}-->`;
+    setMessages((prev) => [...prev, { role: 'ai', html: marker, model: 'GPT-5.5', quick: [] }]);
+    let visible = '';
+    for (let i = 0; i < text.length; i += 2) {
+      visible += text.slice(i, i + 2);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.html.includes(marker)
+            ? { ...msg, html: `${marker}${formatDemoStreamText(visible)}`, quick: [] }
+            : msg
+        )
+      );
+      await demoSleep(8);
+    }
+    setMessages((prev) =>
+      prev.map((msg) =>
+        msg.html.includes(marker)
+          ? { ...msg, html: `${marker}${formatDemoStreamText(text)}`, quick }
+          : msg
+      )
+    );
+  };
+
+  const publishAcademicDemoImage = (kind: 'poster' | 'case-card') => {
+    const image = getAcademicDemoImage(kind);
+    setGeneratedImages((prev) => (kind === 'poster' ? [image.dataUrl] : [...prev, image.dataUrl]));
+    setGeneratedImageMeta((prev) =>
+      kind === 'poster'
+        ? [{ copyTitle: image.copyTitle, copyIndex: -1, imageIndex: 0 }]
+        : [...prev, { copyTitle: image.copyTitle, copyIndex: -1, imageIndex: prev.length }]
+    );
+    setSelectedImages((prev) => (kind === 'poster' ? [true] : [...prev, true]));
+    setImageReviewOrigins([]);
+    setImageReviewStatuses([]);
+    addTab('visual');
+    setState((prev) => ({ ...prev, visual: true, active: 'visual' }));
+  };
+
+  const runDemoLoadingStep = async (title: string, task: () => Promise<void>) => {
+    setIsGenerating(true);
+    showLoading(title);
+    try {
+      await demoSleep(1000);
+      clearLoadingMessages();
+      await task();
+      lastAiRetryRef.current = null;
+    } catch (e) {
+      clearLoadingMessages();
+      const msg = e instanceof Error ? e.message : '演示脚本执行失败';
+      addMsg('ai', `<span style="color:#b72c3e">生成失败：${msg}</span>`, 'DeepSeek-V3.1', ['重试']);
+      toast(msg);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const runAcademicCaseCardDemo = () => {
+    setDemoScriptStep('complete');
+    void runDemoLoadingStep('正在生成病例卡', async () => {
+      await streamDemoAiMessage(ACADEMIC_DEMO_TEXT.caseGenerating);
+      await demoSleep(5000);
+      publishAcademicDemoImage('case-card');
+      await streamDemoAiMessage(ACADEMIC_DEMO_TEXT.caseDone, [...ACADEMIC_DEMO_BUTTONS.caseNext]);
+    });
+  };
+
+  const runAcademicPosterDemo = () => {
+    setDemoScriptStep('after-poster');
+    void runDemoLoadingStep('正在生成会议海报', async () => {
+      await streamDemoAiMessage(ACADEMIC_DEMO_TEXT.posterGenerating);
+      await demoSleep(5000);
+      publishAcademicDemoImage('poster');
+      await streamDemoAiMessage(ACADEMIC_DEMO_TEXT.posterDone, [...ACADEMIC_DEMO_BUTTONS.posterNext]);
+    });
+  };
+
+  const runAcademicDemoScript = (
+    text: string,
+    opts?: { addUserMessage?: boolean; forceStart?: boolean }
+  ): boolean => {
+    const shouldUseAcademicScript =
+      isDemoMode() && demoScenario === 'academic' && (opts?.forceStart || demoScriptStep !== 'idle');
+    if (!shouldUseAcademicScript) return false;
+    if (isGenerating) {
+      toast('请等待当前演示步骤完成');
+      return true;
+    }
+
+    const currentStep = opts?.forceStart ? 'idle' : demoScriptStep;
+    if (opts?.addUserMessage) {
+      addMsg('user', text, selectedModel);
+    }
+
+    if (currentStep === 'idle') {
+      setDemoScriptStep('await-scene');
+      void runDemoLoadingStep('正在理解创作需求', async () => {
+        await streamDemoAiMessage(ACADEMIC_DEMO_TEXT.askScene, [...ACADEMIC_DEMO_BUTTONS.scene]);
+      });
+      return true;
+    }
+
+    if (currentStep === 'await-scene') {
+      setDemoScriptStep('await-format');
+      void runDemoLoadingStep('正在识别应用场景', async () => {
+        await streamDemoAiMessage(ACADEMIC_DEMO_TEXT.askFormat, [...ACADEMIC_DEMO_BUTTONS.format]);
+      });
+      return true;
+    }
+
+    if (currentStep === 'await-format') {
+      setDemoScriptStep('await-brief');
+      void runDemoLoadingStep('正在确认内容形式', async () => {
+        await streamDemoAiMessage(ACADEMIC_DEMO_TEXT.askBrief, [...ACADEMIC_DEMO_BUTTONS.direct]);
+      });
+      return true;
+    }
+
+    if (currentStep === 'await-brief') {
+      runAcademicPosterDemo();
+      return true;
+    }
+
+    if (currentStep === 'after-poster' && text === '生成病例卡') {
+      setDemoScriptStep('await-case-card');
+      return true;
+    }
+
+    if (currentStep === 'after-poster' && (text.includes('PPT') || text.includes('新闻'))) {
+      void runDemoLoadingStep('正在读取预置分支', async () => {
+        await streamDemoAiMessage(
+          '该按钮已记录为后续演示分支。本场景当前继续演示「病例卡」生成，请点击【生成病例卡】或直接补充病例卡需求。',
+          [...ACADEMIC_DEMO_BUTTONS.posterNext]
+        );
+      });
+      return true;
+    }
+
+    if (currentStep === 'after-poster' || currentStep === 'await-case-card') {
+      runAcademicCaseCardDemo();
+      return true;
+    }
+
+    if (currentStep === 'complete') {
+      void runDemoLoadingStep('正在读取预置素材', async () => {
+        await streamDemoAiMessage(
+          '当前学术传播会议演示脚本已完成。本轮结果均为预置素材，您可以在右侧继续查看和编辑海报与病例卡。',
+          [...ACADEMIC_DEMO_BUTTONS.caseNext]
+        );
+      });
+      return true;
+    }
+
+    return false;
+  };
+
+  const publishPatientVideoScript = () => {
+    setVideoResult(PATIENT_EDUCATION_VIDEO_SCRIPT_01);
+    setVideoVersions([]);
+    setSelectedVideoVersionId(null);
+    addTab('video-render');
+    setState((prev) => ({ ...prev, videoRender: true, active: 'video-render' }));
+  };
+
+  const publishPatientVideoResult = () => {
+    const version = getPatientEducationVideoVersion();
+    setVideoVersions([version]);
+    setSelectedVideoVersionId(version.id);
+    addTab('video-render');
+    setState((prev) => ({ ...prev, videoRender: true, active: 'video-render' }));
+  };
+
+  const runPatientEducationVideoGeneration = () => {
+    setDemoScriptStep('video-ready');
+    setIsGenerating(true);
+    showLoading('正在分析视频脚本');
+    void (async () => {
+      try {
+        const stages = ['正在分析视频脚本...', '正在生成分镜...', '正在匹配数字素材...', '正在生成视频...'];
+        for (const stage of stages) {
+          showLoading(stage);
+          await demoSleep(900);
+        }
+        clearLoadingMessages();
+        await streamDemoAiMessage(PATIENT_VIDEO_DEMO_TEXT.videoGenerating);
+        await demoSleep(5000);
+        publishPatientVideoResult();
+        await streamDemoAiMessage(PATIENT_VIDEO_DEMO_TEXT.videoDone, [...PATIENT_VIDEO_DEMO_BUTTONS.videoNext]);
+      } catch (e) {
+        clearLoadingMessages();
+        const msg = e instanceof Error ? e.message : '生成失败';
+        addMsg('ai', `<span style="color:#b72c3e">生成失败：${msg}</span>`, 'GPT-5.5', ['重试']);
+        toast(msg);
+      } finally {
+        setIsGenerating(false);
+      }
+    })();
+  };
+
+  const runPatientEducationVideoDemoScript = (
+    text: string,
+    opts?: { addUserMessage?: boolean; forceStart?: boolean }
+  ): boolean => {
+    const shouldUsePatientVideoScript =
+      isDemoMode() && demoScenario === 'patient-education' && (opts?.forceStart || demoScriptStep !== 'idle');
+    if (!shouldUsePatientVideoScript) return false;
+    if (isGenerating) {
+      toast('请等待当前演示步骤完成');
+      return true;
+    }
+
+    const currentStep = opts?.forceStart ? 'idle' : demoScriptStep;
+    if (opts?.addUserMessage) {
+      addMsg('user', text, selectedModel);
+    }
+
+    if (currentStep === 'idle') {
+      setDemoScriptStep('await-video-choice');
+      void runDemoLoadingStep('正在理解创作需求', async () => {
+        await streamDemoAiMessage(PATIENT_VIDEO_DEMO_TEXT.recognized, [...PATIENT_VIDEO_DEMO_BUTTONS.firstChoice]);
+      });
+      return true;
+    }
+
+    if (currentStep === 'await-video-choice') {
+      if (text === '生成视频') {
+        publishPatientVideoScript();
+        runPatientEducationVideoGeneration();
+        return true;
+      }
+      setDemoScriptStep('script-ready');
+      void runDemoLoadingStep('正在生成视频脚本', async () => {
+        await streamDemoAiMessage(PATIENT_VIDEO_DEMO_TEXT.scriptGenerating);
+        await demoSleep(3000);
+        publishPatientVideoScript();
+        await streamDemoAiMessage(PATIENT_VIDEO_DEMO_TEXT.scriptDone, [...PATIENT_VIDEO_DEMO_BUTTONS.scriptReady]);
+      });
+      return true;
+    }
+
+    if (currentStep === 'script-ready') {
+      if (text === '编辑脚本') {
+        void runDemoLoadingStep('正在打开视频脚本', async () => {
+          publishPatientVideoScript();
+          await streamDemoAiMessage('已打开右侧视频脚本，您可以查看分镜内容。', [
+            ...PATIENT_VIDEO_DEMO_BUTTONS.scriptReady,
+          ]);
+        });
+        return true;
+      }
+      runPatientEducationVideoGeneration();
+      return true;
+    }
+
+    if (currentStep === 'video-ready') {
+      void runDemoLoadingStep('正在读取患者教育素材', async () => {
+        await streamDemoAiMessage(PATIENT_VIDEO_DEMO_TEXT.videoDone, [...PATIENT_VIDEO_DEMO_BUTTONS.videoNext]);
+      });
+      return true;
+    }
+
+    return false;
+  };
+
+  const publishHcpPptOutline = () => {
+    setPptOutline(HCP_PPT_OUTLINE_01);
+    setPptVersions([]);
+    setPptResult(null);
+    setSelectedPptVersionId(null);
+    setSelectedPptTemplateId(null);
+    addTab('ppt-outline');
+    setState((prev) => ({ ...prev, pptOutline: true, active: 'ppt-outline' }));
+  };
+
+  const publishHcpPptResult = () => {
+    const version = HCP_PPT_RESULT_01;
+    setPptOutline(HCP_PPT_OUTLINE_01);
+    setPptVersions([version]);
+    setSelectedPptVersionId(version.id);
+    setPptResult({ title: HCP_PPT_OUTLINE_01.title, slides: version.slides });
+    addTab('ppt-outline');
+    addTab('ppt-design');
+    setState((prev) => ({
+      ...prev,
+      pptOutline: true,
+      pptDesign: true,
+      active: 'ppt-design',
+    }));
+  };
+
+  const runHcpPptDemoScript = (
+    text: string,
+    opts?: { addUserMessage?: boolean; forceStart?: boolean }
+  ): boolean => {
+    const shouldUseHcpPptScript =
+      isDemoMode() && demoScenario === 'hcp' && (opts?.forceStart || demoScriptStep !== 'idle');
+    if (!shouldUseHcpPptScript) return false;
+    if (isGenerating) {
+      toast('请等待当前演示步骤完成');
+      return true;
+    }
+
+    const currentStep = opts?.forceStart ? 'idle' : demoScriptStep;
+    if (opts?.addUserMessage) {
+      addMsg('user', text, selectedModel);
+    }
+
+    if (currentStep === 'idle') {
+      setDemoScriptStep('hcp-await-scene');
+      void runDemoLoadingStep('正在理解创作需求', async () => {
+        await streamDemoAiMessage(HCP_PPT_DEMO_TEXT.askScene, [...HCP_PPT_DEMO_BUTTONS.scene]);
+      });
+      return true;
+    }
+
+    if (currentStep === 'hcp-await-scene') {
+      setDemoScriptStep('hcp-await-requirements');
+      void runDemoLoadingStep('正在识别应用场景', async () => {
+        await streamDemoAiMessage(HCP_PPT_DEMO_TEXT.askRequirements, [...HCP_PPT_DEMO_BUTTONS.direct]);
+      });
+      return true;
+    }
+
+    if (currentStep === 'hcp-await-requirements') {
+      setDemoScriptStep('hcp-await-path');
+      void runDemoLoadingStep('正在确认PPT生成路径', async () => {
+        await streamDemoAiMessage(HCP_PPT_DEMO_TEXT.askPath, [...HCP_PPT_DEMO_BUTTONS.path]);
+      });
+      return true;
+    }
+
+    if (currentStep === 'hcp-await-path') {
+      if (text.includes('PPT') && !text.includes('大纲')) {
+        setDemoScriptStep('hcp-complete');
+        void runDemoLoadingStep('正在生成PPT', async () => {
+          await streamDemoAiMessage(HCP_PPT_DEMO_TEXT.pptGenerating);
+          await demoSleep(3000);
+          publishHcpPptResult();
+          await streamDemoAiMessage(HCP_PPT_DEMO_TEXT.pptDone, [...HCP_PPT_DEMO_BUTTONS.done]);
+        });
+        return true;
+      }
+
+      setDemoScriptStep('hcp-outline-ready');
+      void runDemoLoadingStep('正在生成PPT大纲', async () => {
+        await streamDemoAiMessage(HCP_PPT_DEMO_TEXT.outlineGenerating);
+        await demoSleep(3000);
+        publishHcpPptOutline();
+        await streamDemoAiMessage(HCP_PPT_DEMO_TEXT.outlineDone, [...HCP_PPT_DEMO_BUTTONS.outlineDone]);
+      });
+      return true;
+    }
+
+    if (currentStep === 'hcp-outline-ready') {
+      setDemoScriptStep('hcp-complete');
+      void runDemoLoadingStep('正在生成PPT', async () => {
+        await streamDemoAiMessage(HCP_PPT_DEMO_TEXT.pptGenerating);
+        await demoSleep(3000);
+        publishHcpPptResult();
+        await streamDemoAiMessage(HCP_PPT_DEMO_TEXT.pptDone, [...HCP_PPT_DEMO_BUTTONS.done]);
+      });
+      return true;
+    }
+
+    if (currentStep === 'hcp-complete') {
+      void runDemoLoadingStep('正在读取预置PPT', async () => {
+        publishHcpPptResult();
+        await streamDemoAiMessage(HCP_PPT_DEMO_TEXT.pptDone, [...HCP_PPT_DEMO_BUTTONS.done]);
+      });
+      return true;
+    }
+
+    return false;
+  };
+
+  const runDemoScenarioScript = (
+    text: string,
+    opts?: { addUserMessage?: boolean; forceStart?: boolean }
+  ): boolean => {
+    if (!isDemoMode()) return false;
+
+    if (demoScenario === 'academic') {
+      return runAcademicDemoScript(text, opts);
+    }
+
+    if (demoScenario === 'patient-education') {
+      return runPatientEducationVideoDemoScript(text, opts);
+    }
+
+    if (demoScenario === 'hcp') {
+      return runHcpPptDemoScript(text, opts);
+    }
+
+    if (isGenerating) {
+      toast('请等待当前演示步骤完成');
+      return true;
+    }
+
+    if (opts?.addUserMessage) {
+      addMsg('user', text, selectedModel);
+    }
+
+    void runDemoLoadingStep('正在读取演示脚本', async () => {
+      const scenarioLabel = demoScenario === 'hcp' ? 'HCP沟通' : '患者教育';
+      await streamDemoAiMessage(
+        `当前演示场景为【${scenarioLabel}】。该场景脚本尚未配置完成。\n\n请切换到【学术会议】后重新点击开始创作，或继续提供该场景的固定脚本，我会按相同机制接入。`,
+        ['生成图片', '生成PPT大纲', '直接生成视频']
+      );
+    });
+    return true;
+  };
+
+  useEffect(() => {
+    return () => clearDemoTimers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 组件卸载时清理演示脚本定时器
+  }, []);
 
   const openPptOutlineTab = () => {
     if (!pptOutline) {
@@ -2404,7 +3231,7 @@ export default function App() {
   const openPptSlideEditor = (index: number) => {
     if (!pptResult?.slides[index]) return;
     const slide = pptResult.slides[index];
-    openVisualEditor(slideToPreviewUrl(slide), { kind: 'ppt-slide', index }, slide.svg);
+    openVisualEditor(slideToPreviewUrl(slide), { kind: 'ppt-slide', index }, slide.svg || slide.imageUrl);
   };
 
   const touchActiveReviewTask = () => {
@@ -2882,6 +3709,7 @@ export default function App() {
 
   const handleMaterialPicked = (item: PickedMaterial) => {
     const now = Date.now();
+    const fromInsightUpload = topicInsightUploadPendingRef.current && item.cat === HOT_INSIGHT_CATEGORY;
     setLibrary((prev) => [
       {
         id: now,
@@ -2889,7 +3717,7 @@ export default function App() {
         title: item.title,
         meta: item.meta,
         cms: item.cms,
-        def: pickerTarget === 'workspace',
+        def: pickerTarget === 'workspace' || fromInsightUpload,
         addedAt: now,
         fileName: item.fileName,
         contentType: item.contentType,
@@ -2902,13 +3730,17 @@ export default function App() {
     const pill = materialAttachmentPill(item);
     setAttachments((prev) => [...prev.filter((p) => !p.endsWith('×')), pill]);
     toast(pickerTarget === 'chat' ? '附件已加入本次对话' : `已添加素材到「${item.cat}」`);
-    if (pickerTarget === 'chat') {
+    if (fromInsightUpload) {
+      topicInsightUploadPendingRef.current = false;
+      const note = pendingTopicInsightNoteRef.current;
+      pendingTopicInsightNoteRef.current = '';
       addMsg(
         'ai',
-        `已添加素材「${item.title}」。你可以继续说明创作目标，例如生成图片、文案或 PPT。`,
-        'DeepSeek-V3.1',
-        nextPrompts()
+        `已上传热点洞察素材「${item.title}」，正在基于该素材生成话题洞察报告…`,
+        'DeepSeek-V3.1'
       );
+      runTopicInsightAgent(note || '基于素材生成话题洞察', { skipUserMsg: true, forceSkill: 'A' });
+      return;
     }
   };
 
@@ -3011,6 +3843,24 @@ export default function App() {
           )}
         </div>
         <div className="flex items-center gap-3 text-xs animate-fade-up [animation-delay:120ms]">
+          <DemoModeControl
+            mode={appMode}
+            scenario={demoScenario}
+            onModeChange={(mode) => {
+              saveAppMode(mode);
+              setAppMode(mode);
+              if (mode === 'demo') {
+                setApiReady(true);
+                toast('已开启演示模式：不调用 AI 与后端，按脚本返回固定结果');
+              } else {
+                toast('已切换至真实模式');
+              }
+            }}
+            onScenarioChange={(scenario) => {
+              saveDemoScenario(scenario);
+              setDemoScenario(scenario);
+            }}
+          />
           <RoleSwitcher role={userRole} onChange={handleRoleChange} />
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground">当前品牌</span>
@@ -3091,32 +3941,6 @@ export default function App() {
 
                   <SparkleField />
 
-                  <div
-                    className={cn(
-                      'relative z-10 mb-6 inline-flex items-center gap-2 rounded-full border border-border/60 bg-glass px-3 py-1 text-[11px] font-medium shadow-soft animate-fade-up',
-                      apiReady === false
-                        ? 'border-amber-200/80 bg-amber-50/80 text-amber-800'
-                        : 'text-muted-foreground'
-                    )}
-                  >
-                    <span className="relative flex h-1.5 w-1.5">
-                      {apiReady !== false && (
-                        <span className="absolute inset-0 animate-ping rounded-full bg-[#D8466A] opacity-75" />
-                      )}
-                      <span
-                        className={cn(
-                          'relative inline-flex h-1.5 w-1.5 rounded-full',
-                          apiReady === false ? 'bg-amber-500' : apiReady === null ? 'bg-slate-400' : 'bg-[#D8466A]'
-                        )}
-                      />
-                    </span>
-                    {apiReady === false
-                      ? 'DeepSeek · 暂不可用'
-                      : apiReady === null
-                        ? 'DeepSeek · 检测中…'
-                        : 'DeepSeek · 在线就绪'}
-                  </div>
-
                   <h2 className="relative z-10 text-center text-[40px] font-bold leading-[1.1] tracking-tight md:text-[52px] animate-fade-up [animation-delay:80ms]">
                     <span className="text-gradient animate-gradient-pan">今天你有什么灵感？</span>
                   </h2>
@@ -3164,6 +3988,21 @@ export default function App() {
                         className="w-full resize-none bg-transparent text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/70 focus:outline-none"
                       />
 
+                      {attachments.length > 0 && (
+                        <div className="home-input-chips mt-2 mb-0">
+                          {attachments.map((pill, i) => (
+                            <span
+                              key={`home-${pill}-${i}`}
+                              className={`attach-pill ${pill.endsWith('×') ? 'removable' : ''}`}
+                              onClick={() => pill.endsWith('×') && removeAttachment(i)}
+                              title={pill.endsWith('×') ? '点击移除' : undefined}
+                            >
+                              {pill}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+
                       <div className="mt-3 flex items-center justify-between gap-3">
                         <button
                           type="button"
@@ -3191,7 +4030,17 @@ export default function App() {
                           key={intent}
                           type="button"
                           className="group overflow-hidden rounded-2xl glass-card glass-hover px-3.5 py-2 text-xs font-medium text-foreground"
-                          onClick={() => startFromHome({ intent })}
+                          onClick={() => {
+                            if (isDemoMode() && intent === 'visual') {
+                              startFromHome({ intent }, '', { silent: true });
+                              void runDemoScenarioScript('帮我生成一张图片', {
+                                addUserMessage: true,
+                                forceStart: true,
+                              });
+                              return;
+                            }
+                            startFromHome({ intent });
+                          }}
                         >
                           <span className="relative flex items-center gap-2">
                             <span className={cn('grid h-6 w-6 place-items-center rounded-lg bg-gradient-to-br shadow-[0_4px_10px_-2px_oklch(0.55_0.18_220/0.45)] ring-1 ring-white/40', gradient)}>
@@ -3620,7 +4469,7 @@ export default function App() {
                   <div className="avatar">{msg.role === 'user' ? '我' : 'AI'}</div>
                   <div className="bubble">
                     {msg.role === 'ai' && msg.model ? (
-                      <div className="model-note">{msg.model}</div>
+                      <div className="model-note">GPT-5.5</div>
                     ) : null}
                     <div dangerouslySetInnerHTML={{ __html: msg.html }} />
                     {msg.quick && msg.quick.length > 0 && (
@@ -3663,6 +4512,21 @@ export default function App() {
                 </div>
               )}
 
+              {!reviewFocusMode && (
+                <div className="composer-guides quick-row">
+                  {WORKSPACE_QUICK_PROMPTS.map(({ label, prefix }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      className="chip"
+                      onClick={() => insertWorkspaceGuide(prefix)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               <div className="compose-line">
                 <button className="icon-btn" title="上传本地文件或搜索 CMS" onClick={() => openMaterialPicker('chat')}>＋</button>
                 <select
@@ -3670,8 +4534,7 @@ export default function App() {
                   value={selectedModel}
                   onChange={e => setSelectedModel(e.target.value)}
                 >
-                  <option>DeepSeek-V3.1</option>
-                  <option>DeepSeek-Chat</option>
+                  <option>GPT-5.5</option>
                 </select>
                 <textarea
                   placeholder={getComposerPlaceholder()}
@@ -3771,13 +4634,33 @@ export default function App() {
             teamModificationInProgress={teamModificationInProgress}
             runCopy={runCopy}
             runInsight={runInsight}
+            runTopicInsightAgent={runTopicInsightAgent}
             expandTopics={expandTopics}
+            hotInsightReport={hotInsightReport}
+            recommendedTopics={recommendedTopics}
+            taskTitle={taskTitle}
+            onDownloadInsightReport={() => {
+              if (!hotInsightReport) {
+                toast('暂无洞察报告可下载');
+                return;
+              }
+              downloadInsightReport(hotInsightReport, taskTitle);
+              toast('洞察报告已开始下载');
+            }}
+            onStartVisualFlow={() => startVisualFlow(getRecentUserContext('基于所选话题生成图片'), { skipUserMsg: true })}
             onOpenImageEditor={openImageEditor}
             onOpenTeamReview={openTeamReview}
             videoVersions={videoVersions}
             selectedVideoVersionId={selectedVideoVersionId}
-            onConfirmVideoRender={confirmVideoRender}
+            selectedVideoIds={selectedVideoIds}
+            draggingVideoId={draggingVideoId}
             onSelectVideoVersion={selectVideoVersion}
+            onOpenVideoScriptEditor={openVideoScriptEditor}
+            onRegenerateVideoVersion={regenerateSingleVideoVersion}
+            onToggleVideoSelection={toggleVideoSelection}
+            onVideoDragStart={setDraggingVideoId}
+            onVideoDrop={reorderVideoVersion}
+            onExportMergedVideos={exportMergedVideos}
             userRole={userRole}
             reviewerMode={reviewFocusMode}
             reviewContentType={activeReviewTask?.contentType}
@@ -4061,8 +4944,70 @@ export default function App() {
         onCancel={() => setDeleteConfirm(null)}
       />
 
+      {showVideoScriptEditModal && (
+        <div
+          className="modal-backdrop"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowVideoScriptEditModal(false);
+          }}
+        >
+          <div className="modal video-script-edit-modal">
+            <div className="modal-head">
+              <h3>修改视频脚本</h3>
+              <button className="icon-btn" onClick={() => setShowVideoScriptEditModal(false)}>×</button>
+            </div>
+            <div className="small" style={{ marginBottom: 10 }}>
+              修改标题、分镜、旁白或合规说明后，点击保存将自动重新生成视频并覆盖当前结果。
+            </div>
+            <textarea
+              className="input video-script-edit-textarea"
+              value={videoScriptDraft}
+              onChange={(e) => setVideoScriptDraft(e.target.value)}
+            />
+            <div className="quick-row" style={{ marginTop: 12 }}>
+              <button type="button" className="btn primary" onClick={saveVideoScriptAndRegenerate}>
+                保存并重新生成视频
+              </button>
+              <button type="button" className="btn soft" onClick={() => setShowVideoScriptEditModal(false)}>
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Toast */}
       <div className={`toast ${showToast ? 'show' : ''}`}>{toastText}</div>
+    </div>
+  );
+}
+
+function VideoPreviewPlayer({ version }: { version: VideoRenderVersion }) {
+  const [videoFailed, setVideoFailed] = useState(false);
+  const usePoster =
+    videoFailed || !version.videoUrl?.trim();
+  if (usePoster && version.posterDataUrl) {
+    return (
+      <div className="video-preview-wrap video-preview-poster-only">
+        <img
+          className="video-preview-player"
+          src={version.posterDataUrl}
+          alt={version.name}
+        />
+        <div className="small video-preview-demo-hint">演示占位成片（预览图）</div>
+      </div>
+    );
+  }
+  return (
+    <div className="video-preview-wrap">
+      <video
+        className="video-preview-player"
+        src={version.videoUrl}
+        poster={version.posterDataUrl}
+        controls
+        preload="metadata"
+        onError={() => setVideoFailed(true)}
+      />
     </div>
   );
 }
@@ -4113,11 +5058,24 @@ function WorkspaceRightPanel({
   onOpenTeamReview,
   videoVersions,
   selectedVideoVersionId,
-  onConfirmVideoRender,
+  selectedVideoIds,
+  draggingVideoId,
   onSelectVideoVersion,
+  onOpenVideoScriptEditor,
+  onRegenerateVideoVersion,
+  onToggleVideoSelection,
+  onVideoDragStart,
+  onVideoDrop,
+  onExportMergedVideos,
   runCopy,
   runInsight,
+  runTopicInsightAgent,
   expandTopics,
+  hotInsightReport,
+  recommendedTopics,
+  taskTitle,
+  onDownloadInsightReport,
+  onStartVisualFlow,
   onOpenImageEditor,
   userRole,
   reviewerMode,
@@ -4175,11 +5133,24 @@ function WorkspaceRightPanel({
   onOpenTeamReview: (type: TeamContentType) => void;
   videoVersions: VideoRenderVersion[];
   selectedVideoVersionId: string | null;
-  onConfirmVideoRender: () => void;
+  selectedVideoIds: string[];
+  draggingVideoId: string | null;
   onSelectVideoVersion: (v: VideoRenderVersion) => void;
+  onOpenVideoScriptEditor: (videoId?: string) => void;
+  onRegenerateVideoVersion: (videoId: string) => void;
+  onToggleVideoSelection: (id: string, checked: boolean) => void;
+  onVideoDragStart: (id: string | null) => void;
+  onVideoDrop: (dragId: string, targetId: string) => void;
+  onExportMergedVideos: () => void;
   runCopy: (note?: string, opts?: { copiesPerTopic?: number }) => void;
   runInsight: (note?: string) => void;
+  runTopicInsightAgent: (note?: string) => void;
   expandTopics: () => void;
+  hotInsightReport: HotInsightReport | null;
+  recommendedTopics: TopicRecommendationItem[];
+  taskTitle: string;
+  onDownloadInsightReport: () => void;
+  onStartVisualFlow: () => void;
   onOpenImageEditor: (src: string, index: number) => void;
   userRole: UserRole;
   reviewerMode: boolean;
@@ -4270,7 +5241,7 @@ function WorkspaceRightPanel({
 
     const teamAndVeevaActions = (contentType: TeamContentType, veevaQuick?: string) => (
       <>
-        {teamReviewButton(contentType)}
+        {teamReviewSupported(contentType, state.active) && teamReviewButton(contentType)}
         {veevaSubmitBtn(veevaQuick)}
       </>
     );
@@ -4303,15 +5274,37 @@ function WorkspaceRightPanel({
 
     switch (k) {
       case 'insight':
-        if (!topics.length) {
+        if (!topics.length && !hotInsightReport) {
           return (
             <div className="detail-card">
               <h4>话题洞察</h4>
-              <div className="small">在对话中点击「基于素材生成话题洞察」，AI 将在此展示结果。</div>
-              <button className="btn primary" style={{ marginTop: 12 }} onClick={() => runInsight()}>
-                生成话题洞察
+              <div className="small">在对话中点击「基于素材生成话题洞察」，AI 将在此展示完整洞察报告。</div>
+              <button
+                className="btn primary"
+                style={{ marginTop: 12 }}
+                onClick={() => runTopicInsightAgent('基于素材生成话题洞察')}
+              >
+                基于素材生成话题洞察
               </button>
             </div>
+          );
+        }
+        if (hotInsightReport) {
+          return (
+            <HotInsightReportPanel
+              report={hotInsightReport}
+              insightSummary={insightSummary}
+              topics={topics}
+              selectedTopics={selectedTopics}
+              setSelectedTopics={setSelectedTopics}
+              copyCountPerTopic={copyCountPerTopic}
+              setCopyCountPerTopic={setCopyCountPerTopic}
+              onDownload={onDownloadInsightReport}
+              onRunCopy={() => runCopy(undefined, { copiesPerTopic: copyCountPerTopic })}
+              onExpandTopics={expandTopics}
+              openDetail={openDetail}
+              fillQuick={fillQuick}
+            />
           );
         }
         return (
@@ -4384,6 +5377,34 @@ function WorkspaceRightPanel({
               </button>
             </div>
           </>
+        );
+
+      case 'topic-recommendation':
+        if (!recommendedTopics.length) {
+          return (
+            <div className="detail-card">
+              <h4>话题推荐</h4>
+              <div className="small">当未上传热点洞察素材并选择「使用已有素材继续」后，推荐话题将展示在此。</div>
+              <button
+                className="btn primary"
+                style={{ marginTop: 12 }}
+                onClick={() => runTopicInsightAgent('基于素材生成话题洞察')}
+              >
+                开始话题洞察
+              </button>
+            </div>
+          );
+        }
+        return (
+          <TopicRecommendationPanel
+            items={recommendedTopics}
+            selectedTopics={selectedTopics}
+            setSelectedTopics={setSelectedTopics}
+            onRunCopy={() => runCopy()}
+            onStartPptFlow={onStartPptFlow}
+            onStartVisualFlow={onStartVisualFlow}
+            openDetail={openDetail}
+          />
         );
 
       case 'copy':
@@ -4717,85 +5738,6 @@ function WorkspaceRightPanel({
       }
 
       case 'video-script':
-        if (reviewerMode) {
-          if (!videoResult) {
-            return (
-              <div className="detail-card">
-                <h4>视频审阅</h4>
-                <div className="small">当前任务中还没有视频脚本或成片，请联系内容运营。</div>
-              </div>
-            );
-          }
-        }
-        if (!videoResult) {
-          return (
-            <div className="detail-card">
-              <h4>视频脚本</h4>
-              <div className="small">在对话中请求「生成视频脚本」后，分镜将显示在此。</div>
-              <button type="button" className="btn primary" style={{ marginTop: 12 }} onClick={() => fillQuick('生成视频脚本')}>
-                生成视频脚本
-              </button>
-            </div>
-          );
-        }
-        if (reviewerMode) {
-          return (
-            <>
-              <div className="detail-card detail-card-ppt-outline">
-                <h4>{videoResult.title}</h4>
-                <div className="small">{videoResult.coverSuggestion}</div>
-              </div>
-              <div className="detail-card">
-                <h4>分镜列表（{videoResult.segments.length} 镜）</h4>
-                <ol>
-                  {videoResult.segments.map((s, i) => (
-                    <li key={i}>
-                      <strong>{s.time}</strong> {s.scene}
-                      <div className="small">{s.narration}</div>
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            </>
-          );
-        }
-        return (
-          <>
-            <div className="detail-card detail-card-ppt-outline">
-              <h4>{videoResult.title}</h4>
-              <div className="small">{videoResult.coverSuggestion}</div>
-            </div>
-            <div
-              className="detail-card content-tile"
-              onClick={() =>
-                openDetail(
-                  videoResult.title,
-                  videoResult.segments
-                    .map(
-                      (s) =>
-                        `<strong>${s.time}</strong> ${s.scene}<br>旁白：${s.narration}${s.compliance ? `<br>合规：${s.compliance}` : ''}`
-                    )
-                    .join('<br><br>')
-                )
-              }
-            >
-              <h4>分镜列表（{videoResult.segments.length} 镜）</h4>
-              <ol>
-                {videoResult.segments.map((s, i) => (
-                  <li key={i}>
-                    <strong>{s.time}</strong> {s.scene}
-                    <div className="small">{s.narration}</div>
-                  </li>
-                ))}
-              </ol>
-            </div>
-            <button type="button" className="btn primary" style={{ width: '100%' }} onClick={onConfirmVideoRender}>
-              ✓ 生成视频
-            </button>
-            {teamAndVeevaActions('video')}
-          </>
-        );
-
       case 'video-render':
         if (reviewerMode && !videoVersions.length && videoResult) {
           return (
@@ -4817,18 +5759,54 @@ function WorkspaceRightPanel({
             </>
           );
         }
+        if (!videoVersions.length && videoResult) {
+          return (
+            <>
+              <div className="detail-card detail-card-ppt-outline">
+                <h4>{videoResult.title}</h4>
+                <div className="small">视频脚本已生成，右侧可查看分镜内容。</div>
+              </div>
+              <div className="detail-card">
+                <h4>分镜脚本</h4>
+                <ol className="insight-bullet-list" style={{ paddingLeft: 18 }}>
+                  {videoResult.segments.map((s, i) => (
+                    <li key={`${s.time}-${i}`}>
+                      <strong>{s.time}</strong> {s.scene}
+                      <div className="small" style={{ marginTop: 4 }}>
+                        旁白：{s.narration}
+                      </div>
+                      {s.compliance && (
+                        <div className="small" style={{ marginTop: 2 }}>
+                          合规：{s.compliance}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+              <div className="quick-row">
+                <button type="button" className="btn soft" onClick={() => onOpenVideoScriptEditor()}>
+                  编辑脚本
+                </button>
+                <button type="button" className="btn primary" onClick={() => fillQuick('生成视频')}>
+                  生成视频
+                </button>
+              </div>
+            </>
+          );
+        }
         if (!videoVersions.length) {
           return (
             <div className="detail-card">
               <h4>视频生成</h4>
-              <div className="small">请先在「视频脚本」中确认分镜并点击「生成视频」。</div>
+              <div className="small">在对话中说「直接生成视频」，或补充主题后一键生成视频方案。</div>
               <button
                 type="button"
-                className="btn soft"
+                className="btn primary"
                 style={{ marginTop: 12 }}
-                onClick={() => setState((prev) => ({ ...prev, active: 'video-script' }))}
+                onClick={() => fillQuick('直接生成视频')}
               >
-                前往视频脚本
+                直接生成视频
               </button>
             </div>
           );
@@ -4841,15 +5819,7 @@ function WorkspaceRightPanel({
                 <h4>视频预览</h4>
                 <div className="small">{selectedVideo.name}</div>
               </div>
-              <div className="video-preview-wrap">
-                <video
-                  className="video-preview-player"
-                  src={selectedVideo.videoUrl}
-                  poster={selectedVideo.posterDataUrl}
-                  controls
-                  preload="metadata"
-                />
-              </div>
+              <VideoPreviewPlayer version={selectedVideo} />
             </>
           );
         }
@@ -4857,24 +5827,50 @@ function WorkspaceRightPanel({
           <>
             <div className="detail-card detail-card-ppt-design">
               <h4>视频预览</h4>
-              <div className="small">共 {videoVersions.length} 套方案，演示占位成片</div>
+              <div className="small">共 {videoVersions.length} 套方案，可勾选、拖拽排序并合并导出。</div>
+              <div className="quick-row" style={{ marginTop: 10 }}>
+                <button type="button" className="btn primary" onClick={onExportMergedVideos}>
+                  合并导出已勾选视频
+                </button>
+              </div>
             </div>
             <div className="video-version-grid">
-              {videoVersions.map((v) => (
+              {videoVersions.map((v, index) => (
                 <div
                   key={v.id}
-                  className={`video-version-card ${selectedVideoVersionId === v.id ? 'selected' : ''}`}
+                  className={`video-version-card ${selectedVideoVersionId === v.id ? 'selected' : ''} ${draggingVideoId === v.id ? 'is-dragging' : ''}`}
+                  draggable
+                  onDragStart={(e) => {
+                    onVideoDragStart(v.id);
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', v.id);
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'move';
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const dragId = e.dataTransfer.getData('text/plain') || draggingVideoId;
+                    if (dragId) onVideoDrop(dragId, v.id);
+                    onVideoDragStart(null);
+                  }}
+                  onDragEnd={() => onVideoDragStart(null)}
                   onClick={() => onSelectVideoVersion(v)}
                 >
-                  <div className="video-preview-wrap">
-                    <video
-                      className="video-preview-player"
-                      src={v.videoUrl}
-                      poster={v.posterDataUrl}
-                      controls
-                      preload="metadata"
-                      onClick={(e) => e.stopPropagation()}
-                    />
+                  <div className="video-version-controls" onClick={(e) => e.stopPropagation()}>
+                    <label className="video-version-check">
+                      <input
+                        type="checkbox"
+                        checked={selectedVideoIds.includes(v.id)}
+                        onChange={(e) => onToggleVideoSelection(v.id, e.target.checked)}
+                      />
+                      合并
+                    </label>
+                    <span className="video-drag-handle" title="拖拽调整顺序">拖拽 #{index + 1}</span>
+                  </div>
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <VideoPreviewPlayer version={v} />
                   </div>
                   <div className="video-version-meta">
                     <strong>{v.name}</strong>
@@ -4882,22 +5878,18 @@ function WorkspaceRightPanel({
                       {v.styleTag} · {v.duration}
                       {v.isDemo ? ' · 演示' : ''}
                     </div>
+                    <div className="quick-row" style={{ marginTop: 10 }} onClick={(e) => e.stopPropagation()}>
+                      <button type="button" className="btn soft" onClick={() => onOpenVideoScriptEditor(v.id)}>
+                        修改视频脚本
+                      </button>
+                      <button type="button" className="btn soft" onClick={() => onRegenerateVideoVersion(v.id)}>
+                        重新生成视频
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
-            {state.tabs.includes('video-script') && (
-              <button
-                type="button"
-                className="btn soft"
-                onClick={() => setState((prev) => ({ ...prev, active: 'video-script' }))}
-              >
-                返回编辑脚本
-              </button>
-            )}
-            <button type="button" className="btn soft" onClick={onConfirmVideoRender}>
-              重新生成视频
-            </button>
             {teamAndVeevaActions('video', '提交当前版本到Veeva Vault审批')}
           </>
         );
@@ -4937,7 +5929,6 @@ function WorkspaceRightPanel({
             />
             {!reviewerMode && (
               <div className="ppt-outline-tab-foot">
-                {teamAndVeevaActions('ppt')}
                 <PptOutlineGenerateFooter
                   isGenerating={isGenerating}
                   selectedTemplateId={selectedPptTemplateId}
@@ -4986,6 +5977,8 @@ function WorkspaceRightPanel({
         const singleVersion = pptVersions.length <= 1;
         const activeVersion =
           pptVersions.find((v) => v.id === selectedPptVersionId) || pptVersions[0];
+        const activePptFileUrl = activeVersion?.fileUrl;
+        const activePptFileName = activeVersion?.fileName || activeVersion?.name || '预置PPT.pptx';
         return (
           <>
             {singleVersion ? (
@@ -4998,9 +5991,22 @@ function WorkspaceRightPanel({
                       {activeVersion?.description ? ` · ${activeVersion.description}` : ''}
                     </div>
                   </div>
-                  <button type="button" className="btn primary" onClick={exportAllPptPages}>
-                    一键导出全部页面
-                  </button>
+                  <div className="quick-row">
+                    {pptResult?.slides.length ? (
+                      <button type="button" className="btn primary" onClick={exportAllPptPages}>
+                        一键导出全部页面
+                      </button>
+                    ) : null}
+                    {activePptFileUrl ? (
+                      <a className="btn soft" href={activePptFileUrl} download={activePptFileName}>
+                        下载PPT
+                      </a>
+                    ) : !pptResult?.slides.length ? (
+                      <button type="button" className="btn primary" onClick={exportAllPptPages}>
+                        一键导出全部页面
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             ) : (

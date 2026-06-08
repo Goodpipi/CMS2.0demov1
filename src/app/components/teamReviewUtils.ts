@@ -1,11 +1,22 @@
 import type { CopyItem, PptOutline, PptResult, TeamContentType, VideoResult } from '@/types/content';
+import type { TabKey } from '@/types/session';
 
 export const TEAM_CONTENT_LABELS: Record<TeamContentType, string> = {
   copy: '文案',
   visual: '图片',
-  video: '视频脚本',
+  video: '视频',
   ppt: 'PPT',
 };
+
+/** PPT 大纲阶段不提供团队修改 */
+export function teamReviewSupported(
+  type: TeamContentType,
+  activeTab: TabKey | null | undefined
+): boolean {
+  if (type === 'video' && activeTab === 'video-script') return false;
+  if (type === 'ppt' && activeTab === 'ppt-outline') return false;
+  return true;
+}
 
 export function serializePptForTeam(outline: PptOutline | null, result: PptResult | null): string {
   if (result?.slides?.length) {
@@ -97,6 +108,7 @@ export function buildTeamReviewPayload(
       };
     }
     case 'ppt': {
+      if (!ctx.pptResult?.slides?.length) return null;
       const body = serializePptForTeam(ctx.pptOutline, ctx.pptResult);
       if (!body.trim()) return null;
       return {

@@ -11,6 +11,8 @@ import type {
   PptDesignVersion,
   PosterResult,
 } from '@/types/content';
+import { isDemoMode } from '@/lib/demoMode';
+import { getDemoResponse, simulateDemoDelay } from '@/lib/demoScripts';
 
 const API_BASE = '/api';
 const CLIENT_TIMEOUT_MS = 120_000;
@@ -18,6 +20,11 @@ const API_CONNECT_RETRIES = 4;
 const API_CONNECT_RETRY_MS = 450;
 
 export type ApiMeta = { mockUsed?: boolean; mockReason?: string };
+
+const DEMO_META: ApiMeta = {
+  mockUsed: true,
+  mockReason: 'Demo Mode（演示模式）',
+};
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -52,6 +59,12 @@ async function fetchWithRetry(url: string, init: RequestInit): Promise<Response>
 }
 
 async function post<T>(path: string, body: unknown): Promise<T & ApiMeta> {
+  if (isDemoMode()) {
+    await simulateDemoDelay(path);
+    const data = getDemoResponse(path, body as Record<string, unknown>) as T;
+    return { ...data, ...DEMO_META };
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), CLIENT_TIMEOUT_MS);
   let res: Response;
@@ -98,15 +111,28 @@ export type HealthStatus = {
   model?: string;
   mockOnly?: boolean;
   fallbackMock?: boolean;
+  demoMode?: boolean;
 };
 
 export async function checkHealth(): Promise<HealthStatus> {
+  if (isDemoMode()) {
+    return {
+      ok: true,
+      deepseekConfigured: false,
+      mockOnly: true,
+      fallbackMock: true,
+      demoMode: true,
+    };
+  }
   const res = await fetchWithRetry(`${API_BASE}/health`, { method: 'GET' });
   return res.json();
 }
 
 /** 启动阶段轮询，直到 API 可访问（开发时 Vite 常早于 Express 就绪） */
 export async function waitForApiHealth(maxAttempts = 12, intervalMs = 400): Promise<HealthStatus> {
+  if (isDemoMode()) {
+    return checkHealth();
+  }
   let lastError: unknown;
   for (let i = 0; i < maxAttempts; i++) {
     try {

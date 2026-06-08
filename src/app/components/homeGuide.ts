@@ -37,7 +37,7 @@ export function shouldPreferVisualFlow(
 ): boolean {
   if (!isVisualEntryIntent(ctx)) return false;
   if (/ppt|幻灯片|演示文稿|课件/i.test(text)) return false;
-  if ((text.includes('话题') && text.includes('洞察')) || /生成文案|视频脚本|生成视频/.test(text)) {
+  if ((text.includes('话题') && text.includes('洞察')) || /生成文案|生成视频/.test(text)) {
     return false;
   }
   return true;
@@ -48,7 +48,7 @@ const INTENT_LABELS: Record<Exclude<HomeEntryIntent, 'visual-template' | 'ppt-te
   insight: '话题洞察',
   copy: '文案',
   visual: '图片',
-  video: '视频脚本',
+  video: '视频',
   ppt: 'PPT',
 };
 
@@ -147,8 +147,8 @@ export function getEntryWelcome(ctx: HomeEntryContext): { html: string; chips: s
   switch (intent) {
     case 'insight':
       return {
-        html: '默认素材已就绪。可按标准流程先生成洞察，也可以跳过洞察直接生成文案、图片、PPT 或视频。',
-        chips: ['开始生成话题洞察', '直接生成文案', '直接生成图片', '直接生成PPT'],
+        html: '默认素材已就绪。请描述想洞察的主题与受众，发送后将自动检查「热点洞察」素材并生成报告或话题推荐。',
+        chips: ['基于素材生成话题洞察', '直接生成文案', '直接生成图片', '直接生成PPT'],
       };
     case 'copy':
       return {
@@ -167,8 +167,8 @@ export function getEntryWelcome(ctx: HomeEntryContext): { html: string; chips: s
       };
     case 'video':
       return {
-        html: '可按标准流程先有文案再做脚本，也可直接从视频开始。',
-        chips: ['生成视频脚本', '直接生成视频', '直接生成文案', '生成话题洞察'],
+        html: '可直接描述视频主题与受众，一键生成视频方案。',
+        chips: ['直接生成视频', '直接生成文案', '生成话题洞察', '直接生成PPT'],
       };
     case 'ppt':
       return {

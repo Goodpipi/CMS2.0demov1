@@ -32,7 +32,7 @@ function statusClass(status: ReviewTask['status']): string {
 const CONTENT_LABELS: Record<ReviewTask['contentType'], string> = {
   copy: '文案',
   visual: '图片',
-  video: '视频脚本',
+  video: '视频',
   ppt: 'PPT',
 };
 

@@ -9,11 +9,16 @@ import type {
   PptDesignVersion,
   GeneratedImageMeta,
 } from '@/types/content';
+import type {
+  HotInsightReport,
+  TopicRecommendationItem,
+} from '@/lib/topicInsightAgent';
 import type { HomeEntryContext } from '@/app/components/homeGuide';
 import type { CopyRevision, ImageReviewStatus } from '@/types/review';
 
 export type TabKey =
   | 'insight'
+  | 'topic-recommendation'
   | 'copy'
   | 'team'
   | 'visual'
@@ -36,6 +41,7 @@ export interface SessionAppState {
   tabs: TabKey[];
   active: TabKey | null;
   insight: boolean;
+  topicRecommendation: boolean;
   copy: boolean;
   team: boolean;
   visual: boolean;
@@ -67,6 +73,8 @@ export interface SessionWorkspace {
   imageReviewStatuses?: ImageReviewStatus[];
   selectedImages: boolean[];
   insightSummary: string;
+  hotInsightReport: HotInsightReport | null;
+  recommendedTopics: TopicRecommendationItem[];
   selectedTopics: boolean[];
   selectedCopies: boolean[];
   copyRevisions: CopyRevision[];

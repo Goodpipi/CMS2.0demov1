@@ -17,7 +17,19 @@ export interface SvgElementInfo {
   tag: string;
   label: string;
   isText: boolean;
+  isBackground?: boolean;
 }
+
+export type InsertShapeType =
+  | 'text'
+  | 'rect'
+  | 'roundedRect'
+  | 'circle'
+  | 'ellipse'
+  | 'line'
+  | 'arrow';
+
+export type LayerDirection = 'front' | 'back' | 'forward' | 'backward';
 
 function escapeXmlAttr(value: string): string {
   return value
@@ -95,7 +107,13 @@ export function prepareEditableSvg(svgString: string): { svg: string; elements: 
       const label = isText
         ? `文本: ${textPreview || '(空)'}`
         : `${tag}${el.getAttribute('fill') ? '' : ''} #${id.replace('el-', '')}`;
-      elements.push({ id, tag, label, isText });
+      elements.push({
+        id,
+        tag,
+        label,
+        isText,
+        isBackground: id === 'el-bg' || tag === 'image',
+      });
     }
     Array.from(el.children).forEach(walk);
   };
@@ -139,6 +157,19 @@ export function setTranslate(el: Element, x: number, y: number) {
   el.setAttribute('transform', rest ? `${translate} ${rest}` : translate);
 }
 
+export function getRotation(el: Element): number {
+  const t = el.getAttribute('transform') || '';
+  const m = t.match(/rotate\(\s*([-\d.]+)/);
+  return m ? parseFloat(m[1]) || 0 : 0;
+}
+
+export function setRotation(el: Element, deg: number) {
+  const t = el.getAttribute('transform') || '';
+  const withoutRotate = t.replace(/rotate\([^)]*\)/g, '').trim();
+  const rotate = `rotate(${deg})`;
+  el.setAttribute('transform', withoutRotate ? `${withoutRotate} ${rotate}` : rotate);
+}
+
 export function readElementProps(el: Element) {
   const tag = el.tagName.toLowerCase();
   const isText = tag === 'text' || tag === 'tspan';
@@ -172,19 +203,33 @@ export function readElementProps(el: Element) {
     height = parseFloat(el.getAttribute('height') || '0') || undefined;
     x = parseFloat(el.getAttribute('x') || '0') + tx;
     y = parseFloat(el.getAttribute('y') || '0') + ty;
+  } else if (tag === 'line') {
+    x = parseFloat(el.getAttribute('x1') || '0') + tx;
+    y = parseFloat(el.getAttribute('y1') || '0') + ty;
   }
+
+  const stroke = el.getAttribute('stroke') || '';
+  const strokeWidth = parseFloat(el.getAttribute('stroke-width') || '0') || 0;
+  const rx = parseFloat(el.getAttribute('rx') || '0') || 0;
+  const rotation = getRotation(el);
+  const fontWeight = el.getAttribute('font-weight') || '400';
 
   return {
     tag,
     isText: isText,
     text: isText ? el.textContent || '' : '',
     fill: fill === 'none' ? '#000000' : fill,
+    stroke: stroke || '#103C8F',
+    strokeWidth,
     fontSize,
+    fontWeight,
     x,
     y,
     width,
     height,
     size,
+    rx,
+    rotation,
     opacity: parseFloat(el.getAttribute('opacity') || '1') || 1,
   };
 }
@@ -201,6 +246,11 @@ export function applyElementProps(
     height: number;
     size: number;
     opacity: number;
+    stroke: string;
+    strokeWidth: number;
+    rx: number;
+    rotation: number;
+    fontWeight: string;
   }>
 ) {
   const tag = el.tagName.toLowerCase();
@@ -212,6 +262,27 @@ export function applyElementProps(
     } else {
       el.setAttribute('fill', props.fill);
     }
+  }
+
+  if (props.stroke != null && (tag === 'line' || tag === 'path' || tag === 'rect' || tag === 'circle')) {
+    el.setAttribute('stroke', props.stroke);
+  }
+
+  if (props.strokeWidth != null && (tag === 'line' || tag === 'path' || tag === 'rect')) {
+    el.setAttribute('stroke-width', String(props.strokeWidth));
+  }
+
+  if (props.rx != null && tag === 'rect') {
+    el.setAttribute('rx', String(props.rx));
+    el.setAttribute('ry', String(props.rx));
+  }
+
+  if (props.rotation != null) {
+    setRotation(el, props.rotation);
+  }
+
+  if (props.fontWeight != null && (tag === 'text' || tag === 'tspan')) {
+    el.setAttribute('font-weight', props.fontWeight);
   }
 
   if (props.opacity != null) el.setAttribute('opacity', String(props.opacity));
@@ -258,4 +329,212 @@ export function applyElementProps(
   }
   if (props.size != null && tag === 'circle') el.setAttribute('r', String(props.size));
   if (props.size != null && tag === 'text') el.setAttribute('font-size', String(props.size));
+}
+
+export function collectElementList(container: HTMLElement): SvgElementInfo[] {
+  const svg = container.querySelector('svg');
+  if (!svg) return [];
+  const elements: SvgElementInfo[] = [];
+  svg.querySelectorAll('[data-edit-id]').forEach((el) => {
+    const id = el.getAttribute('data-edit-id');
+    if (!id) return;
+    const tag = el.tagName.toLowerCase();
+    const isText = tag === 'text' || tag === 'tspan';
+    const textPreview = isText ? (el.textContent || '').trim().slice(0, 24) : '';
+    const label = isText
+      ? `文本: ${textPreview || '(空)'}`
+      : `${tag} #${id.replace('el-', '')}`;
+    elements.push({
+      id,
+      tag,
+      label,
+      isText,
+      isBackground: id === 'el-bg' || tag === 'image',
+    });
+  });
+  return elements;
+}
+
+export function nextEditId(container: HTMLElement): string {
+  let max = 0;
+  container.querySelectorAll('[data-edit-id]').forEach((el) => {
+    const id = el.getAttribute('data-edit-id') || '';
+    const m = id.match(/^el-(\d+)$/);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  });
+  return `el-${max + 1}`;
+}
+
+export function clientToSvgPoint(
+  svg: SVGSVGElement,
+  clientX: number,
+  clientY: number
+): { x: number; y: number } {
+  const pt = svg.createSVGPoint();
+  pt.x = clientX;
+  pt.y = clientY;
+  const ctm = svg.getScreenCTM();
+  if (!ctm) return { x: 0, y: 0 };
+  const svgPt = pt.matrixTransform(ctm.inverse());
+  return { x: Math.round(svgPt.x), y: Math.round(svgPt.y) };
+}
+
+export function createInsertShape(
+  svg: SVGSVGElement,
+  type: InsertShapeType,
+  point: { x: number; y: number },
+  id: string
+): SvgElementInfo {
+  const ns = 'http://www.w3.org/2000/svg';
+  const doc = svg.ownerDocument;
+  let el: SVGElement;
+
+  switch (type) {
+    case 'text':
+      el = doc.createElementNS(ns, 'text');
+      el.setAttribute('x', String(point.x));
+      el.setAttribute('y', String(point.y));
+      el.setAttribute('fill', '#103C8F');
+      el.setAttribute('font-size', '28');
+      el.setAttribute('font-weight', '700');
+      el.textContent = '新文字';
+      break;
+    case 'rect':
+      el = doc.createElementNS(ns, 'rect');
+      el.setAttribute('x', String(point.x - 80));
+      el.setAttribute('y', String(point.y - 40));
+      el.setAttribute('width', '160');
+      el.setAttribute('height', '80');
+      el.setAttribute('fill', '#69BE28');
+      el.setAttribute('opacity', '0.88');
+      break;
+    case 'roundedRect':
+      el = doc.createElementNS(ns, 'rect');
+      el.setAttribute('x', String(point.x - 90));
+      el.setAttribute('y', String(point.y - 36));
+      el.setAttribute('width', '180');
+      el.setAttribute('height', '72');
+      el.setAttribute('rx', '16');
+      el.setAttribute('ry', '16');
+      el.setAttribute('fill', '#103C8F');
+      el.setAttribute('opacity', '0.92');
+      break;
+    case 'circle':
+      el = doc.createElementNS(ns, 'circle');
+      el.setAttribute('cx', String(point.x));
+      el.setAttribute('cy', String(point.y));
+      el.setAttribute('r', '48');
+      el.setAttribute('fill', '#1d6bff');
+      el.setAttribute('opacity', '0.35');
+      break;
+    case 'ellipse':
+      el = doc.createElementNS(ns, 'ellipse');
+      el.setAttribute('cx', String(point.x));
+      el.setAttribute('cy', String(point.y));
+      el.setAttribute('rx', '70');
+      el.setAttribute('ry', '40');
+      el.setAttribute('fill', '#69BE28');
+      el.setAttribute('opacity', '0.3');
+      break;
+    case 'line':
+      el = doc.createElementNS(ns, 'line');
+      el.setAttribute('x1', String(point.x - 80));
+      el.setAttribute('y1', String(point.y));
+      el.setAttribute('x2', String(point.x + 80));
+      el.setAttribute('y2', String(point.y));
+      el.setAttribute('stroke', '#103C8F');
+      el.setAttribute('stroke-width', '4');
+      el.setAttribute('stroke-linecap', 'round');
+      el.setAttribute('fill', 'none');
+      break;
+    case 'arrow':
+      el = doc.createElementNS(ns, 'path');
+      el.setAttribute(
+        'd',
+        `M ${point.x - 90} ${point.y} L ${point.x + 60} ${point.y} L ${point.x + 42} ${point.y - 14} M ${point.x + 60} ${point.y} L ${point.x + 42} ${point.y + 14}`
+      );
+      el.setAttribute('stroke', '#103C8F');
+      el.setAttribute('stroke-width', '4');
+      el.setAttribute('stroke-linecap', 'round');
+      el.setAttribute('stroke-linejoin', 'round');
+      el.setAttribute('fill', 'none');
+      break;
+    default:
+      el = doc.createElementNS(ns, 'rect');
+  }
+
+  el.setAttribute('data-edit-id', id);
+  svg.appendChild(el);
+  const tag = el.tagName.toLowerCase();
+  return {
+    id,
+    tag,
+    label: tag === 'text' ? '文本: 新文字' : `${tag} #${id.replace('el-', '')}`,
+    isText: tag === 'text',
+    isBackground: false,
+  };
+}
+
+export function deleteElementById(container: HTMLElement, id: string): boolean {
+  if (id === 'el-bg') return false;
+  const el = container.querySelector(`[data-edit-id="${id}"]`);
+  if (!el) return false;
+  el.remove();
+  return true;
+}
+
+export function duplicateElementById(container: HTMLElement, id: string): string | null {
+  const el = container.querySelector(`[data-edit-id="${id}"]`) as SVGElement | null;
+  if (!el || id === 'el-bg') return null;
+  const clone = el.cloneNode(true) as SVGElement;
+  const newId = nextEditId(container);
+  clone.setAttribute('data-edit-id', newId);
+  clone.classList.remove('svg-edit-selected');
+  const { x: tx, y: ty } = getTranslate(clone);
+  setTranslate(clone, tx + 24, ty + 24);
+  if (clone.hasAttribute('x')) {
+    clone.setAttribute('x', String(parseFloat(clone.getAttribute('x') || '0') + 24));
+  }
+  if (clone.hasAttribute('y')) {
+    clone.setAttribute('y', String(parseFloat(clone.getAttribute('y') || '0') + 24));
+  }
+  if (clone.hasAttribute('cx')) {
+    clone.setAttribute('cx', String(parseFloat(clone.getAttribute('cx') || '0') + 24));
+  }
+  if (clone.hasAttribute('cy')) {
+    clone.setAttribute('cy', String(parseFloat(clone.getAttribute('cy') || '0') + 24));
+  }
+  el.parentNode?.insertBefore(clone, el.nextSibling);
+  return newId;
+}
+
+export function reorderElementById(
+  container: HTMLElement,
+  id: string,
+  direction: LayerDirection
+): void {
+  const el = container.querySelector(`[data-edit-id="${id}"]`);
+  const svg = container.querySelector('svg');
+  if (!el || !svg || id === 'el-bg') return;
+  const parent = el.parentNode;
+  if (!parent) return;
+
+  if (direction === 'front') {
+    parent.appendChild(el);
+    return;
+  }
+  if (direction === 'back') {
+    const bg = svg.querySelector('[data-edit-id="el-bg"]');
+    if (bg?.nextSibling) parent.insertBefore(el, bg.nextSibling);
+    else parent.insertBefore(el, svg.firstChild);
+    return;
+  }
+  if (direction === 'forward' && el.nextSibling) {
+    parent.insertBefore(el.nextSibling, el);
+  }
+  if (direction === 'backward' && el.previousSibling) {
+    const prev = el.previousSibling;
+    if ((prev as Element).getAttribute?.('data-edit-id') === 'el-bg') return;
+    parent.insertBefore(el, prev);
+  }
 }

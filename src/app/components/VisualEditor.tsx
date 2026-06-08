@@ -1,14 +1,35 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Brush, Eraser } from 'lucide-react';
+import {
+  ArrowRight,
+  Brush,
+  Circle,
+  Copy,
+  Eraser,
+  Layers,
+  Minus,
+  Redo2,
+  Square,
+  Trash2,
+  Type,
+  Undo2,
+} from 'lucide-react';
 import {
   applyElementProps,
+  clientToSvgPoint,
+  collectElementList,
+  createInsertShape,
+  deleteElementById,
+  duplicateElementById,
+  nextEditId,
   prepareEditableSvg,
   readElementProps,
+  reorderElementById,
   resolveEditableSvgSource,
   serializeSvgFromContainer,
   svgToDataUrl,
   getTranslate,
   setTranslate,
+  type InsertShapeType,
   type SvgElementInfo,
 } from './svgEditorUtils';
 
@@ -30,13 +51,34 @@ export interface DragLayer {
 interface ElementProps {
   text: string;
   fill: string;
+  stroke: string;
+  strokeWidth: number;
   fontSize: number;
+  fontWeight: string;
   x: number;
   y: number;
   width?: number;
   height?: number;
   size?: number;
+  rx: number;
+  rotation: number;
   opacity: number;
+}
+
+const SHAPE_TOOLS: { type: InsertShapeType; label: string; Icon: typeof Square }[] = [
+  { type: 'text', label: '文字', Icon: Type },
+  { type: 'rect', label: '矩形', Icon: Square },
+  { type: 'roundedRect', label: '圆角', Icon: Square },
+  { type: 'circle', label: '圆形', Icon: Circle },
+  { type: 'ellipse', label: '椭圆', Icon: Circle },
+  { type: 'line', label: '线条', Icon: Minus },
+  { type: 'arrow', label: '箭头', Icon: ArrowRight },
+];
+
+function isLockedBackgroundElement(el: Element | null): boolean {
+  if (!el) return false;
+  const tag = el.tagName.toLowerCase();
+  return el.getAttribute('data-edit-id') === 'el-bg' || tag === 'image';
 }
 
 interface VisualEditorProps {
@@ -104,12 +146,16 @@ export function VisualEditor({
   const [elementList, setElementList] = useState<SvgElementInfo[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [props, setProps] = useState<ElementProps | null>(null);
+  const [insertTool, setInsertTool] = useState<InsertShapeType | null>(null);
+  const [historyTick, setHistoryTick] = useState(0);
 
   const svgHostRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const strokeHistory = useRef<ImageData[]>([]);
+  const editHistory = useRef<string[]>([]);
+  const editHistoryIndex = useRef(-1);
   const dragRef = useRef<{
     id: string;
     startX: number;
@@ -119,13 +165,85 @@ export function VisualEditor({
     scale: number;
   } | null>(null);
 
-  const loadSvg = useCallback((raw: string) => {
+  const loadSvg = useCallback((raw: string, resetHistory = true) => {
     const { svg, elements } = prepareEditableSvg(raw);
     setSvgHtml(svg);
     setElementList(elements);
     setSelectedId(null);
     setProps(null);
+    if (resetHistory) {
+      editHistory.current = [svg];
+      editHistoryIndex.current = 0;
+      setHistoryTick((t) => t + 1);
+    }
   }, []);
+
+  const refreshElements = useCallback(() => {
+    if (!svgHostRef.current) return;
+    setElementList(collectElementList(svgHostRef.current));
+  }, []);
+
+  const pushEditHistory = useCallback(() => {
+    const svg = svgHostRef.current
+      ? serializeSvgFromContainer(svgHostRef.current)
+      : svgHtml;
+    if (!svg) return;
+    const idx = editHistoryIndex.current;
+    editHistory.current = editHistory.current.slice(0, idx + 1).concat(svg);
+    if (editHistory.current.length > 40) {
+      editHistory.current.shift();
+    } else {
+      editHistoryIndex.current += 1;
+    }
+    setHistoryTick((t) => t + 1);
+  }, [svgHtml]);
+
+  const canUndoEdit = historyTick >= 0 && editHistoryIndex.current > 0;
+  const canRedoEdit =
+    historyTick >= 0 && editHistoryIndex.current < editHistory.current.length - 1;
+
+  const undoEdit = useCallback(() => {
+    if (editHistoryIndex.current <= 0) return;
+    editHistoryIndex.current -= 1;
+    const svg = editHistory.current[editHistoryIndex.current];
+    if (!svg) return;
+    const { svg: next, elements } = prepareEditableSvg(svg);
+    setSvgHtml(next);
+    setElementList(elements);
+    setSelectedId(null);
+    setProps(null);
+    setHistoryTick((t) => t + 1);
+  }, []);
+
+  const redoEdit = useCallback(() => {
+    if (editHistoryIndex.current >= editHistory.current.length - 1) return;
+    editHistoryIndex.current += 1;
+    const svg = editHistory.current[editHistoryIndex.current];
+    if (!svg) return;
+    const { svg: next, elements } = prepareEditableSvg(svg);
+    setSvgHtml(next);
+    setElementList(elements);
+    setSelectedId(null);
+    setProps(null);
+    setHistoryTick((t) => t + 1);
+  }, []);
+
+  const propsFromElement = (p: ReturnType<typeof readElementProps>): ElementProps => ({
+    text: p.text,
+    fill: p.fill,
+    stroke: p.stroke,
+    strokeWidth: p.strokeWidth,
+    fontSize: p.fontSize,
+    fontWeight: p.fontWeight,
+    x: Math.round(p.x),
+    y: Math.round(p.y),
+    width: p.width,
+    height: p.height,
+    size: p.size ?? p.fontSize,
+    rx: p.rx,
+    rotation: p.rotation,
+    opacity: p.opacity,
+  });
 
   useEffect(() => {
     setLoadFailed(false);
@@ -133,11 +251,6 @@ export function VisualEditor({
     const raw = resolveEditableSvgSource(imageSrc, initialSvg);
     if (raw) {
       loadSvg(raw);
-      const isRasterWrap =
-        !initialSvg?.trim() &&
-        imageSrc &&
-        !imageSrc.startsWith('data:image/svg+xml');
-      if (isRasterWrap) setShowRasterBack(true);
       return;
     }
     if (imageSrc) {
@@ -155,7 +268,7 @@ export function VisualEditor({
       return;
     }
     const rect = svg.getBoundingClientRect();
-    if (rect.width < 4 || rect.height < 4) setShowRasterBack(true);
+    setShowRasterBack(rect.width < 4 || rect.height < 4);
   }, [svgHtml, imageSrc]);
 
   const getCurrentSvg = useCallback(() => {
@@ -172,93 +285,165 @@ export function VisualEditor({
     host.querySelectorAll('.svg-edit-selected').forEach((n) => n.classList.remove('svg-edit-selected'));
     el.classList.add('svg-edit-selected');
     setSelectedId(id);
-    const p = readElementProps(el);
-    setProps({
-      text: p.text,
-      fill: p.fill,
-      fontSize: p.fontSize,
-      x: Math.round(p.x),
-      y: Math.round(p.y),
-      width: p.width,
-      height: p.height,
-      size: p.size ?? p.fontSize,
-      opacity: p.opacity,
-    });
+    setInsertTool(null);
+    setProps(propsFromElement(readElementProps(el)));
   }, []);
 
   const updateSelectedDom = useCallback(
-    (patch: Partial<ElementProps>) => {
+    (patch: Partial<ElementProps>, recordHistory = false) => {
       if (!selectedId || !svgHostRef.current) return;
       const el = svgHostRef.current.querySelector(`[data-edit-id="${selectedId}"]`);
       if (!el) return;
       applyElementProps(el, patch);
-      const p = readElementProps(el);
-      setProps({
-        text: p.text,
-        fill: p.fill,
-        fontSize: p.fontSize,
-        x: Math.round(p.x),
-        y: Math.round(p.y),
-        width: p.width,
-        height: p.height,
-        size: p.size ?? p.fontSize,
-        opacity: p.opacity,
-      });
+      setProps(propsFromElement(readElementProps(el)));
+      refreshElements();
+      if (recordHistory) pushEditHistory();
     },
-    [selectedId]
+    [selectedId, refreshElements, pushEditHistory]
+  );
+
+  const handleDeleteSelected = useCallback(() => {
+    if (!selectedId || !svgHostRef.current) return;
+    if (selectedId === 'el-bg') return;
+    if (!deleteElementById(svgHostRef.current, selectedId)) return;
+    setSelectedId(null);
+    setProps(null);
+    refreshElements();
+    pushEditHistory();
+  }, [selectedId, refreshElements, pushEditHistory]);
+
+  const handleDuplicateSelected = useCallback(() => {
+    if (!selectedId || !svgHostRef.current) return;
+    const newId = duplicateElementById(svgHostRef.current, selectedId);
+    if (!newId) return;
+    refreshElements();
+    pushEditHistory();
+    selectElement(newId);
+  }, [selectedId, refreshElements, pushEditHistory, selectElement]);
+
+  const handleReorder = useCallback(
+    (direction: 'front' | 'back' | 'forward' | 'backward') => {
+      if (!selectedId || !svgHostRef.current) return;
+      reorderElementById(svgHostRef.current, selectedId, direction);
+      pushEditHistory();
+    },
+    [selectedId, pushEditHistory]
+  );
+
+  const handleInsertAtPoint = useCallback(
+    (clientX: number, clientY: number) => {
+      if (!insertTool || !svgHostRef.current) return;
+      const svg = svgHostRef.current.querySelector('svg');
+      if (!svg) return;
+      const point = clientToSvgPoint(svg, clientX, clientY);
+      const id = nextEditId(svgHostRef.current);
+      createInsertShape(svg, insertTool, point, id);
+      refreshElements();
+      pushEditHistory();
+      selectElement(id);
+      setInsertTool(null);
+    },
+    [insertTool, refreshElements, pushEditHistory, selectElement]
   );
 
   useEffect(() => {
     const host = svgHostRef.current;
-    if (!host || mode !== 'drag' || !svgHtml) return;
+    const stage = stageRef.current;
+    if (!host || !stage || mode !== 'drag' || !svgHtml) return;
 
     host.querySelectorAll('[data-edit-id]').forEach((node) => {
-      (node as SVGElement).style.pointerEvents = 'all';
-      (node as SVGElement).style.cursor = 'move';
+      const svgNode = node as SVGElement;
+      const locked = isLockedBackgroundElement(svgNode);
+      svgNode.style.pointerEvents = insertTool || locked ? 'none' : 'all';
+      svgNode.style.cursor = insertTool ? 'crosshair' : locked ? 'default' : 'move';
     });
 
+    const onStageDown = (e: PointerEvent) => {
+      if (!insertTool) return;
+      if ((e.target as Element).closest('[data-edit-id]')) return;
+      e.preventDefault();
+      handleInsertAtPoint(e.clientX, e.clientY);
+    };
+
     const onDown = (e: PointerEvent) => {
+      if (insertTool) return;
       const el = (e.target as Element).closest('[data-edit-id]') as SVGElement | null;
       if (!el || !host.contains(el)) return;
+      if (isLockedBackgroundElement(el)) return;
       e.preventDefault();
       e.stopPropagation();
       const id = el.getAttribute('data-edit-id')!;
       selectElement(id);
       const svg = host.querySelector('svg');
-      const stage = stageRef.current;
       if (!svg || !stage) return;
       const vb = svg.getAttribute('viewBox')?.split(/\s+/).map(Number) || [0, 0, 900, 560];
       const scale = stage.getBoundingClientRect().width / (vb[2] || 900);
       const { x: tx, y: ty } = getTranslate(el);
+      let moved = false;
       dragRef.current = { id, startX: e.clientX, startY: e.clientY, origTx: tx, origTy: ty, scale };
       el.setPointerCapture(e.pointerId);
 
       const onMove = (ev: PointerEvent) => {
         const d = dragRef.current;
         if (!d || d.id !== id) return;
+        moved = true;
         const dx = (ev.clientX - d.startX) / d.scale;
         const dy = (ev.clientY - d.startY) / d.scale;
         setTranslate(el, d.origTx + dx, d.origTy + dy);
         const p = readElementProps(el);
-        setProps((prev) => (prev ? { ...prev, x: Math.round(p.x), y: Math.round(p.y) } : null));
+        setProps((prev) =>
+          prev ? propsFromElement({ ...p, x: p.x, y: p.y }) : null
+        );
       };
       const onUp = () => {
         dragRef.current = null;
         el.removeEventListener('pointermove', onMove);
         el.removeEventListener('pointerup', onUp);
         el.removeEventListener('pointercancel', onUp);
+        if (moved) pushEditHistory();
       };
       el.addEventListener('pointermove', onMove);
       el.addEventListener('pointerup', onUp);
       el.addEventListener('pointercancel', onUp);
     };
 
+    stage.addEventListener('pointerdown', onStageDown);
     host.addEventListener('pointerdown', onDown);
-    return () => host.removeEventListener('pointerdown', onDown);
-  }, [mode, svgHtml, selectElement]);
+    return () => {
+      stage.removeEventListener('pointerdown', onStageDown);
+      host.removeEventListener('pointerdown', onDown);
+    };
+  }, [mode, svgHtml, selectElement, insertTool, handleInsertAtPoint, pushEditHistory]);
 
   useEffect(() => {
-    if (mode === 'drag' && elementList[0]) selectElement(elementList[0].id);
+    const onKey = (e: KeyboardEvent) => {
+      if (mode !== 'drag') return;
+      const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+
+      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
+        e.preventDefault();
+        handleDeleteSelected();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undoEdit();
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        redoEdit();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd' && selectedId) {
+        e.preventDefault();
+        handleDuplicateSelected();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mode, selectedId, handleDeleteSelected, handleDuplicateSelected, undoEdit, redoEdit]);
+
+  useEffect(() => {
+    if (mode === 'drag' && elementList[0] && !insertTool) selectElement(elementList[0].id);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅切换模式时选中首个
   }, [mode]);
 
@@ -407,7 +592,7 @@ export function VisualEditor({
             className={`visual-editor-mode-tab ${mode === 'drag' ? 'active' : ''}`}
             onClick={() => setMode('drag')}
           >
-            拖拽精修
+            设计编辑
           </button>
         </div>
 
@@ -429,14 +614,103 @@ export function VisualEditor({
               <Eraser className="h-3.5 w-3.5" strokeWidth={2.2} />
               橡皮擦
             </button>
+            <button type="button" className="visual-editor-tool-btn" onClick={undoStroke}>
+              <Undo2 className="h-3.5 w-3.5" strokeWidth={2.2} />
+              撤销
+            </button>
+            <button type="button" className="visual-editor-tool-btn" onClick={clearMask}>
+              清除
+            </button>
           </div>
         )}
 
         {mode === 'drag' && (
           <>
             <div className="small" style={{ marginTop: 10 }}>
-              点击画布中任意元素选中，可拖拽移动、改文字、颜色与大小。
+              {insertTool
+                ? `插入模式：在画布空白处点击添加「${SHAPE_TOOLS.find((s) => s.type === insertTool)?.label}」`
+                : '选中元素后可拖拽、改属性；或使用下方工具插入新形状。'}
             </div>
+
+            <h4 className="props-subtitle">插入形状</h4>
+            <div className="visual-editor-shape-grid">
+              {SHAPE_TOOLS.map(({ type, label, Icon }) => (
+                <button
+                  key={type}
+                  type="button"
+                  className={`visual-editor-shape-btn ${insertTool === type ? 'active' : ''}`}
+                  onClick={() => setInsertTool((prev) => (prev === type ? null : type))}
+                  title={label}
+                >
+                  <Icon className="h-3.5 w-3.5" strokeWidth={2.2} />
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <h4 className="props-subtitle">元素操作</h4>
+            <div className="visual-editor-action-grid">
+              <button
+                type="button"
+                className="visual-editor-action-btn"
+                disabled={!canUndoEdit}
+                onClick={undoEdit}
+                title="Ctrl+Z"
+              >
+                <Undo2 className="h-3.5 w-3.5" />
+                撤销
+              </button>
+              <button
+                type="button"
+                className="visual-editor-action-btn"
+                disabled={!canRedoEdit}
+                onClick={redoEdit}
+                title="Ctrl+Y"
+              >
+                <Redo2 className="h-3.5 w-3.5" />
+                重做
+              </button>
+              <button
+                type="button"
+                className="visual-editor-action-btn"
+                disabled={!selectedId || selectedMeta?.isBackground}
+                onClick={handleDuplicateSelected}
+                title="Ctrl+D"
+              >
+                <Copy className="h-3.5 w-3.5" />
+                复制
+              </button>
+              <button
+                type="button"
+                className="visual-editor-action-btn danger"
+                disabled={!selectedId || selectedMeta?.isBackground}
+                onClick={handleDeleteSelected}
+                title="Delete"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                删除
+              </button>
+            </div>
+
+            <h4 className="props-subtitle">
+              <Layers className="h-3.5 w-3.5" style={{ display: 'inline', verticalAlign: -2, marginRight: 4 }} />
+              图层顺序
+            </h4>
+            <div className="visual-editor-action-grid layer-grid">
+              <button type="button" className="visual-editor-action-btn" disabled={!selectedId || selectedMeta?.isBackground} onClick={() => handleReorder('forward')}>
+                上移
+              </button>
+              <button type="button" className="visual-editor-action-btn" disabled={!selectedId || selectedMeta?.isBackground} onClick={() => handleReorder('backward')}>
+                下移
+              </button>
+              <button type="button" className="visual-editor-action-btn" disabled={!selectedId || selectedMeta?.isBackground} onClick={() => handleReorder('front')}>
+                置顶
+              </button>
+              <button type="button" className="visual-editor-action-btn" disabled={!selectedId || selectedMeta?.isBackground} onClick={() => handleReorder('back')}>
+                置底
+              </button>
+            </div>
+
             <h4 className="props-subtitle">全部元素 ({elementList.length})</h4>
             <div className="element-list">
               {elementList.map((el) => (
@@ -493,17 +767,97 @@ export function VisualEditor({
                   </div>
                 </label>
                 {(selectedMeta.isText || selectedMeta.tag === 'text' || selectedMeta.tag === 'tspan') && (
+                  <>
+                    <label className="props-field">
+                      <span>字号 {Math.round(props.fontSize)}</span>
+                      <input
+                        type="range"
+                        min={10}
+                        max={96}
+                        value={props.fontSize}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          setProps((p) => (p ? { ...p, fontSize: v, size: v } : p));
+                          updateSelectedDom({ fontSize: v });
+                        }}
+                      />
+                    </label>
+                    <label className="props-field">
+                      <span>字重</span>
+                      <select
+                        className="input"
+                        value={props.fontWeight}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setProps((p) => (p ? { ...p, fontWeight: v } : p));
+                          updateSelectedDom({ fontWeight: v });
+                        }}
+                      >
+                        <option value="400">常规</option>
+                        <option value="600">半粗</option>
+                        <option value="700">粗体</option>
+                        <option value="900">特粗</option>
+                      </select>
+                    </label>
+                  </>
+                )}
+                {(selectedMeta.tag === 'line' ||
+                  selectedMeta.tag === 'path' ||
+                  selectedMeta.tag === 'rect') && (
+                  <>
+                    <label className="props-field">
+                      <span>描边颜色</span>
+                      <div className="color-row">
+                        <input
+                          type="color"
+                          value={props.stroke.startsWith('#') ? props.stroke.slice(0, 7) : '#103C8F'}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setProps((p) => (p ? { ...p, stroke: v } : p));
+                            updateSelectedDom({ stroke: v });
+                          }}
+                        />
+                        <input
+                          className="input"
+                          value={props.stroke}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setProps((p) => (p ? { ...p, stroke: v } : p));
+                            updateSelectedDom({ stroke: v });
+                          }}
+                        />
+                      </div>
+                    </label>
+                    {(selectedMeta.tag === 'line' || selectedMeta.tag === 'rect') && (
+                      <label className="props-field">
+                        <span>描边粗细 {props.strokeWidth}px</span>
+                        <input
+                          type="range"
+                          min={1}
+                          max={24}
+                          value={props.strokeWidth || 2}
+                          onChange={(e) => {
+                            const v = Number(e.target.value);
+                            setProps((p) => (p ? { ...p, strokeWidth: v } : p));
+                            updateSelectedDom({ strokeWidth: v });
+                          }}
+                        />
+                      </label>
+                    )}
+                  </>
+                )}
+                {(selectedMeta.tag === 'rect') && (
                   <label className="props-field">
-                    <span>字号 {Math.round(props.fontSize)}</span>
+                    <span>圆角 {Math.round(props.rx)}px</span>
                     <input
                       type="range"
-                      min={10}
-                      max={96}
-                      value={props.fontSize}
+                      min={0}
+                      max={48}
+                      value={props.rx}
                       onChange={(e) => {
                         const v = Number(e.target.value);
-                        setProps((p) => (p ? { ...p, fontSize: v, size: v } : p));
-                        updateSelectedDom({ fontSize: v });
+                        setProps((p) => (p ? { ...p, rx: v } : p));
+                        updateSelectedDom({ rx: v });
                       }}
                     />
                   </label>
@@ -582,6 +936,20 @@ export function VisualEditor({
                   </div>
                 </label>
                 <label className="props-field">
+                  <span>旋转 {Math.round(props.rotation)}°</span>
+                  <input
+                    type="range"
+                    min={-180}
+                    max={180}
+                    value={props.rotation}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      setProps((p) => (p ? { ...p, rotation: v } : p));
+                      updateSelectedDom({ rotation: v });
+                    }}
+                  />
+                </label>
+                <label className="props-field">
                   <span>透明度 {Math.round(props.opacity * 100)}%</span>
                   <input
                     type="range"
@@ -612,7 +980,7 @@ export function VisualEditor({
 
       <main className="canvas-large visual-editor-main">
         <div ref={stageRef} className="visual-editor-stage">
-          <div className={`visual-editor-artboard ${mode === 'drag' ? 'drag-mode' : ''}`}>
+          <div className={`visual-editor-artboard ${mode === 'drag' ? 'drag-mode' : ''} ${insertTool ? 'insert-mode' : ''}`}>
             {(showRasterBack || loadFailed) && imageSrc ? (
               <img src={imageSrc} alt="" className="visual-editor-raster-back" draggable={false} />
             ) : null}

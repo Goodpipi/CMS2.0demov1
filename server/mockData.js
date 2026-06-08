@@ -127,7 +127,7 @@ export function getMockData(kind, userNote = '') {
             styleTag: '蓝绿品牌 · 轻快',
             description: `基于脚本「${title}」合成的竖版短视频（演示占位）`,
             duration: '0:30',
-            videoUrl: 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
+            videoUrl: '',
             isDemo: true,
           },
           {
@@ -136,7 +136,7 @@ export function getMockData(kind, userNote = '') {
             styleTag: '横版 · 沉稳',
             description: '备用节奏与字幕样式（演示占位）',
             duration: '0:30',
-            videoUrl: 'https://www.w3schools.com/html/mov_bbb.mp4',
+            videoUrl: '',
             isDemo: true,
           },
         ],

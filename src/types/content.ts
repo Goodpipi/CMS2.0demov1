@@ -54,6 +54,7 @@ export interface VideoRenderVersion {
   duration: string;
   posterDataUrl: string;
   videoUrl: string;
+  script?: VideoResult;
   isDemo?: boolean;
 }
 
@@ -63,6 +64,8 @@ export interface PptSlide {
   bullets: string[];
   speakerNotes?: string;
   svg?: string;
+  /** 演示模式预置幻灯片图片（public 静态资源路径） */
+  imageUrl?: string;
 }
 
 export interface PptResult {
@@ -97,6 +100,8 @@ export interface PptDesignVersion {
   description: string;
   slides: PptSlide[];
   coverDataUrl?: string;
+  fileUrl?: string;
+  fileName?: string;
 }
 
 export interface PosterResult {

@@ -198,14 +198,25 @@ export function removePageFromOutline(
   };
 }
 
+function escSvgText(s: string): string {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 /** 将幻灯片转为可预览/编辑的 data URL */
 export function slideToPreviewUrl(slide: PptSlide): string {
-  if (slide.svg) {
+  if (slide.imageUrl?.trim()) {
+    return slide.imageUrl;
+  }
+  if (slide.svg?.trim()) {
     const encoded = encodeURIComponent(slide.svg);
     return `data:image/svg+xml;charset=utf-8,${encoded}`;
   }
-  const title = (slide.title || '未命名').slice(0, 20);
-  const bullets = (slide.bullets || []).slice(0, 4).join(' · ');
+  const title = escSvgText((slide.title || '未命名').slice(0, 20));
+  const bullets = escSvgText((slide.bullets || []).slice(0, 4).join(' · '));
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540">
     <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
       <stop stop-color="#eaf7ff"/><stop offset="1" stop-color="#f4fff0"/>
