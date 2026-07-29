@@ -132,8 +132,6 @@ import {
   parseScenarioExplicit,
 } from '@/app/components/conversationGuide';
 import { ConfirmModal } from '@/app/components/ConfirmModal';
-import { HomeHistorySidebar } from '@/app/components/HomeHistorySidebar';
-import { HomeAgentIcon, getHomeAgentLabel } from '@/app/components/HomeAttachMenu';
 import { AmbientOrbs } from '@/app/components/shell/AmbientOrbs';
 import { SparkleField } from '@/app/components/shell/SparkleField';
 import { cn } from '@/app/components/ui/utils';
@@ -142,6 +140,7 @@ import {
   Check,
   ChevronDown,
   ChevronLeft,
+  ChevronRight,
   Database,
   FileText,
   Filter,
@@ -151,12 +150,12 @@ import {
   Library as LibraryIcon,
   Eraser,
   Paintbrush,
+  Plus,
   Presentation,
   Search,
   Sparkles,
   Star,
   Upload,
-  UploadCloud,
   Video,
   X,
 } from 'lucide-react';
@@ -196,6 +195,7 @@ import type {
 } from '@/types/session';
 
 const cats = ['热点洞察', '合规手册', '参考知识', '品牌briefing', '渠道特色'];
+const HOME_TASK_PAGE_SIZE = 6;
 
 const initialLibrary: LibraryItem[] = [
   { id: 1, cat: '热点洞察', title: '小红书肾脏健康热点观察 2026-05', meta: 'CMS洞察 · 热点词/互动趋势', cms: true, def: true, addedAt: Date.now() - 9 * 86400000, validUntil: '2026-11-30' },
@@ -371,7 +371,7 @@ export default function App() {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [sessionSearch, setSessionSearch] = useState('');
-  const [homeHistoryOpen, setHomeHistoryOpen] = useState(true);
+  const [homeTaskPage, setHomeTaskPage] = useState(1);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [contextPanelOpen, setContextPanelOpen] = useState(true);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
@@ -390,6 +390,7 @@ export default function App() {
   const [entryContext, setEntryContext] = useState<HomeEntryContext | null>(null);
 
   const feedRef = useRef<HTMLDivElement>(null);
+  const workspaceFileInputRef = useRef<HTMLInputElement>(null);
   const stateRef = useRef(state);
   const pptWizardRef = useRef(pptWizard);
   const videoWizardRef = useRef(videoWizard);
@@ -1110,34 +1111,12 @@ export default function App() {
   const newTask = (prompt = '', intent: HomeEntryIntent = 'general') =>
     startFromHome({ intent }, prompt);
 
-  const getHomeInputPlaceholder = () => {
-    switch (homeAgentIntent) {
-      case 'insight':
-        return '描述你想洞察的主题，如渠道、疾病领域、受众…';
-      case 'copy':
-        return '描述文案类型、受众与核心信息…';
-      case 'visual':
-        return '描述要生成的图片主题、风格与用途…';
-      case 'video':
-        return '描述视频主题、受众与时长偏好…';
-      case 'ppt':
-        return '描述 PPT 受众、场景与核心内容…';
-      default:
-        return '输入你的创作需求...';
-    }
-  };
-
-  const submitHomeInput = () => {
-    setCreationMethodOpen(true);
-  };
-
   const createNewContentFromHome = () => {
-    const text = inputValue.trim();
-    const intent = homeAgentIntent || 'general';
     setCreationMethodOpen(false);
     setHomeAgentIntent(null);
     setWorkspacePreviewMaterial(null);
-    newTask(text, intent);
+    setInputValue('');
+    newTask('', 'general');
   };
 
   const openCmsFileFromHome = () => {
@@ -1150,7 +1129,9 @@ export default function App() {
     setCreationMethodOpen(false);
     const text = inputValue.trim();
     setHomeAgentIntent(null);
-    startFromHome({ intent: 'ppt' }, text, { silent: true });
+    if (currentScreen !== 'workspace' || !currentSessionId) {
+      startFromHome({ intent: 'ppt' }, text, { silent: true });
+    }
     setWorkspacePreviewMaterial(null);
     setPptOutline(WORKSPACE_MOCK_PPT_OUTLINE);
     setPptVersions([WORKSPACE_MOCK_PPT]);
@@ -4123,11 +4104,11 @@ export default function App() {
     setAttachments((prev) => [...prev.filter((p) => !p.endsWith('×')), pill]);
     toast(pickerTarget === 'chat' ? '附件已加入本次对话' : `已添加素材到「${item.cat}」`);
     if (openPickedMaterialInPreview) {
-      const text = inputValue.trim();
-      const intent = homeAgentIntent || 'general';
       setOpenPickedMaterialInPreview(false);
       setHomeAgentIntent(null);
-      startFromHome({ intent }, text);
+      if (currentScreen !== 'workspace' || !currentSessionId) {
+        startFromHome({ intent: 'general' }, '');
+      }
       setWorkspacePreviewMaterial(libraryItem);
       setAttachments([pill]);
     }
@@ -4279,6 +4260,31 @@ export default function App() {
     if (!activeProjectId) return null;
     return loadAllProjects().find((p) => p.id === activeProjectId)?.name ?? null;
   }, [activeProjectId, sessions]);
+  const homeTaskSessions = useMemo(() => {
+    const query = sessionSearch.trim().toLowerCase();
+    return sessions.filter((session) => {
+      if (activeProjectId && session.projectId !== activeProjectId) return false;
+      if (!query) return true;
+      return `${session.title} ${deriveSessionSubtitle(session)}`.toLowerCase().includes(query);
+    });
+  }, [sessions, activeProjectId, sessionSearch]);
+  const homeTaskPageCount = Math.max(
+    1,
+    Math.ceil(homeTaskSessions.length / HOME_TASK_PAGE_SIZE)
+  );
+  const visibleHomeTaskPage = Math.min(homeTaskPage, homeTaskPageCount);
+  const pagedHomeTaskSessions = homeTaskSessions.slice(
+    (visibleHomeTaskPage - 1) * HOME_TASK_PAGE_SIZE,
+    visibleHomeTaskPage * HOME_TASK_PAGE_SIZE
+  );
+
+  useEffect(() => {
+    setHomeTaskPage(1);
+  }, [activeProjectId, sessionSearch]);
+
+  useEffect(() => {
+    if (homeTaskPage > homeTaskPageCount) setHomeTaskPage(homeTaskPageCount);
+  }, [homeTaskPage, homeTaskPageCount]);
 
   const libraryCategoryCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -4330,30 +4336,7 @@ export default function App() {
 
       {/* Home Screen */}
       <section className={`screen home-screen ${currentScreen === 'home' ? 'active' : ''}`}>
-        <div className={`relative z-10 flex min-h-0 gap-6 px-6 pb-6 lg:px-10 ${!isReviewerRole(userRole) ? 'h-[calc(100vh-72px)]' : 'min-h-[calc(100vh-72px)]'}`}>
-            {!isReviewerRole(userRole) && (
-              <HomeHistorySidebar
-                open={homeHistoryOpen}
-                sessions={sessions}
-                activeProjectId={activeProjectId}
-                currentSessionId={currentSessionId}
-                sessionSearch={sessionSearch}
-                onSessionSearchChange={setSessionSearch}
-                onCollapse={() => setHomeHistoryOpen(false)}
-                onExpand={() => setHomeHistoryOpen(true)}
-                onOpenSession={openSession}
-                onDeleteSession={(id, title) => setDeleteConfirm({ id, title })}
-                onActiveProjectChange={setActiveProjectId}
-                onProjectsChange={() => {}}
-                onSessionsChange={refreshSessionList}
-                deriveSessionSubtitle={deriveSessionSubtitle}
-                deriveSessionStatus={deriveSessionStatus}
-                sessionStatusLabel={sessionStatusLabel}
-                sessionStatusBadgeClass={sessionStatusBadgeClass}
-                formatSessionTime={formatSessionTime}
-              />
-            )}
-
+        <div className={`relative z-10 min-h-0 px-6 pb-6 lg:px-10 ${!isReviewerRole(userRole) ? 'h-[calc(100vh-72px)]' : 'min-h-[calc(100vh-72px)]'}`}>
             <main className="relative min-h-0 min-w-0 flex-1">
               <div className="absolute right-0 top-0 z-20 flex items-center gap-2 animate-fade-up">
                 <button
@@ -4387,7 +4370,7 @@ export default function App() {
                   />
                 </div>
               ) : (
-                <div className="relative mx-auto flex h-full max-w-3xl flex-col items-center justify-center px-2 pb-8 pt-12 lg:pt-16">
+                <div className="home-task-dashboard relative mx-auto h-full max-w-6xl overflow-y-auto px-2 pb-10 pt-14 lg:pt-16">
                   {activeProjectName && (
                     <div className="relative z-10 mb-5 text-center animate-fade-up">
                       <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-glass px-3 py-1.5 text-xs text-muted-foreground shadow-soft">
@@ -4407,82 +4390,120 @@ export default function App() {
                   <h2 className="relative z-10 text-center text-[40px] font-bold leading-[1.1] tracking-tight md:text-[52px] animate-fade-up [animation-delay:80ms]">
                     <span className="text-gradient animate-gradient-pan">今天你有什么灵感？</span>
                   </h2>
-                  <p className="relative z-10 mt-4 max-w-md text-center text-[13.5px] leading-relaxed text-muted-foreground animate-fade-up [animation-delay:160ms]">
-                    无论是话题洞察、生成图片，还是生成 PPT，一切需求，在输入框里下达即可。
+                  <p className="relative z-10 mx-auto mt-4 max-w-lg text-center text-[13.5px] leading-relaxed text-muted-foreground animate-fade-up [animation-delay:160ms]">
+                    新建任务后，可在工作台中调用知识与素材，完成内容创作、预览与团队审阅。
                   </p>
 
-                  <div className="relative z-10 mt-9 w-full animate-fade-up [animation-delay:240ms]">
-                    <div className="absolute inset-x-0 top-1/2 h-28 -translate-y-1/2 rounded-[30px] bg-hero-gradient opacity-20 blur-md brightness-125" />
-                    <div className="relative rounded-[26px] glass-composer p-5 shadow-glow ring-1 ring-border/60">
-                      <div className="mb-4 flex flex-wrap items-center gap-2">
-                        {homeAgentIntent && (
-                          <span className="group inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 py-1 pl-1 pr-2.5 text-xs font-medium text-primary">
-                            <span className="grid h-5 w-5 place-items-center rounded-full bg-gradient-to-br from-cyan-500 to-sky-600 shadow-[0_3px_8px_-2px_oklch(0.55_0.18_220/0.5)] ring-1 ring-white/40">
-                              <HomeAgentIcon intent={homeAgentIntent} size={12} />
-                            </span>
-                            <span>{getHomeAgentLabel(homeAgentIntent)}</span>
-                            <button
-                              type="button"
-                              className="opacity-60 transition hover:opacity-100"
-                              onClick={() => setHomeAgentIntent(null)}
-                              aria-label="移除 Agent"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </span>
-                        )}
+                  <div className="relative z-10 mt-7 flex justify-center animate-fade-up [animation-delay:240ms]">
+                    <button
+                      type="button"
+                      className="home-new-task-button btn-hero-3d group inline-flex items-center gap-2"
+                      onClick={createNewContentFromHome}
+                    >
+                      <Plus className="h-4 w-4" strokeWidth={2.6} />
+                      新建任务
+                    </button>
+                  </div>
+
+                  <section className="home-task-section relative z-10 mt-10 animate-fade-up [animation-delay:320ms]">
+                    <div className="home-task-section-head">
+                      <div>
+                        <h3>历史任务</h3>
+                        <p>{activeProjectName ? `项目「${activeProjectName}」中的任务` : '继续处理最近的内容创作任务'}</p>
                       </div>
-
-                      <textarea
-                        placeholder={getHomeInputPlaceholder()}
-                        value={inputValue}
-                        onChange={e => setInputValue(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            submitHomeInput();
-                          }
-                        }}
-                        rows={3}
-                        className="w-full resize-none bg-transparent text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/70 focus:outline-none"
-                      />
-
-                      {attachments.length > 0 && (
-                        <div className="home-input-chips mt-2 mb-0">
-                          {attachments.map((pill, i) => (
-                            <span
-                              key={`home-${pill}-${i}`}
-                              className={`attach-pill ${pill.endsWith('×') ? 'removable' : ''}`}
-                              onClick={() => pill.endsWith('×') && removeAttachment(i)}
-                              title={pill.endsWith('×') ? '点击移除' : undefined}
-                            >
-                              {pill}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-
-                      <div className="mt-3 flex items-center justify-between gap-3">
-                        <button
-                          type="button"
-                          className="flex items-center gap-1.5 text-xs text-muted-foreground transition hover:text-primary"
-                          onClick={() => openMaterialPicker('chat')}
-                        >
-                          <UploadCloud className="h-3.5 w-3.5" />
-                          拖拽至此上传
-                        </button>
-                        <button
-                          type="button"
-                          className="btn-hero-3d group inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium disabled:opacity-50"
-                          onClick={submitHomeInput}
-                        >
-                          开始创作
-                          <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-                        </button>
+                      <div className="home-task-search">
+                        <Search className="h-3.5 w-3.5" />
+                        <input
+                          value={sessionSearch}
+                          onChange={(event) => setSessionSearch(event.target.value)}
+                          placeholder="搜索历史任务"
+                        />
                       </div>
                     </div>
 
-                  </div>
+                    {homeTaskSessions.length > 0 ? (
+                      <>
+                      <div className="home-task-grid">
+                        {pagedHomeTaskSessions.map((session) => (
+                          <article
+                            key={session.id}
+                            className={`home-task-card group ${currentSessionId === session.id ? 'active' : ''}`}
+                          >
+                            <button
+                              type="button"
+                              className="home-task-card-main"
+                              onClick={() => openSession(session.id)}
+                            >
+                              <span className="home-task-card-icon">
+                                <Presentation className="h-4 w-4 text-white" strokeWidth={2.4} />
+                              </span>
+                              <span className="home-task-card-copy">
+                                <strong>{session.title}</strong>
+                                <span>{deriveSessionSubtitle(session)}</span>
+                                <time>{formatSessionTime(session.updatedAt)}</time>
+                              </span>
+                              <ArrowRight className="home-task-card-arrow h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              className="home-task-card-delete"
+                              aria-label={`删除任务：${session.title}`}
+                              title="删除任务"
+                              onClick={() => setDeleteConfirm({ id: session.id, title: session.title })}
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </article>
+                        ))}
+                      </div>
+                      {homeTaskPageCount > 1 && (
+                        <nav className="home-task-pagination" aria-label="历史任务分页">
+                          <button
+                            type="button"
+                            className="home-task-page-arrow"
+                            disabled={visibleHomeTaskPage === 1}
+                            onClick={() => setHomeTaskPage((page) => Math.max(1, page - 1))}
+                            aria-label="上一页"
+                          >
+                            <ChevronLeft className="h-3.5 w-3.5" />
+                          </button>
+                          {Array.from({ length: homeTaskPageCount }, (_, index) => index + 1).map(
+                            (page) => (
+                              <button
+                                key={page}
+                                type="button"
+                                className={`home-task-page-number ${
+                                  visibleHomeTaskPage === page ? 'active' : ''
+                                }`}
+                                onClick={() => setHomeTaskPage(page)}
+                                aria-current={visibleHomeTaskPage === page ? 'page' : undefined}
+                              >
+                                {page}
+                              </button>
+                            )
+                          )}
+                          <button
+                            type="button"
+                            className="home-task-page-arrow"
+                            disabled={visibleHomeTaskPage === homeTaskPageCount}
+                            onClick={() =>
+                              setHomeTaskPage((page) => Math.min(homeTaskPageCount, page + 1))
+                            }
+                            aria-label="下一页"
+                          >
+                            <ChevronRight className="h-3.5 w-3.5" />
+                          </button>
+                        </nav>
+                      )}
+                      </>
+                    ) : (
+                      <div className="home-task-empty">
+                        <Presentation className="h-6 w-6" />
+                        <strong>暂无历史任务</strong>
+                        <span>点击“新建任务”开始第一项内容创作</span>
+                      </div>
+                    )}
+                  </section>
                 </div>
               )}
             </main>
@@ -5200,6 +5221,8 @@ export default function App() {
             setDrawerOpen={setDrawerOpen}
             openedFile={workspacePreviewMaterial}
             onCloseOpenedFile={() => setWorkspacePreviewMaterial(null)}
+            onOpenLocalFile={() => workspaceFileInputRef.current?.click()}
+            onOpenCmsFile={openCmsFileFromHome}
             generatedImages={generatedImages}
             generatedImageMeta={generatedImageMeta}
             imageReviewOrigins={imageReviewOrigins}
@@ -5430,6 +5453,19 @@ export default function App() {
         </div>,
         document.body
       )}
+
+      <input
+        ref={workspaceFileInputRef}
+        type="file"
+        className="hidden"
+        aria-hidden
+        tabIndex={-1}
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          if (file) handleCreationFileSelected(file);
+          event.currentTarget.value = '';
+        }}
+      />
 
       <CreationMethodModal
         open={creationMethodOpen}
@@ -5847,6 +5883,8 @@ function WorkspaceRightPanel({
   setDrawerOpen,
   openedFile,
   onCloseOpenedFile,
+  onOpenLocalFile,
+  onOpenCmsFile,
   generatedImages,
   generatedImageMeta,
   imageReviewOrigins,
@@ -5933,6 +5971,8 @@ function WorkspaceRightPanel({
   setDrawerOpen: (open: boolean) => void;
   openedFile: LibraryItem | null;
   onCloseOpenedFile: () => void;
+  onOpenLocalFile: () => void;
+  onOpenCmsFile: () => void;
   generatedImages: string[];
   generatedImageMeta: GeneratedImageMeta[];
   imageReviewOrigins: string[];
@@ -6113,9 +6153,22 @@ function WorkspaceRightPanel({
         );
       }
       return (
-        <div className="detail-card">
-          <h4>等待生成产物</h4>
-          <div className="small">当你在对话中生成话题洞察、文案、图片、视频、PPT或提交包后，这里会自动新增详情标签。</div>
+        <div className="preview-entry-card">
+          <div className="preview-entry-icon">
+            <Presentation className="h-6 w-6 text-white" strokeWidth={2.2} />
+          </div>
+          <h4>开始新的内容任务</h4>
+          <p>从本地文件或 CMS 内容开始，文件将在当前预览区域中打开。</p>
+          <div className="preview-entry-actions">
+            <button type="button" className="glass-button" onClick={onOpenLocalFile}>
+              <FolderOpen className="h-4 w-4" />
+              打开本地文件
+            </button>
+            <button type="button" className="btn-hero-3d" onClick={onOpenCmsFile}>
+              <Database className="h-4 w-4" />
+              打开 CMS 文件
+            </button>
+          </div>
         </div>
       );
     }
@@ -7124,7 +7177,7 @@ function WorkspaceRightPanel({
         </div>
       </div>
       <div className="detail">
-        {!reviewerMode && <div className="preview-history-row">
+        {!reviewerMode && (state.active || previewFile) && <div className="preview-history-row">
           <div className="preview-history-control">
             <button
               type="button"
