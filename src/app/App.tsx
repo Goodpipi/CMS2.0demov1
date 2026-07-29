@@ -3,15 +3,9 @@ import { createPortal } from 'react-dom';
 import * as api from '@/lib/api';
 import {
   isDemoMode,
-  loadAppMode,
   loadDemoScenario,
-  saveAppMode,
-  saveDemoScenario,
-  subscribeDemoMode,
-  type AppMode,
   type DemoScenario,
 } from '@/lib/demoMode';
-import { DemoModeControl } from '@/app/components/DemoModeControl';
 import {
   ACADEMIC_DEMO_BUTTONS,
   ACADEMIC_DEMO_TEXT,
@@ -35,6 +29,7 @@ import type {
   VideoRenderVersion,
   PptResult,
   PptOutline,
+  PptSlide,
   PptDesignVersion,
   GeneratedImageMeta,
 } from '@/types/content';
@@ -47,12 +42,18 @@ import { buildVideoPosterDataUrl } from '@/app/components/videoUtils';
 import { VisualEditor } from '@/app/components/VisualEditor';
 import { parseSvgFromDataUrl } from '@/app/components/svgEditorUtils';
 import { PptOutlineEditor, PptOutlineGenerateFooter } from '@/app/components/PptOutlineEditor';
-import { getPptTemplate, pptTemplateIdFromTitle } from '@/app/components/pptTemplates';
+import {
+  pptTemplateIdFromTitle,
+  PPT_BUILTIN_TEMPLATES,
+  type PptBuiltinTemplate,
+} from '@/app/components/pptTemplates';
 import { getImageTemplatesByIds } from '@/app/components/imageTemplates';
 import { ImageTemplatePickerModal } from '@/app/components/ImageTemplatePickerModal';
 import { MaterialPickerModal, type PickedMaterial } from '@/app/components/MaterialPickerModal';
 import { MaterialDetailModal } from '@/app/components/MaterialDetailModal';
+import { MaterialContentPreview } from '@/app/components/MaterialContentPreview';
 import { ContextMaterialsPanel } from '@/app/components/ContextMaterialsPanel';
+import { CreationMethodModal } from '@/app/components/CreationMethodModal';
 import type { LibraryItem } from '@/types/library';
 import { materialAttachmentPill } from '@/lib/libraryUtils';
 import { assignCopyTopicTitles, ensureCopyCount, groupCopiesByTopic } from '@/lib/copyUtils';
@@ -70,8 +71,8 @@ import { CopyRevisionDisplay } from '@/app/components/CopyRevisionDisplay';
 import { OpsImageReviewPanel } from '@/app/components/OpsImageReviewPanel';
 import { alignImageReviewArrays } from '@/lib/imageReviewUtils';
 import { parseFigmaCaptureId } from '@/lib/figmaCapture';
-import { PptSlidesPanel } from '@/app/components/PptSlidesPanel';
 import { ReviewerVisualPanel } from '@/app/components/ReviewerVisualPanel';
+import { RichTextEditor } from '@/app/components/RichTextEditor';
 import { loadUserRole, saveUserRole, isReviewerRole } from '@/lib/userRole';
 import {
   loadReviewTasks,
@@ -102,7 +103,7 @@ import {
   type TopicRecommendationItem,
 } from '@/lib/topicInsightAgent';
 import { HotInsightReportPanel, TopicRecommendationPanel } from '@/app/components/TopicInsightPanels';
-import type { UserRole, ReviewTask } from '@/types/review';
+import type { UserRole, ReviewTask, PptReviewComment } from '@/types/review';
 import { ROLE_PROFILES } from '@/types/review';
 import type { CopyRevision, ImageReviewStatus } from '@/types/review';
 import {
@@ -132,21 +133,24 @@ import {
 } from '@/app/components/conversationGuide';
 import { ConfirmModal } from '@/app/components/ConfirmModal';
 import { HomeHistorySidebar } from '@/app/components/HomeHistorySidebar';
-import { HomeAttachMenu, HomeAgentIcon, getHomeAgentLabel } from '@/app/components/HomeAttachMenu';
+import { HomeAgentIcon, getHomeAgentLabel } from '@/app/components/HomeAttachMenu';
 import { AmbientOrbs } from '@/app/components/shell/AmbientOrbs';
 import { SparkleField } from '@/app/components/shell/SparkleField';
 import { cn } from '@/app/components/ui/utils';
 import {
   ArrowRight,
   Check,
+  ChevronDown,
   ChevronLeft,
   Database,
-  FileBarChart,
   FileText,
   Filter,
   FolderOpen,
+  History,
   Image as ImageIcon,
   Library as LibraryIcon,
+  Eraser,
+  Paintbrush,
   Presentation,
   Search,
   Sparkles,
@@ -157,7 +161,18 @@ import {
   X,
 } from 'lucide-react';
 import { LibraryMaterialCard } from '@/app/components/LibraryMaterialCard';
+import { AssetLibraryPage } from '@/app/components/AssetLibraryPage';
 import { loadAllProjects } from '@/lib/chatProjects';
+import {
+  WORKSPACE_MOCK_IMAGE,
+  WORKSPACE_MOCK_PPT,
+  WORKSPACE_MOCK_PPT_EN,
+  WORKSPACE_MOCK_PPT_OUTLINE,
+  WORKSPACE_MOCK_PPT_OUTLINE_EN,
+  WORKSPACE_MOCK_PPT_RESTYLED,
+  WORKSPACE_MOCK_PPT_RESTYLED_EN,
+  WORKSPACE_MOCK_RICH_TEXT,
+} from '@/lib/workspaceMocks';
 import {
   DEFAULT_SESSION_TITLE,
   DEMO_SESSION_ID,
@@ -183,14 +198,14 @@ import type {
 const cats = ['热点洞察', '合规手册', '参考知识', '品牌briefing', '渠道特色'];
 
 const initialLibrary: LibraryItem[] = [
-  { id: 1, cat: '热点洞察', title: '小红书肾脏健康热点观察 2026-05', meta: 'CMS洞察 · 热点词/互动趋势', cms: true, def: true, addedAt: Date.now() - 9 * 86400000 },
+  { id: 1, cat: '热点洞察', title: '小红书肾脏健康热点观察 2026-05', meta: 'CMS洞察 · 热点词/互动趋势', cms: true, def: true, addedAt: Date.now() - 9 * 86400000, validUntil: '2026-11-30' },
   { id: 2, cat: '合规手册', title: '公众渠道疾病教育合规手册', meta: 'Word · 全局资料 · 最新版', cms: false, def: true, addedAt: Date.now() - 8 * 86400000 },
   { id: 3, cat: '参考知识', title: '肾脏健康疾病教育参考知识包', meta: 'PDF/Excel · 12条知识点', cms: false, def: true, addedAt: Date.now() - 7 * 86400000 },
-  { id: 4, cat: '品牌briefing', title: '可申达 2026 品牌沟通 Briefing', meta: 'PDF · 2.4MB · 本地上传', cms: false, def: true, addedAt: Date.now() - 6 * 86400000 },
+  { id: 4, cat: '品牌briefing', title: '2026 品牌沟通 Briefing', meta: 'PDF · 2.4MB · 本地上传', cms: false, def: true, addedAt: Date.now() - 6 * 86400000 },
   { id: 5, cat: '渠道特色', title: '小红书渠道表达与视觉偏好', meta: '上传资料 · 风格案例 15 个', cms: false, def: true, addedAt: Date.now() - 5 * 86400000 },
-  { id: 6, cat: '参考知识', title: '可申达 Approved Claims Library', meta: 'CMS · Approved · 可追溯', cms: true, def: true, addedAt: Date.now() - 4 * 86400000 },
-  { id: 7, cat: '渠道特色', title: 'Bayer Blue-Green Visual Kit 2026', meta: 'CMS · Brand Kit · Approved', cms: true, def: true, addedAt: Date.now() - 3 * 86400000 },
-  { id: 8, cat: '参考知识', title: '患者教育手册:慢性肾病风险认知', meta: 'CMS · Approved · 2026-04-12', cms: true, def: false, addedAt: Date.now() - 2 * 86400000 },
+  { id: 6, cat: '参考知识', title: 'Approved Claims Library', meta: 'CMS · Approved · 可追溯', cms: true, def: true, addedAt: Date.now() - 4 * 86400000, validUntil: '2027-04-30' },
+  { id: 7, cat: '渠道特色', title: 'Bayer Blue-Green Visual Kit 2026', meta: 'CMS · Brand Kit · Approved', cms: true, def: true, addedAt: Date.now() - 3 * 86400000, validUntil: '2026-12-31' },
+  { id: 8, cat: '参考知识', title: '患者教育手册:慢性肾病风险认知', meta: 'CMS · Approved · 2026-04-12', cms: true, def: false, addedAt: Date.now() - 2 * 86400000, validUntil: '2027-03-31' },
   { id: 9, cat: '热点洞察', title: '公众平台高互动标题样本', meta: '本地上传 · 20条样本', cms: false, def: false, addedAt: Date.now() - 86400000 },
 ];
 
@@ -198,6 +213,7 @@ const tabNames = {
   insight: '话题洞察',
   'topic-recommendation': '话题推荐',
   copy: '文案生成',
+  'rich-text': '图文',
   team: '团队修改',
   visual: '图片生成',
   'video-script': '视频脚本',
@@ -230,20 +246,7 @@ function findCopyIndexForRevision(
 
 const posterData = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 900 560'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' x2='1' y1='0' y2='1'%3E%3Cstop stop-color='%23eaf7ff'/%3E%3Cstop offset='1' stop-color='%23f4fff0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='900' height='560' fill='url(%23g)'/%3E%3Ccircle cx='720' cy='110' r='100' fill='%2369BE28' opacity='.22'/%3E%3Ccircle cx='145' cy='115' r='82' fill='%231d6bff' opacity='.16'/%3E%3Cpath d='M560 360c90-100 190-85 260-28v228H520c-35-68-27-137 40-200z' fill='%2369BE28' opacity='.24'/%3E%3Crect x='54' y='46' width='118' height='42' rx='21' fill='%23103C8F'/%3E%3Ctext x='83' y='73' font-size='24' font-weight='700' fill='white'%3EBayer%3C/text%3E%3Ctext x='70' y='175' font-size='58' font-weight='900' fill='%23103C8F'%3E%E8%82%BE%E8%84%8F%E5%81%A5%E5%BA%B7%3C/text%3E%3Ctext x='70' y='248' font-size='58' font-weight='900' fill='%23103C8F'%3E%E4%B8%8D%E6%AD%A2%E7%9C%8B%E7%97%87%E7%8A%B6%3C/text%3E%3Ctext x='74' y='316' font-size='28' fill='%2340536a'%3E%E4%BA%86%E8%A7%A3%E9%A3%8E%E9%99%A9%E5%9B%A0%E7%B4%A0%EF%BC%8C%E5%87%BA%E7%8E%B0%E7%96%91%E9%97%AE%E6%97%B6%E8%AF%B7%E5%92%A8%E8%AF%A2%E4%B8%93%E4%B8%9A%E5%8C%BB%E7%94%9F%3C/text%3E%3Crect x='70' y='410' width='420' height='64' rx='32' fill='%23fff' stroke='%23cfe0f1'/%3E%3Ctext x='100' y='452' font-size='24' fill='%231d5aa7'%3E%E7%96%BE%E7%97%85%E6%95%99%E8%82%B2%E5%86%85%E5%AE%B9%EF%BD%9C%E4%BB%85%E4%BE%9B%E7%A7%91%E6%99%AE%E5%8F%82%E8%80%83%3C/text%3E%3C/svg%3E";
 
-const HOME_CREATION_MODES: {
-  intent: HomeEntryIntent;
-  label: string;
-  gradient: string;
-  Icon: typeof FileBarChart;
-}[] = [
-  { intent: 'insight', label: '洞察报告', gradient: 'from-[#4A9EE0] to-[#3B7FBF]', Icon: FileBarChart },
-  { intent: 'copy', label: '文案', gradient: 'from-[#4A9EE0] to-[#7762B8]', Icon: FileText },
-  { intent: 'visual', label: '图片', gradient: 'from-[#4A9EE0] via-[#7762B8] to-[#D8466A]', Icon: ImageIcon },
-  { intent: 'video', label: '视频', gradient: 'from-[#3B7FBF] to-[#4A9EE0]', Icon: Video },
-  { intent: 'ppt', label: 'PPT', gradient: 'from-[#D8466A] to-[#7762B8]', Icon: Presentation },
-];
-
-type Screen = 'home' | 'library' | 'workspace';
+type Screen = 'home' | 'library' | 'assets' | 'workspace';
 
 type EditorTarget =
   | { kind: 'image'; index: number }
@@ -255,6 +258,7 @@ const emptyWorkspaceState = (): AppState => ({
   insight: false,
   topicRecommendation: false,
   copy: false,
+  richText: false,
   team: false,
   visual: false,
   videoScript: false,
@@ -319,10 +323,10 @@ export default function App() {
   } | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [apiReady, setApiReady] = useState<boolean | null>(null);
-  const [appMode, setAppMode] = useState<AppMode>(() => loadAppMode());
   const [demoScenario, setDemoScenario] = useState<DemoScenario>(() => loadDemoScenario());
   const [demoScriptStep, setDemoScriptStep] = useState<DemoScriptStep>('idle');
   const [state, setState] = useState<AppState>(emptyWorkspaceState());
+  const [richTextContent, setRichTextContent] = useState('');
   const [guides, setGuides] = useState<string[]>(['基于默认素材生成话题洞察:']);
   const [selectedPrompt, setSelectedPrompt] = useState('');
   const [toastText, setToastText] = useState('');
@@ -332,6 +336,13 @@ export default function App() {
   const [userRole, setUserRole] = useState<UserRole>(() => loadUserRole());
   const [reviewTasks, setReviewTasks] = useState<ReviewTask[]>(() => loadReviewTasks());
   const [activeReviewTaskId, setActiveReviewTaskId] = useState<string | null>(null);
+  const [reviewPptPageIndex, setReviewPptPageIndex] = useState(0);
+  const [reviewPptNotes, setReviewPptNotes] = useState<Record<number, PptReviewComment[]>>({});
+  const [reviewPptNoteDraft, setReviewPptNoteDraft] = useState('');
+  const [reviewerReplyDrafts, setReviewerReplyDrafts] = useState<Record<string, string>>({});
+  const [creatorRightTab, setCreatorRightTab] = useState<'ai' | 'comments'>('ai');
+  const [creatorReplyDrafts, setCreatorReplyDrafts] = useState<Record<string, string>>({});
+  const [creatorPptPageIndex, setCreatorPptPageIndex] = useState(0);
   const [copyRevisions, setCopyRevisions] = useState<CopyRevision[]>([]);
   const [copyRevisionBase, setCopyRevisionBase] = useState('');
   const [teamAssigneeRoles, setTeamAssigneeRoles] = useState<('medical' | 'marketing')[]>([]);
@@ -371,7 +382,11 @@ export default function App() {
   const [pickerCat, setPickerCat] = useState(cats[0]);
   const [pickerTarget, setPickerTarget] = useState<'workspace' | 'chat'>('workspace');
   const [pickerTab, setPickerTab] = useState<'upload' | 'cms'>('upload');
+  const [pickerMode, setPickerMode] = useState<'manage' | 'reference'>('manage');
   const [previewMaterial, setPreviewMaterial] = useState<LibraryItem | null>(null);
+  const [workspacePreviewMaterial, setWorkspacePreviewMaterial] = useState<LibraryItem | null>(null);
+  const [creationMethodOpen, setCreationMethodOpen] = useState(false);
+  const [openPickedMaterialInPreview, setOpenPickedMaterialInPreview] = useState(false);
   const [entryContext, setEntryContext] = useState<HomeEntryContext | null>(null);
 
   const feedRef = useRef<HTMLDivElement>(null);
@@ -402,6 +417,7 @@ export default function App() {
       pptVersions,
       selectedPptVersionId,
       selectedPptTemplateId,
+      richTextContent,
       generatedImages,
       generatedImageMeta,
       imageReviewOrigins,
@@ -432,6 +448,7 @@ export default function App() {
       pptVersions,
       selectedPptVersionId,
       selectedPptTemplateId,
+      richTextContent,
       generatedImages,
       generatedImageMeta,
       imageReviewOrigins,
@@ -482,6 +499,8 @@ export default function App() {
 
   const loadSessionIntoApp = useCallback((session: ChatSession) => {
     isHydratingRef.current = true;
+    setCreatorPptPageIndex(0);
+    setCreatorRightTab('ai');
     setCurrentSessionId(session.id);
     setTaskTitle(session.title);
     const locked =
@@ -507,6 +526,7 @@ export default function App() {
       videoScript: false,
       videoRender: legacy.videoRender ?? legacy.videoScript ?? Boolean(legacy.video),
       topicRecommendation: legacy.topicRecommendation ?? false,
+      richText: legacy.richText ?? false,
       active: normalizedActive,
     };
     setState(normalizedState);
@@ -521,6 +541,7 @@ export default function App() {
     setPptVersions(w.pptVersions);
     setSelectedPptVersionId(w.selectedPptVersionId);
     setSelectedPptTemplateId(w.selectedPptTemplateId ?? null);
+    setRichTextContent(w.richTextContent ?? '');
     setGeneratedImages(w.generatedImages);
     setGeneratedImageMeta(w.generatedImageMeta ?? w.generatedImages?.map((_, i) => ({
       copyTitle: '综合内容',
@@ -589,6 +610,7 @@ export default function App() {
         copies,
         selectedCopies,
         getCopyBody: getActiveCopyBody,
+        richTextContent,
         generatedImages,
         selectedImages,
         videoResult,
@@ -599,6 +621,7 @@ export default function App() {
       copies,
       selectedCopies,
       getActiveCopyBody,
+      richTextContent,
       generatedImages,
       selectedImages,
       videoResult,
@@ -608,6 +631,7 @@ export default function App() {
   );
 
   const resolveTeamReviewType = (text: string, activeTab: TabKey | null): TeamContentType => {
+    if (text.includes('图文') || text.includes('富文本')) return 'rich-text';
     if (text.includes('图片') || text.includes('配图') || text.includes('海报')) return 'visual';
     if (text.includes('视频')) {
       if (activeTab === 'video-render') return 'video';
@@ -620,6 +644,7 @@ export default function App() {
     if (activeTab === 'visual') return 'visual';
     if (activeTab === 'video-render') return 'video';
     if (activeTab === 'ppt-design') return 'ppt';
+    if (activeTab === 'rich-text') return 'rich-text';
     return 'copy';
   };
 
@@ -628,21 +653,21 @@ export default function App() {
       if (!teamReviewSupported(type, stateRef.current.active)) {
         toast(
           type === 'video'
-            ? '请先在「视频生成」中生成视频后再提交团队修改'
+            ? '请先在「视频生成」中生成视频后再提交团队审阅'
             : 'PPT 大纲阶段不支持团队修改，请生成 PPT 后在「PPT生成」中提交'
         );
         return;
       }
       if (type === 'visual' && generatedImages.length > 0 && !selectedImages.some(Boolean)) {
-        toast('请至少勾选一张图片后再提交团队修改');
+        toast('请至少勾选一张图片后再提交团队审阅');
         return;
       }
       const payload = buildTeamPayload(type);
       if (!payload) {
         if (type === 'visual' && generatedImages.length > 0) {
-          toast('请至少勾选一张图片后再提交团队修改');
+          toast('请至少勾选一张图片后再提交团队审阅');
         } else {
-          toast(`请先生成${TEAM_CONTENT_LABELS[type]}后再提交团队修改`);
+          toast(`请先生成${TEAM_CONTENT_LABELS[type]}后再提交团队审阅`);
         }
         return;
       }
@@ -684,15 +709,15 @@ export default function App() {
         .map((m) => m.html.replace(/<[^>]+>/g, ''))
         .join('\n');
       const mats = library
-        .filter((m) => m.def)
+        .filter((m) => m.referenced ?? m.def)
         .map((m) => `[${m.cat}] ${m.title}`)
         .join('\n');
-      const brief = [userNote, recentUser, mats ? `默认素材：\n${mats}` : '']
+      const brief = [userNote, recentUser, mats ? `引用素材：\n${mats}` : '']
         .filter(Boolean)
         .join('\n\n');
       const sufficient = brief.trim().length >= 24;
       return {
-        brief: sufficient ? brief : brief || '可申达｜肾脏健康疾病教育｜小红书公众渠道',
+        brief: sufficient ? brief : brief || '肾脏健康疾病教育｜小红书公众渠道',
         sufficient: sufficient || brief.trim().length >= 12,
       };
     },
@@ -819,13 +844,6 @@ export default function App() {
   };
 
   useEffect(() => {
-    return subscribeDemoMode(() => {
-      setAppMode(loadAppMode());
-      setDemoScenario(loadDemoScenario());
-    });
-  }, []);
-
-  useEffect(() => {
     let cancelled = false;
     void (async () => {
       if (isDemoMode()) {
@@ -842,7 +860,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [appMode]);
+  }, []);
 
   useEffect(() => {
     if (feedRef.current) {
@@ -930,7 +948,7 @@ export default function App() {
     setTitleLocked(true);
     if (currentSessionId) autoTitleSessionRef.current = currentSessionId;
     const trimmed = taskTitle.trim() || DEFAULT_SESSION_TITLE;
-    setTaskTitle(trimmed.startsWith('可申达') ? trimmed : `可申达｜${trimmed}`);
+    setTaskTitle(trimmed);
   };
 
   const applyAutoSessionTitle = (title: string, sessionId: string) => {
@@ -946,6 +964,28 @@ export default function App() {
     setSessions(seedSessionsIfEmpty());
   }, []);
 
+  useEffect(() => {
+    const syncReviewTasks = () => setReviewTasks(loadReviewTasks());
+    window.addEventListener('focus', syncReviewTasks);
+    window.addEventListener('storage', syncReviewTasks);
+    return () => {
+      window.removeEventListener('focus', syncReviewTasks);
+      window.removeEventListener('storage', syncReviewTasks);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!activeReviewTaskId) return;
+    const task = reviewTasks.find((item) => item.id === activeReviewTaskId);
+    if (!task || task.contentType !== 'ppt') return;
+    setReviewPptNotes(
+      (task.pptComments || []).reduce<Record<number, PptReviewComment[]>>((grouped, comment) => {
+        grouped[comment.pageIndex] = [...(grouped[comment.pageIndex] || []), comment];
+        return grouped;
+      }, {})
+    );
+  }, [activeReviewTaskId, reviewTasks]);
+
   const refreshReviewTasks = useCallback(() => {
     setReviewTasks(loadReviewTasks());
   }, []);
@@ -954,6 +994,8 @@ export default function App() {
     setUserRole(role);
     saveUserRole(role);
     setActiveReviewTaskId(null);
+    setCreatorRightTab('ai');
+    refreshReviewTasks();
     if (role === 'ops') {
       if (currentSessionId && (copies.length > 0 || copyRevisions.length > 0)) {
         setCurrentScreen('workspace');
@@ -1015,6 +1057,15 @@ export default function App() {
     }
   };
 
+  const deleteKnowledgeItem = (id: number) => {
+    const item = library.find((entry) => entry.id === id);
+    setLibrary((prev) => prev.filter((entry) => entry.id !== id));
+    setLibSelectedIds((prev) => prev.filter((selectedId) => selectedId !== id));
+    if (previewMaterial?.id === id) setPreviewMaterial(null);
+    if (workspacePreviewMaterial?.id === id) setWorkspacePreviewMaterial(null);
+    toast(item ? `已删除「${item.title}」` : '知识已删除');
+  };
+
   const simulateUpload = () => {
     const title = `${activeCat}｜新上传资料.pdf`;
     setLibrary(prev => [{
@@ -1041,6 +1092,7 @@ export default function App() {
       cms: true,
       def: false,
       addedAt: Date.now(),
+      validUntil: '2027-07-31',
       ...buildPreviewFieldsFromTitle(title, true),
     }, ...prev]);
     toast('已从 CMS 加入候选素材');
@@ -1076,16 +1128,70 @@ export default function App() {
   };
 
   const submitHomeInput = () => {
+    setCreationMethodOpen(true);
+  };
+
+  const createNewContentFromHome = () => {
     const text = inputValue.trim();
-    if (!text && !homeAgentIntent) return;
     const intent = homeAgentIntent || 'general';
+    setCreationMethodOpen(false);
     setHomeAgentIntent(null);
-    if (isDemoMode()) {
-      startFromHome({ intent }, '', { silent: true });
-      void runDemoScenarioScript(text || '帮我生成一张图片', { addUserMessage: true, forceStart: true });
-      return;
-    }
+    setWorkspacePreviewMaterial(null);
     newTask(text, intent);
+  };
+
+  const openCmsFileFromHome = () => {
+    setCreationMethodOpen(false);
+    setOpenPickedMaterialInPreview(true);
+    openMaterialPicker('workspace', '参考知识', 'cms');
+  };
+
+  const showLocalMockPptPreview = (fileName: string) => {
+    setCreationMethodOpen(false);
+    const text = inputValue.trim();
+    setHomeAgentIntent(null);
+    startFromHome({ intent: 'ppt' }, text, { silent: true });
+    setWorkspacePreviewMaterial(null);
+    setPptOutline(WORKSPACE_MOCK_PPT_OUTLINE);
+    setPptVersions([WORKSPACE_MOCK_PPT]);
+    setSelectedPptVersionId(WORKSPACE_MOCK_PPT.id);
+    setPptResult({
+      title: WORKSPACE_MOCK_PPT_OUTLINE.title,
+      slides: WORKSPACE_MOCK_PPT.slides,
+    });
+    setState({
+      ...emptyWorkspaceState(),
+      tabs: ['ppt-design'],
+      active: 'ppt-design',
+      pptOutline: true,
+      pptDesign: true,
+    });
+    addMsg(
+      'ai',
+      `已打开本地文件「${fileName}」，中间区域已展示内置 Mock PPT，共 ${WORKSPACE_MOCK_PPT.slides.length} 页。`,
+      '本地 Mock'
+    );
+  };
+
+  const handleCreationFileSelected = (file: File) => {
+    showLocalMockPptPreview(file.name);
+    const now = Date.now();
+    const item: LibraryItem = {
+      id: now,
+      cat: '参考知识',
+      title: file.name,
+      meta: `本地文件 · ${(file.size / 1024).toFixed(0)}KB · 使用内置 PPT 预览`,
+      cms: false,
+      def: false,
+      referenced: true,
+      addedAt: now,
+      fileName: file.name,
+      contentType: 'text',
+      contentText: `已选择本地文件「${file.name}」。当前演示环境统一使用内置 Mock PPT 进行预览。`,
+      mimeType: file.type,
+    };
+    setLibrary((prev) => [item, ...prev]);
+    toast(`已打开「${file.name}」并展示内置 PPT`);
   };
 
   const openExistingTask = (sessionId = DEMO_SESSION_ID) => {
@@ -1149,6 +1255,9 @@ export default function App() {
     setPptOutline(null);
     setPptVersions([]);
     setSelectedPptVersionId(null);
+    setCreatorPptPageIndex(0);
+    setCreatorRightTab('ai');
+    setRichTextContent('');
     setSelectedPptTemplateId(
       entry?.intent === 'ppt-template' && entry.templateTitle
         ? pptTemplateIdFromTitle(entry.templateTitle)
@@ -1164,6 +1273,7 @@ export default function App() {
     setSelectedCopies([]);
     setCopyRevisions([]);
     setCopyRevisionBase('');
+    setWorkspacePreviewMaterial(null);
     pendingTopicInsightNoteRef.current = '';
     topicInsightUploadPendingRef.current = false;
       apiReady === false
@@ -1212,12 +1322,189 @@ export default function App() {
     setMessages(prev => [...prev, { role, html, model: role === 'ai' ? 'GPT-5.5' : model, quick }]);
   };
 
+  const openMockImageInPreview = (imageUrl: string, title: string) => {
+    const now = Date.now();
+    setWorkspacePreviewMaterial({
+      id: now,
+      cat: '生成图片',
+      title,
+      meta: '本地 Mock 数据 · 可在部署环境直接预览',
+      cms: false,
+      def: false,
+      addedAt: now,
+      fileName: `${title}.svg`,
+      contentType: 'image',
+      contentUrl: imageUrl,
+      mimeType: 'image/svg+xml',
+    });
+    setState((prev) => ({
+      ...prev,
+      tabs: prev.tabs.includes('visual') ? prev.tabs : [...prev.tabs, 'visual'],
+      active: 'visual',
+      visual: true,
+    }));
+  };
+
+  const runWorkspaceMockCommand = (text: string): boolean => {
+    const command = text.replace(/\s+/g, '').toLowerCase();
+
+    if (
+      /参考模板.*(更改|修改|调整|替换).*(当前)?ppt.*(样式|风格)/.test(command) ||
+      /(更改|修改|调整|替换).*(当前)?ppt.*(样式|风格).*参考模板/.test(command)
+    ) {
+      const isEnglishPpt =
+        selectedPptVersionId === WORKSPACE_MOCK_PPT_EN.id ||
+        selectedPptVersionId === WORKSPACE_MOCK_PPT_RESTYLED_EN.id;
+      const restyledPpt = isEnglishPpt
+        ? WORKSPACE_MOCK_PPT_RESTYLED_EN
+        : WORKSPACE_MOCK_PPT_RESTYLED;
+      setPptVersions([restyledPpt]);
+      setSelectedPptVersionId(restyledPpt.id);
+      setPptResult({
+        title: pptOutline?.title || WORKSPACE_MOCK_PPT_OUTLINE.title,
+        slides: restyledPpt.slides,
+      });
+      setCreatorPptPageIndex(0);
+      setState((prev) => ({
+        ...prev,
+        tabs: prev.tabs.includes('ppt-design') ? prev.tabs : [...prev.tabs, 'ppt-design'],
+        active: 'ppt-design',
+        pptOutline: true,
+        pptDesign: true,
+      }));
+      addMsg(
+        'ai',
+        '已参考模板重新设计当前 PPT：配色切换为深青渐变与金色强调，版式调整为左侧章节编号加右侧信息卡布局。',
+        '本地 Mock'
+      );
+      return true;
+    }
+
+    if (
+      /(将|把)?当前ppt翻译成英文/.test(command) ||
+      /翻译.*ppt.*英文/.test(command) ||
+      /ppt.*翻译.*英文/.test(command)
+    ) {
+      setPptOutline(WORKSPACE_MOCK_PPT_OUTLINE_EN);
+      setPptVersions([WORKSPACE_MOCK_PPT_EN]);
+      setSelectedPptVersionId(WORKSPACE_MOCK_PPT_EN.id);
+      setPptResult({
+        title: WORKSPACE_MOCK_PPT_OUTLINE_EN.title,
+        slides: WORKSPACE_MOCK_PPT_EN.slides,
+      });
+      setCreatorPptPageIndex(0);
+      setState((prev) => ({
+        ...prev,
+        tabs: prev.tabs.includes('ppt-design') ? prev.tabs : [...prev.tabs, 'ppt-design'],
+        active: 'ppt-design',
+        pptOutline: true,
+        pptDesign: true,
+      }));
+      addMsg(
+        'ai',
+        `当前 PPT 已翻译为英文版，共 ${WORKSPACE_MOCK_PPT_EN.slides.length} 页。中间预览区域已切换为英文内容。`,
+        '本地 Mock'
+      );
+      return true;
+    }
+
+    if (/(生成|创建|制作).*ppt.*大纲/.test(command)) {
+      setWorkspacePreviewMaterial((current) =>
+        current?.cat === '生成图片' && current.contentType === 'image' ? current : null
+      );
+      setPptOutline(WORKSPACE_MOCK_PPT_OUTLINE);
+      setPptWizard(null);
+      setState((prev) => ({
+        ...prev,
+        tabs: prev.tabs.includes('ppt-outline') ? prev.tabs : [...prev.tabs, 'ppt-outline'],
+        active: 'ppt-outline',
+        pptOutline: true,
+      }));
+      addMsg(
+        'ai',
+        `PPT 大纲已生成，共 ${WORKSPACE_MOCK_PPT_OUTLINE.chapters.length} 章。已在中间区域展示，可直接编辑章节与页面要点。`,
+        '本地 Mock'
+      );
+      return true;
+    }
+
+    if (/(生成|创建|制作).*ppt/.test(command)) {
+      setWorkspacePreviewMaterial((current) =>
+        current?.cat === '生成图片' && current.contentType === 'image' ? current : null
+      );
+      setPptOutline(WORKSPACE_MOCK_PPT_OUTLINE);
+      setPptVersions([WORKSPACE_MOCK_PPT]);
+      setSelectedPptVersionId(WORKSPACE_MOCK_PPT.id);
+      setPptResult({
+        title: WORKSPACE_MOCK_PPT_OUTLINE.title,
+        slides: WORKSPACE_MOCK_PPT.slides,
+      });
+      setState((prev) => ({
+        ...prev,
+        tabs: prev.tabs.includes('ppt-design') ? prev.tabs : [...prev.tabs, 'ppt-design'],
+        active: 'ppt-design',
+        pptOutline: true,
+        pptDesign: true,
+      }));
+      addMsg(
+        'ai',
+        `PPT 已生成，共 ${WORKSPACE_MOCK_PPT.slides.length} 页。已在中间区域展示，可逐页预览、编辑或导出。`,
+        '本地 Mock'
+      );
+      return true;
+    }
+
+    if (/(生成|创建|制作).*图文/.test(command)) {
+      setWorkspacePreviewMaterial((current) =>
+        current?.cat === '生成图片' && current.contentType === 'image' ? current : null
+      );
+      setRichTextContent(WORKSPACE_MOCK_RICH_TEXT);
+      setState((prev) => ({
+        ...prev,
+        tabs: prev.tabs.includes('rich-text') ? prev.tabs : [...prev.tabs, 'rich-text'],
+        active: 'rich-text',
+        richText: true,
+      }));
+      addMsg(
+        'ai',
+        '图文内容已生成，并已在中间区域打开富文本编辑器。你可以直接修改标题、段落、列表和强调样式。',
+        '本地 Mock'
+      );
+      return true;
+    }
+
+    if (/(生成|创建|制作).*(p?图片|配图|海报)/.test(command)) {
+      setGeneratedImages([WORKSPACE_MOCK_IMAGE.dataUrl]);
+      setGeneratedImageMeta([
+        { copyTitle: WORKSPACE_MOCK_IMAGE.title, copyIndex: -1, imageIndex: 0 },
+      ]);
+      setImageReviewOrigins([WORKSPACE_MOCK_IMAGE.dataUrl]);
+      setImageReviewStatuses([null]);
+      setSelectedImages([true]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'ai',
+          html: '图片已生成。你可以先在对话中查看，点击下方按钮后在中间区域进行预览和修改。',
+          model: '本地 Mock',
+          imageUrl: WORKSPACE_MOCK_IMAGE.dataUrl,
+          imageTitle: WORKSPACE_MOCK_IMAGE.title,
+          imageActionLabel: '图片修改',
+        },
+      ]);
+      return true;
+    }
+
+    return false;
+  };
+
   const send = () => {
     const text = inputValue.trim();
     if (!text) return;
     addMsg('user', text, selectedModel);
     setInputValue('');
     setSelectedPrompt('');
+    if (runWorkspaceMockCommand(text)) return;
     if (runDemoScenarioScript(text, { addUserMessage: false })) return;
     if (visualWizard?.active && handleVisualWizardReply(text)) return;
     if (pptWizard?.active && handlePptWizardReply(text, inputValue.trim())) return;
@@ -1520,11 +1807,11 @@ export default function App() {
     const type = opts?.contentType || teamReviewTarget || 'copy';
     const payload = buildTeamPayload(type);
     if (!payload) {
-      toast(`请先生成${TEAM_CONTENT_LABELS[type]}后再提交团队修改`);
+      toast(`请先生成${TEAM_CONTENT_LABELS[type]}后再提交团队审阅`);
       return;
     }
     if (!opts?.skipUserMsg) {
-      addMsg('user', `提交${TEAM_CONTENT_LABELS[type]}团队修改`, selectedModel);
+      addMsg('user', `提交${TEAM_CONTENT_LABELS[type]}团队审阅`, selectedModel);
     }
     setTeamModificationInProgress(true);
     void runWithAi(
@@ -1685,8 +1972,8 @@ export default function App() {
         : templates.length > 1
           ? `已按 ${templates.length} 个模板生成 ${newImages.length || mergedImages.length} 张配图（${templates.map((t) => t.name).join('、')}）。请在右侧查看。`
           : templates.length === 1
-            ? `已按「${templates[0].name}」模板生成配图「${titles[0] || copyTargets[0]?.copy.title}」。请在右侧查看，可勾选后提交团队修改。`
-            : `已生成 AI 海报「${titles[0] || '配图'}」。右侧可勾选图片提交团队修改，或继续生成视频、PPT。`;
+            ? `已按「${templates[0].name}」模板生成配图「${titles[0] || copyTargets[0]?.copy.title}」。请在右侧查看，可勾选后提交团队审阅。`
+            : `已生成 AI 海报「${titles[0] || '配图'}」。右侧可勾选图片提交团队审阅，或继续生成视频、PPT。`;
 
       addMsg('ai', summary, 'DeepSeek-V3.1｜图片生成', [
         '进入团队修改',
@@ -2435,21 +2722,23 @@ export default function App() {
 
   const confirmPptDesigns = (mode?: 'template' | 'no-template') => {
     if (!pptOutline) return;
+    const selectedTemplate = pptTemplateOptions.find(
+      (template) => template.id === selectedPptTemplateId
+    );
     const effectiveMode =
-      mode ?? (getPptTemplate(selectedPptTemplateId) ? 'template' : 'no-template');
-    if (effectiveMode === 'template' && !getPptTemplate(selectedPptTemplateId)) {
-      toast('请先在「PPT大纲」中选择一套内置模板');
+      mode ?? (selectedTemplate ? 'template' : 'no-template');
+    if (effectiveMode === 'template' && !selectedTemplate) {
+      toast('请先在「PPT大纲」中选择一套模板');
       setState((prev) => ({ ...prev, active: 'ppt-outline' }));
       return;
     }
     if (effectiveMode === 'no-template') {
       setSelectedPptTemplateId(null);
     }
-    const tpl =
-      effectiveMode === 'template' ? getPptTemplate(selectedPptTemplateId) : null;
+    const tpl = effectiveMode === 'template' ? selectedTemplate : null;
     const loadingLabel = tpl
       ? `正在按「${tpl.name}」模板生成 PPT`
-      : '正在生成 3 套 PPT 设计方案';
+      : '正在不使用模板直接生成 PPT';
     void runWithAi(
       loadingLabel,
       async () => {
@@ -2457,10 +2746,10 @@ export default function App() {
         pptOutline,
         pptOutline.audience,
         pptOutline.scenario,
-        tpl?.id ?? null
+        tpl?.generationTemplateId ?? tpl?.id ?? null
       );
       notifyMockIfNeeded(designs);
-      const { versions } = designs;
+      const versions = tpl ? designs.versions : designs.versions.slice(0, 1);
       setPptVersions(versions);
       const first = versions[0];
       if (first) {
@@ -2477,10 +2766,9 @@ export default function App() {
           ['查看大纲', '提交当前版本到Veeva Vault']
         );
       } else {
-        const names = versions.map((v) => v.name).join('、');
         addMsg(
           'ai',
-          `已生成 3 套 PPT 设计方案${names ? `（${names}）` : ''}，每套 ${first?.slides?.length ?? 0} 页。请在右侧「PPT生成」中切换对比并选用一套。`,
+          `未使用任何模板，已直接生成 PPT，共 ${first?.slides?.length ?? 0} 页。请在右侧「PPT生成」中预览与编辑。`,
           'DeepSeek-V3.1｜PPT 设计',
           ['查看大纲', '提交当前版本到Veeva Vault']
         );
@@ -3243,6 +3531,72 @@ export default function App() {
     }
   };
 
+  const replyToPptComment = (taskId: string, commentId: string) => {
+    const content = creatorReplyDrafts[commentId]?.trim();
+    if (!content) return;
+    const task = getReviewTask(taskId);
+    if (!task) {
+      toast('批注所属审阅任务不存在');
+      return;
+    }
+    const now = Date.now();
+    upsertReviewTask({
+      ...task,
+      pptComments: (task.pptComments || []).map((comment) =>
+        comment.id === commentId
+          ? {
+              ...comment,
+              replies: [
+                ...(comment.replies || []),
+                {
+                  id: `reply_${now}_${Math.random().toString(36).slice(2, 8)}`,
+                  authorRole: 'ops',
+                  authorName: ROLE_PROFILES.ops.name,
+                  content,
+                  createdAt: now,
+                },
+              ],
+            }
+          : comment
+      ),
+    });
+    setCreatorReplyDrafts((prev) => ({ ...prev, [commentId]: '' }));
+    refreshReviewTasks();
+    toast('回复已同步给审阅者');
+  };
+
+  const replyToCreatorAsReviewer = (commentId: string) => {
+    const content = reviewerReplyDrafts[commentId]?.trim();
+    if (!content || !activeReviewTaskId) return;
+    const task = getReviewTask(activeReviewTaskId);
+    if (!task) return;
+    const now = Date.now();
+    upsertReviewTask({
+      ...task,
+      status: 'in_progress',
+      pptComments: (task.pptComments || []).map((comment) =>
+        comment.id === commentId
+          ? {
+              ...comment,
+              replies: [
+                ...(comment.replies || []),
+                {
+                  id: `reply_${now}_${Math.random().toString(36).slice(2, 8)}`,
+                  authorRole: userRole,
+                  authorName: ROLE_PROFILES[userRole].name,
+                  content,
+                  createdAt: now,
+                },
+              ],
+            }
+          : comment
+      ),
+    });
+    setReviewerReplyDrafts((prev) => ({ ...prev, [commentId]: '' }));
+    refreshReviewTasks();
+    toast('回复已同步给内容创作者');
+  };
+
   const acceptImageReview = (index: number) => {
     setImageReviewStatuses((statuses) => {
       const { statuses: aligned } = alignImageReviewArrays(
@@ -3393,10 +3747,34 @@ export default function App() {
     updateTaskStatus(taskId, 'in_progress');
     refreshReviewTasks();
     setActiveReviewTaskId(taskId);
+    setReviewPptPageIndex(0);
+    setReviewPptNotes(
+      (task.pptComments || []).reduce<Record<number, PptReviewComment[]>>((grouped, comment) => {
+        grouped[comment.pageIndex] = [...(grouped[comment.pageIndex] || []), comment];
+        return grouped;
+      }, {})
+    );
+    setReviewPptNoteDraft('');
+    setReviewerReplyDrafts({});
     openSession(task.sessionId);
     setCurrentScreen('workspace');
     const session = getSession(task.sessionId);
-    const tabs = reviewerTabsForContentType(task.contentType, session?.workspace);
+    const sessionHasPpt =
+      Boolean(session?.workspace.pptResult?.slides?.length) ||
+      Boolean(session?.workspace.pptVersions?.some((version) => version.slides?.length));
+    if (task.contentType === 'ppt' && !sessionHasPpt) {
+      setPptOutline(WORKSPACE_MOCK_PPT_OUTLINE);
+      setPptVersions([WORKSPACE_MOCK_PPT]);
+      setSelectedPptVersionId(WORKSPACE_MOCK_PPT.id);
+      setPptResult({
+        title: WORKSPACE_MOCK_PPT_OUTLINE.title,
+        slides: WORKSPACE_MOCK_PPT.slides,
+      });
+    }
+    const tabs =
+      task.contentType === 'ppt'
+        ? ['ppt-design' as TabKey]
+        : reviewerTabsForContentType(task.contentType, session?.workspace);
     setState((prev) => ({
       ...prev,
       active: tabs[0],
@@ -3629,13 +4007,17 @@ export default function App() {
           status: 'completed',
           copyRevisions,
           copyRevisionBase: revisionBase,
+          completedReviewCount:
+            task.contentType === 'ppt'
+              ? (task.completedReviewCount || 0) + 1
+              : task.completedReviewCount,
         });
       }
     } else {
       updateTaskStatus(activeReviewTaskId, 'completed');
     }
     refreshReviewTasks();
-    toast('已标记为修改完成');
+    toast('已标记为审阅完成');
     setActiveReviewTaskId(null);
     if (isReviewerRole(userRole)) {
       setCurrentScreen('home');
@@ -3701,6 +4083,7 @@ export default function App() {
     cat = '参考知识',
     tab: 'upload' | 'cms' = 'upload'
   ) => {
+    setPickerMode('manage');
     setPickerTarget(target);
     setPickerCat(cat);
     setPickerTab(tab);
@@ -3710,26 +4093,44 @@ export default function App() {
   const handleMaterialPicked = (item: PickedMaterial) => {
     const now = Date.now();
     const fromInsightUpload = topicInsightUploadPendingRef.current && item.cat === HOT_INSIGHT_CATEGORY;
-    setLibrary((prev) => [
-      {
-        id: now,
-        cat: item.cat,
-        title: item.title,
-        meta: item.meta,
-        cms: item.cms,
-        def: pickerTarget === 'workspace' || fromInsightUpload,
-        addedAt: now,
-        fileName: item.fileName,
-        contentType: item.contentType,
-        contentText: item.contentText,
-        contentUrl: item.contentUrl,
-        mimeType: item.mimeType,
-      },
-      ...prev,
-    ]);
+    if (item.existingId !== undefined) {
+      setLibrary((prev) =>
+        prev.map((entry) => (entry.id === item.existingId ? { ...entry, referenced: true } : entry))
+      );
+      const pill = materialAttachmentPill(item);
+      setAttachments((prev) => [...prev.filter((entry) => entry !== pill), pill]);
+      toast(`已添加「${item.title}」到参考知识`);
+      return;
+    }
+    const libraryItem: LibraryItem = {
+      id: now,
+      cat: item.cat,
+      title: item.title,
+      meta: item.meta,
+      cms: item.cms,
+      def: false,
+      referenced: pickerTarget === 'workspace' || fromInsightUpload,
+      addedAt: now,
+      fileName: item.fileName,
+      contentType: item.contentType,
+      contentText: item.contentText,
+      contentUrl: item.contentUrl,
+      mimeType: item.mimeType,
+      validUntil: item.validUntil,
+    };
+    setLibrary((prev) => [libraryItem, ...prev]);
     const pill = materialAttachmentPill(item);
     setAttachments((prev) => [...prev.filter((p) => !p.endsWith('×')), pill]);
     toast(pickerTarget === 'chat' ? '附件已加入本次对话' : `已添加素材到「${item.cat}」`);
+    if (openPickedMaterialInPreview) {
+      const text = inputValue.trim();
+      const intent = homeAgentIntent || 'general';
+      setOpenPickedMaterialInPreview(false);
+      setHomeAgentIntent(null);
+      startFromHome({ intent }, text);
+      setWorkspacePreviewMaterial(libraryItem);
+      setAttachments([pill]);
+    }
     if (fromInsightUpload) {
       topicInsightUploadPendingRef.current = false;
       const note = pendingTopicInsightNoteRef.current;
@@ -3749,9 +4150,64 @@ export default function App() {
   };
 
   const filteredLibrary = library
-    .filter(x => x.cat === activeCat)
-    .filter(x => !libSearch || x.title.toLowerCase().includes(libSearch.toLowerCase()) || x.meta.toLowerCase().includes(libSearch.toLowerCase()))
+    .filter(x => !libSearch || `${x.title} ${x.meta} ${x.cat}`.toLowerCase().includes(libSearch.toLowerCase()))
     .filter(x => !onlyDefault || x.def);
+  const referencedTemplateItems = useMemo(
+    () =>
+      library.filter(
+        (item) => (item.referenced ?? item.def) && ['参考模板', '模板'].includes(item.cat)
+      ),
+    [library]
+  );
+  const pptTemplateOptions = useMemo<PptBuiltinTemplate[]>(() => {
+    if (referencedTemplateItems.length > 0) {
+      return referencedTemplateItems.flatMap((item) => {
+        const context = `${item.title} ${item.meta}`.toLowerCase();
+        const base =
+          /患者|宣教|关怀/.test(context)
+            ? PPT_BUILTIN_TEMPLATES.find((template) => template.id === 'patient-edu')
+            : /培训|内部|品牌/.test(context)
+              ? PPT_BUILTIN_TEMPLATES.find((template) => template.id === 'internal-training')
+              : /科普|疾病|社交|海报|图卡/.test(context)
+                ? PPT_BUILTIN_TEMPLATES.find((template) => template.id === 'disease-science')
+                : PPT_BUILTIN_TEMPLATES.find((template) => template.id === 'hcp-comm');
+        if (!base) return [];
+        return [{
+          ...base,
+          id: `reference-template-${item.id}`,
+          generationTemplateId: base.id,
+          name: item.title,
+          description: `来自左侧引用素材 · ${item.meta}`,
+        }];
+      });
+    }
+
+    const context = `${pptOutline?.title || ''} ${pptOutline?.audience || ''} ${
+      pptOutline?.scenario || ''
+    } ${inputValue}`.toLowerCase();
+    const priorityId =
+      /患者|公众|宣教|家属/.test(context)
+        ? 'patient-edu'
+        : /培训|内训|内部/.test(context)
+          ? 'internal-training'
+          : /科普|疾病教育/.test(context)
+            ? 'disease-science'
+            : 'hcp-comm';
+    return [...PPT_BUILTIN_TEMPLATES].sort((a, b) =>
+      a.id === priorityId ? -1 : b.id === priorityId ? 1 : 0
+    );
+  }, [inputValue, pptOutline, referencedTemplateItems]);
+  const pptTemplateSource: 'referenced' | 'recommended' =
+    referencedTemplateItems.length > 0 ? 'referenced' : 'recommended';
+
+  useEffect(() => {
+    if (
+      selectedPptTemplateId &&
+      !pptTemplateOptions.some((template) => template.id === selectedPptTemplateId)
+    ) {
+      setSelectedPptTemplateId(null);
+    }
+  }, [pptTemplateOptions, selectedPptTemplateId]);
 
   const libSelectedCount = libSelectedIds.length;
   const allVisibleSelected =
@@ -3794,6 +4250,30 @@ export default function App() {
           videoVersions,
         })
       : null;
+  const reviewPptSlides =
+    pptResult?.slides ||
+    pptVersions.find((version) => version.id === selectedPptVersionId)?.slides ||
+    pptVersions[0]?.slides ||
+    [];
+  const creatorPptReviewTasks = reviewTasks.filter(
+    (task) => task.sessionId === currentSessionId && task.contentType === 'ppt'
+  );
+  const hasCompletedPptReview = creatorPptReviewTasks.some(
+    (task) => task.status === 'completed' || (task.completedReviewCount || 0) > 0
+  );
+  const creatorPptComments = creatorPptReviewTasks
+    .flatMap((task) =>
+      (task.pptComments || []).map((comment) => ({
+        taskId: task.id,
+        reviewerName: task.assigneeName,
+        reviewerDept: ROLE_PROFILES[task.assigneeRole].dept,
+        comment,
+      }))
+    )
+    .sort((a, b) => a.comment.createdAt - b.comment.createdAt);
+  const creatorCurrentPageComments = creatorPptComments.filter(
+    ({ comment }) => comment.pageIndex === creatorPptPageIndex
+  );
 
   const activeProjectName = useMemo(() => {
     if (!activeProjectId) return null;
@@ -3822,15 +4302,6 @@ export default function App() {
       <AmbientOrbs />
       <header className="relative z-10 flex h-[72px] items-center justify-between px-6 lg:px-10">
         <div className="flex min-w-0 items-center gap-4 animate-fade-up">
-          <button
-            type="button"
-            className="text-left"
-            onClick={goToHome}
-          >
-            <h1 className="text-[15px] font-semibold leading-tight tracking-tight text-foreground">
-              可申达 <span className="text-gradient">AI 内容工作台</span>
-            </h1>
-          </button>
           {currentScreen !== 'home' && (
             <button
               type="button"
@@ -3843,29 +4314,11 @@ export default function App() {
           )}
         </div>
         <div className="flex items-center gap-3 text-xs animate-fade-up [animation-delay:120ms]">
-          <DemoModeControl
-            mode={appMode}
-            scenario={demoScenario}
-            onModeChange={(mode) => {
-              saveAppMode(mode);
-              setAppMode(mode);
-              if (mode === 'demo') {
-                setApiReady(true);
-                toast('已开启演示模式：不调用 AI 与后端，按脚本返回固定结果');
-              } else {
-                toast('已切换至真实模式');
-              }
-            }}
-            onScenarioChange={(scenario) => {
-              saveDemoScenario(scenario);
-              setDemoScenario(scenario);
-            }}
-          />
           <RoleSwitcher role={userRole} onChange={handleRoleChange} />
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground">当前品牌</span>
             <select className="rounded-lg border border-border/70 bg-glass px-3 py-1.5 font-medium text-foreground shadow-soft transition hover:border-primary/40">
-              <option>可申达</option>
+              <option value="">请选择品牌</option>
               <option>拜新同</option>
               <option>拜唐苹</option>
               <option>优迈</option>
@@ -3902,13 +4355,23 @@ export default function App() {
             )}
 
             <main className="relative min-h-0 min-w-0 flex-1">
-              <div className="absolute right-0 top-0 z-20 animate-fade-up">
+              <div className="absolute right-0 top-0 z-20 flex items-center gap-2 animate-fade-up">
                 <button
                   type="button"
                   className="glass-button flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium text-foreground hover:text-primary"
                   onClick={() => setCurrentScreen('library')}
                 >
-                  <span className="grid h-5 w-5 place-items-center rounded-md bg-gradient-to-br from-[#4A9EE0] to-[#D8466A] shadow-[0_3px_8px_-2px_rgba(59,127,191,0.5)] ring-1 ring-white/40">
+                  <span className="grid h-5 w-5 place-items-center rounded-md bg-gradient-to-br from-[#4A9EE0] to-[#3B7FBF] shadow-[0_3px_8px_-2px_rgba(59,127,191,0.5)] ring-1 ring-white/40">
+                    <Database className="h-3 w-3 text-white" strokeWidth={2.5} />
+                  </span>
+                  知识库
+                </button>
+                <button
+                  type="button"
+                  className="glass-button flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium text-foreground hover:text-primary"
+                  onClick={() => setCurrentScreen('assets')}
+                >
+                  <span className="grid h-5 w-5 place-items-center rounded-md bg-gradient-to-br from-[#D8466A] to-[#7762B8] shadow-[0_3px_8px_-2px_rgba(119,98,184,0.55)] ring-1 ring-white/40">
                     <LibraryIcon className="h-3 w-3 text-white" strokeWidth={2.5} />
                   </span>
                   素材库
@@ -3952,10 +4415,6 @@ export default function App() {
                     <div className="absolute inset-x-0 top-1/2 h-28 -translate-y-1/2 rounded-[30px] bg-hero-gradient opacity-20 blur-md brightness-125" />
                     <div className="relative rounded-[26px] glass-composer p-5 shadow-glow ring-1 ring-border/60">
                       <div className="mb-4 flex flex-wrap items-center gap-2">
-                        <HomeAttachMenu
-                          onUpload={() => openMaterialPicker('chat')}
-                          onSelectAgent={setHomeAgentIntent}
-                        />
                         {homeAgentIntent && (
                           <span className="group inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 py-1 pl-1 pr-2.5 text-xs font-medium text-primary">
                             <span className="grid h-5 w-5 place-items-center rounded-full bg-gradient-to-br from-cyan-500 to-sky-600 shadow-[0_3px_8px_-2px_oklch(0.55_0.18_220/0.5)] ring-1 ring-white/40">
@@ -4015,7 +4474,6 @@ export default function App() {
                         <button
                           type="button"
                           className="btn-hero-3d group inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-medium disabled:opacity-50"
-                          disabled={!inputValue.trim() && !homeAgentIntent}
                           onClick={submitHomeInput}
                         >
                           开始创作
@@ -4024,33 +4482,6 @@ export default function App() {
                       </div>
                     </div>
 
-                    <div className="mt-5 flex flex-wrap justify-center gap-2.5">
-                      {HOME_CREATION_MODES.map(({ intent, label, gradient, Icon }) => (
-                        <button
-                          key={intent}
-                          type="button"
-                          className="group overflow-hidden rounded-2xl glass-card glass-hover px-3.5 py-2 text-xs font-medium text-foreground"
-                          onClick={() => {
-                            if (isDemoMode() && intent === 'visual') {
-                              startFromHome({ intent }, '', { silent: true });
-                              void runDemoScenarioScript('帮我生成一张图片', {
-                                addUserMessage: true,
-                                forceStart: true,
-                              });
-                              return;
-                            }
-                            startFromHome({ intent });
-                          }}
-                        >
-                          <span className="relative flex items-center gap-2">
-                            <span className={cn('grid h-6 w-6 place-items-center rounded-lg bg-gradient-to-br shadow-[0_4px_10px_-2px_oklch(0.55_0.18_220/0.45)] ring-1 ring-white/40', gradient)}>
-                              <Icon className="h-3.5 w-3.5 text-white" strokeWidth={2.4} />
-                            </span>
-                            {label}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
                   </div>
                 </div>
               )}
@@ -4058,7 +4489,7 @@ export default function App() {
         </div>
       </section>
 
-      {/* Library Screen */}
+      {/* Knowledge Library Screen */}
       <section className={`screen ${currentScreen === 'library' ? 'active' : ''}`}>
         <div className="page library-page relative z-10 px-6 pb-6 lg:px-8">
           <div className="relative mb-5 animate-fade-up">
@@ -4076,10 +4507,10 @@ export default function App() {
                   <span className="sparkle-surface relative grid h-9 w-9 place-items-center rounded-2xl bg-hero-gradient shadow-glow animate-gradient-pan">
                     <LibraryIcon className="relative z-10 h-4 w-4 text-white" strokeWidth={2.4} />
                   </span>
-                  <span>素材<span className="text-gradient">库</span></span>
+                  <span>知识<span className="text-gradient">库</span></span>
                 </h2>
                 <p className="mt-1.5 text-[12.5px] text-muted-foreground">
-                  管理品牌素材、默认引用与 CMS 内容，支持多选后一键带入新对话
+                  管理品牌知识、合规手册与 CMS 内容，支持多选后一键带入新对话
                 </p>
               </div>
               <div className="relative">
@@ -4087,7 +4518,7 @@ export default function App() {
                 <div className="sparkle-surface relative flex items-center gap-3 rounded-2xl bg-hero-gradient px-5 py-3 shadow-glow ring-1 ring-white/40 animate-gradient-pan">
                   <div className="text-right">
                     <div className="text-[28px] font-bold leading-none text-white">{library.length}</div>
-                    <div className="mt-1 text-[10.5px] font-medium tracking-wide text-white/90">素材总数</div>
+                    <div className="mt-1 text-[10.5px] font-medium tracking-wide text-white/90">知识总数</div>
                   </div>
                   <Database className="h-5 w-5 text-white/80" strokeWidth={2.2} />
                 </div>
@@ -4096,7 +4527,7 @@ export default function App() {
           </div>
 
           <div className="flex gap-5">
-            <aside className="w-[18rem] shrink-0 animate-fade-up">
+            <aside className="hidden">
               <div className="bg-glass hud-frame relative flex h-[calc(100vh-12rem)] flex-col rounded-3xl border border-border/60 p-3 shadow-soft">
                 <div className="flex gap-2 px-1 pb-3">
                   <button
@@ -4105,7 +4536,7 @@ export default function App() {
                     onClick={() => openMaterialPicker('workspace', activeCat)}
                   >
                     <Upload className="h-3.5 w-3.5" />
-                    上传素材
+                    上传知识
                   </button>
                   <button
                     type="button"
@@ -4122,7 +4553,7 @@ export default function App() {
                   分类
                 </div>
 
-                <nav className="space-y-1 px-1" aria-label="素材分类">
+                <nav className="space-y-1 px-1" aria-label="知识分类">
                   {cats.map((c) => {
                     const isActive = c === activeCat;
                     return (
@@ -4167,7 +4598,7 @@ export default function App() {
                   <div className="mb-1.5 flex items-center justify-between px-1">
                     <div className="flex items-center gap-1.5 text-[11.5px] font-semibold text-foreground">
                       <Star className="h-3 w-3 text-[#FFB547]" fill="#FFB547" />
-                      默认素材
+                      默认知识
                     </div>
                     <span className="grid h-4 min-w-[16px] place-items-center rounded-full bg-gradient-to-br from-[#4A9EE0] to-[#D8466A] px-1 text-[10px] font-bold text-white">
                       {defaultCount}
@@ -4201,7 +4632,7 @@ export default function App() {
                       );
                     })}
                     {defaultCount === 0 && (
-                      <div className="px-2 py-3 text-center text-[11px] text-muted-foreground">暂无默认素材</div>
+                      <div className="px-2 py-3 text-center text-[11px] text-muted-foreground">暂无默认知识</div>
                     )}
                   </div>
                 </div>
@@ -4217,11 +4648,27 @@ export default function App() {
                     <Search className="absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                     <input
                       className="w-full rounded-xl glass-input py-2.5 pl-9 pr-3 text-[12.5px] placeholder:text-muted-foreground/70 focus:border-[#4A9EE0]/50 focus:outline-none focus:ring-2 focus:ring-[#4A9EE0]/15"
-                      placeholder="搜索素材名称、来源、标签…"
+                      placeholder="搜索知识名称、来源、标签…"
                       value={libSearch}
                       onChange={(e) => setLibSearch(e.target.value)}
                     />
                   </div>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5 rounded-xl btn-hero-3d px-3 py-2 text-[12px] font-semibold"
+                    onClick={() => openMaterialPicker('workspace', activeCat)}
+                  >
+                    <Upload className="h-3.5 w-3.5" />
+                    上传知识
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5 rounded-xl glass-button px-3 py-2 text-[12px] font-medium text-foreground"
+                    onClick={() => openMaterialPicker('workspace', activeCat, 'cms')}
+                  >
+                    <Search className="h-3.5 w-3.5" />
+                    搜索 CMS
+                  </button>
                   <button
                     type="button"
                     className={cn(
@@ -4242,7 +4689,7 @@ export default function App() {
                     <span className="grid h-7 w-7 place-items-center rounded-xl bg-gradient-to-br from-[#4A9EE0] to-[#3B7FBF] shadow-[0_4px_10px_-2px_rgba(59,127,191,0.5)] ring-1 ring-white/40">
                       <FileText className="h-3.5 w-3.5 text-white" strokeWidth={2.4} />
                     </span>
-                    <h3 className="text-[14.5px] font-semibold text-foreground">{activeCat}</h3>
+                    <h3 className="text-[14.5px] font-semibold text-foreground">全部知识</h3>
                     <span className="rounded-full bg-secondary px-2 py-0.5 text-[10.5px] font-semibold text-muted-foreground">
                       {filteredLibrary.length} 项
                     </span>
@@ -4276,6 +4723,7 @@ export default function App() {
                           onToggleSelect={() => toggleLibSelect(x.id)}
                           onToggleDefault={() => toggleDefault(x.id)}
                           onPreview={() => setPreviewMaterial(x)}
+                          onDelete={() => deleteKnowledgeItem(x.id)}
                         />
                       ))}
                     </div>
@@ -4284,9 +4732,9 @@ export default function App() {
                       <div className="sparkle-surface relative mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-hero-gradient shadow-glow animate-gradient-pan">
                         <FolderOpen className="relative z-10 h-6 w-6 text-white" strokeWidth={2.2} />
                       </div>
-                      <p className="text-[13px] font-semibold text-foreground">该分类暂无素材</p>
+                      <p className="text-[13px] font-semibold text-foreground">该分类暂无知识</p>
                       <p className="mt-1.5 max-w-xs text-[11.5px] leading-relaxed text-muted-foreground">
-                        上传本地文件，或从 CMS 搜索已审批内容加入素材库。
+                        上传本地文件，或从 CMS 搜索已审批内容加入知识库。
                       </p>
                       <div className="mt-4 flex gap-2">
                         <button
@@ -4295,7 +4743,7 @@ export default function App() {
                           onClick={() => openMaterialPicker('workspace', activeCat)}
                         >
                           <Upload className="h-3.5 w-3.5" />
-                          上传素材
+                          上传知识
                         </button>
                         <button
                           type="button"
@@ -4313,7 +4761,7 @@ export default function App() {
                   <div className="relative z-10 border-t border-border/50 bg-gradient-to-b from-transparent to-white/60 p-4 animate-fade-up">
                     <div className="flex items-center justify-between">
                       <div className="text-[12.5px] text-muted-foreground">
-                        已选 <span className="font-semibold text-foreground">{libSelectedCount}</span> 项素材
+                        已选 <span className="font-semibold text-foreground">{libSelectedCount}</span> 项知识
                       </div>
                       <div className="flex gap-2">
                         <button
@@ -4339,6 +4787,11 @@ export default function App() {
             </main>
           </div>
         </div>
+      </section>
+
+      {/* Asset Library Screen */}
+      <section className={`screen ${currentScreen === 'assets' ? 'active' : ''}`}>
+        <AssetLibraryPage onNotify={toast} />
       </section>
 
       {/* Workspace Screen */}
@@ -4378,9 +4831,24 @@ export default function App() {
                 <div className="context-scroll">
                   <ContextMaterialsPanel
                     library={library}
-                    categories={cats}
-                    onOpenPicker={(c) => openMaterialPicker('workspace', c)}
+                    onOpenPicker={(category) => {
+                      setPickerTarget('workspace');
+                      setPickerCat(category);
+                      setPickerMode('reference');
+                      setPickerOpen(true);
+                    }}
                     onPreview={setPreviewMaterial}
+                    onRemove={(item) => {
+                      setLibrary((prev) =>
+                        prev.map((entry) =>
+                          entry.id === item.id ? { ...entry, referenced: false } : entry
+                        )
+                      );
+                      const pill = materialAttachmentPill(item);
+                      setAttachments((prev) => prev.filter((entry) => entry !== pill));
+                      if (previewMaterial?.id === item.id) setPreviewMaterial(null);
+                      toast(`已从引用素材中移除「${item.title}」`);
+                    }}
                   />
                 </div>
               </>
@@ -4432,7 +4900,6 @@ export default function App() {
                     {taskTitle}
                   </h3>
                 )}
-                <div className="small">点击标题可手动修改；AI 仅在首次对话后自动命名一次</div>
               </div>
               <div className="compliance-agent-status" aria-label="合规智能体正在运行中">
                 <span className="compliance-agent-dot" aria-hidden />
@@ -4440,6 +4907,31 @@ export default function App() {
               </div>
             </div>
 
+            {hasCompletedPptReview && (
+            <div className="creator-right-tabs" role="tablist" aria-label="对话与批注">
+              <button
+                type="button"
+                className={creatorRightTab === 'ai' ? 'active' : ''}
+                onClick={() => setCreatorRightTab('ai')}
+              >
+                AI 对话
+              </button>
+              <button
+                type="button"
+                className={creatorRightTab === 'comments' ? 'active' : ''}
+                onClick={() => {
+                  refreshReviewTasks();
+                  setCreatorRightTab('comments');
+                }}
+              >
+                查看批注
+                {creatorPptComments.length > 0 && <span>{creatorPptComments.length}</span>}
+              </button>
+            </div>
+            )}
+
+            {!hasCompletedPptReview || creatorRightTab === 'ai' ? (
+            <>
             {activeReviewTaskId && activeReviewTask && (
                 <div className="review-task-banner">
                   <div>
@@ -4472,6 +4964,23 @@ export default function App() {
                       <div className="model-note">GPT-5.5</div>
                     ) : null}
                     <div dangerouslySetInnerHTML={{ __html: msg.html }} />
+                    {msg.imageUrl && (
+                      <div className="chat-generated-image">
+                        <img src={msg.imageUrl} alt={msg.imageTitle || 'AI 生成图片'} />
+                        <button
+                          type="button"
+                          className="btn soft"
+                          onClick={() =>
+                            openMockImageInPreview(
+                              msg.imageUrl || WORKSPACE_MOCK_IMAGE.dataUrl,
+                              msg.imageTitle || WORKSPACE_MOCK_IMAGE.title
+                            )
+                          }
+                        >
+                          {msg.imageActionLabel || '图片修改'}
+                        </button>
+                      </div>
+                    )}
                     {msg.quick && msg.quick.length > 0 && (
                       <div className="chips">
                         {msg.quick.map((q, i) => (
@@ -4550,12 +5059,106 @@ export default function App() {
                 <button className="btn primary" onClick={send}>发送</button>
               </div>
             </div>
+            </>
+            ) : (
+              <div className="creator-comments-view">
+                <div className="creator-comments-summary">
+                  <strong>第 {creatorPptPageIndex + 1} 页批注</strong>
+                  <span>{creatorCurrentPageComments.length} 条</span>
+                </div>
+                <div className="creator-comments-list">
+                  {creatorCurrentPageComments.length > 0 ? (
+                    creatorCurrentPageComments.map(({ taskId, reviewerName, reviewerDept, comment }) => (
+                      <article key={comment.id} className="creator-comment-thread">
+                        <div className="creator-comment-meta">
+                          <strong>第 {comment.pageNumber} 页 · {reviewerName}</strong>
+                          <span>{reviewerDept}</span>
+                        </div>
+                        <p>{comment.content}</p>
+                        {(comment.replies || []).map((reply) => (
+                          <div
+                            key={reply.id}
+                            className={`creator-comment-reply ${
+                              reply.authorRole === 'ops' ? 'reply-ops' : 'reply-reviewer'
+                            }`}
+                          >
+                            <strong>{reply.authorName} 回复</strong>
+                            <span>{reply.content}</span>
+                          </div>
+                        ))}
+                        <div className="creator-comment-compose">
+                          <textarea
+                            value={creatorReplyDrafts[comment.id] || ''}
+                            onChange={(event) =>
+                              setCreatorReplyDrafts((prev) => ({
+                                ...prev,
+                                [comment.id]: event.target.value,
+                              }))
+                            }
+                            placeholder="回复这条批注…"
+                          />
+                          <button
+                            type="button"
+                            className="btn primary"
+                            disabled={!creatorReplyDrafts[comment.id]?.trim()}
+                            onClick={() => replyToPptComment(taskId, comment.id)}
+                          >
+                            回复
+                          </button>
+                        </div>
+                      </article>
+                    ))
+                  ) : (
+                    <div className="reviewer-ppt-comments-empty">
+                      当前页面暂无审阅批注。
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
             </div>
           </main>
           ) : (
           <main className="wpanel reviewer-task-main">
-            {activeReviewTask && (
-              <>
+            {activeReviewTask && activeReviewTask.contentType === 'ppt' ? (
+              <div className="reviewer-ppt-sidebar">
+                <div className="reviewer-ppt-sidebar-head">
+                  <div>
+                    <strong>{activeReviewTask.title}</strong>
+                    <div className="small">PPT 审阅 · {reviewPptSlides.length} 页</div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn soft"
+                    onClick={() => {
+                      setActiveReviewTaskId(null);
+                      goToHome();
+                    }}
+                  >
+                    返回
+                  </button>
+                </div>
+                <div className="reviewer-ppt-thumbnails">
+                  {reviewPptSlides.map((slide, index) => (
+                    <button
+                      key={slide.page ?? index}
+                      type="button"
+                      className={`reviewer-ppt-thumbnail ${reviewPptPageIndex === index ? 'active' : ''}`}
+                      onClick={() => {
+                        setReviewPptPageIndex(index);
+                        setReviewPptNoteDraft('');
+                      }}
+                    >
+                      <span className="reviewer-ppt-page-no">{slide.page ?? index + 1}</span>
+                      <img src={slideToPreviewUrl(slide)} alt={`第 ${slide.page ?? index + 1} 页`} />
+                      {(reviewPptNotes[index]?.length ?? 0) > 0 && (
+                        <span className="reviewer-ppt-comment-count">{reviewPptNotes[index].length}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : activeReviewTask ? (
                 <div className="review-task-banner reviewer-task-banner-main">
                   <div>
                     <strong>{activeReviewTask.title}</strong>
@@ -4570,7 +5173,7 @@ export default function App() {
                   </div>
                   <div className="quick-row">
                     <button type="button" className="btn primary" onClick={completeReviewTask}>
-                      标记修改完成
+                      完成审阅
                     </button>
                     <button
                       type="button"
@@ -4584,8 +5187,7 @@ export default function App() {
                     </button>
                   </div>
                 </div>
-              </>
-            )}
+            ) : null}
           </main>
           )}
 
@@ -4596,6 +5198,8 @@ export default function App() {
             fillQuick={fillQuick}
             toast={toast}
             setDrawerOpen={setDrawerOpen}
+            openedFile={workspacePreviewMaterial}
+            onCloseOpenedFile={() => setWorkspacePreviewMaterial(null)}
             generatedImages={generatedImages}
             generatedImageMeta={generatedImageMeta}
             imageReviewOrigins={imageReviewOrigins}
@@ -4613,8 +5217,23 @@ export default function App() {
             pptVersions={pptVersions}
             selectedPptVersionId={selectedPptVersionId}
             selectedPptTemplateId={selectedPptTemplateId}
+            pptTemplateOptions={pptTemplateOptions}
+            pptTemplateSource={pptTemplateSource}
+            richTextContent={richTextContent}
+            onRichTextChange={setRichTextContent}
+            creatorPptPageIndex={creatorPptPageIndex}
+            onCreatorPptPageChange={setCreatorPptPageIndex}
+            creatorPptComments={creatorPptComments.map(({ comment }) => comment)}
             onSelectPptTemplate={setSelectedPptTemplateId}
             onPptOutlineChange={setPptOutline}
+            onRollbackPptSlides={(slides) => {
+              setPptResult((prev) => (prev ? { ...prev, slides } : prev));
+              setPptVersions((prev) =>
+                prev.map((version) =>
+                  version.id === selectedPptVersionId ? { ...version, slides } : version
+                )
+              );
+            }}
             onConfirmPptDesigns={confirmPptDesigns}
             onRegeneratePptOutline={regeneratePptOutline}
             isGenerating={isGenerating}
@@ -4664,6 +5283,7 @@ export default function App() {
             userRole={userRole}
             reviewerMode={reviewFocusMode}
             reviewContentType={activeReviewTask?.contentType}
+            reviewerPptPageIndex={reviewPptPageIndex}
             reviewerAllowedTabs={reviewerAllowedTabs}
             posterPlaceholder={posterData}
             onSavePptOutlineReview={savePptOutlineReview}
@@ -4672,6 +5292,103 @@ export default function App() {
             onSaveCopyReview={saveCopyReview}
             onOpenPptSlideEditor={openPptSlideEditor}
           />
+          {reviewFocusMode && activeReviewTask?.contentType === 'ppt' && (
+            <aside className="wpanel reviewer-ppt-comments-panel">
+              <div className="reviewer-ppt-comments-panel-head">
+                <strong>批注</strong>
+                <span>第 {reviewPptSlides[reviewPptPageIndex]?.page ?? reviewPptPageIndex + 1} 页</span>
+              </div>
+              <div className="reviewer-ppt-comment-list reviewer-ppt-comment-list-expanded">
+                {(reviewPptNotes[reviewPptPageIndex] || []).length > 0 ? (
+                  (reviewPptNotes[reviewPptPageIndex] || []).map((note) => (
+                    <div key={note.id} className="reviewer-ppt-comment">
+                      <strong>{note.authorName}</strong>
+                      <span>{note.content}</span>
+                      {(note.replies || []).map((reply) => (
+                        <div
+                          key={reply.id}
+                          className={`reviewer-ppt-comment-reply ${
+                            reply.authorRole === 'ops' ? 'reply-ops' : 'reply-reviewer'
+                          }`}
+                        >
+                          <strong>{reply.authorName} 回复</strong>
+                          <span>{reply.content}</span>
+                        </div>
+                      ))}
+                      {(note.replies || []).some((reply) => reply.authorRole === 'ops') && (
+                        <div className="reviewer-comment-reply-compose">
+                          <textarea
+                            value={reviewerReplyDrafts[note.id] || ''}
+                            onChange={(event) =>
+                              setReviewerReplyDrafts((prev) => ({
+                                ...prev,
+                                [note.id]: event.target.value,
+                              }))
+                            }
+                            placeholder="回复内容创作者…"
+                          />
+                          <button
+                            type="button"
+                            className="btn primary"
+                            disabled={!reviewerReplyDrafts[note.id]?.trim()}
+                            onClick={() => replyToCreatorAsReviewer(note.id)}
+                          >
+                            回复
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="reviewer-ppt-comments-empty">当前页面暂无批注</div>
+                )}
+              </div>
+              <div className="reviewer-ppt-comment-compose">
+                <textarea
+                  className="reviewer-ppt-comment-input"
+                  value={reviewPptNoteDraft}
+                  onChange={(event) => setReviewPptNoteDraft(event.target.value)}
+                  placeholder="针对当前页面添加批注…"
+                />
+                <button
+                  type="button"
+                  className="btn primary reviewer-ppt-comment-submit"
+                  disabled={!reviewPptNoteDraft.trim()}
+                  onClick={() => {
+                    const content = reviewPptNoteDraft.trim();
+                    if (!content || !activeReviewTaskId) return;
+                    const task = getReviewTask(activeReviewTaskId);
+                    if (!task) return;
+                    const now = Date.now();
+                    const note: PptReviewComment = {
+                      id: `ppt_comment_${now}_${Math.random().toString(36).slice(2, 8)}`,
+                      pageIndex: reviewPptPageIndex,
+                      pageNumber: reviewPptSlides[reviewPptPageIndex]?.page ?? reviewPptPageIndex + 1,
+                      authorRole: userRole,
+                      authorName: ROLE_PROFILES[userRole].name,
+                      content,
+                      createdAt: now,
+                      replies: [],
+                    };
+                    const nextComments = [...(task.pptComments || []), note];
+                    upsertReviewTask({ ...task, status: 'in_progress', pptComments: nextComments });
+                    setReviewPptNotes((prev) => ({
+                      ...prev,
+                      [reviewPptPageIndex]: [...(prev[reviewPptPageIndex] || []), note],
+                    }));
+                    setReviewPptNoteDraft('');
+                    refreshReviewTasks();
+                    toast('批注已添加');
+                  }}
+                >
+                  添加批注
+                </button>
+                <button type="button" className="btn soft reviewer-ppt-complete" onClick={completeReviewTask}>
+                  完成审阅
+                </button>
+              </div>
+            </aside>
+          )}
         </div>
       </section>
 
@@ -4706,6 +5423,7 @@ export default function App() {
                   }
                 }}
                 isGenerating={isGenerating}
+                allowBrush={editorTarget?.kind !== 'ppt-slide'}
               />
             </>
           )}
@@ -4713,12 +5431,25 @@ export default function App() {
         document.body
       )}
 
+      <CreationMethodModal
+        open={creationMethodOpen}
+        onClose={() => setCreationMethodOpen(false)}
+        onCreateNew={createNewContentFromHome}
+        onOpenLocal={handleCreationFileSelected}
+        onOpenCms={openCmsFileFromHome}
+      />
+
       <MaterialPickerModal
         open={pickerOpen}
         defaultCat={pickerCat}
         initialTab={pickerTab}
         categories={cats}
-        onClose={() => setPickerOpen(false)}
+        mode={pickerMode}
+        knowledgeItems={library}
+        onClose={() => {
+          setPickerOpen(false);
+          setOpenPickedMaterialInPreview(false);
+        }}
         onConfirm={handleMaterialPicked}
       />
 
@@ -4798,7 +5529,7 @@ export default function App() {
         }
       }}>
         <div className="modal">
-          <h3>提交团队修改</h3>
+          <h3>提交团队审阅</h3>
           {teamReviewTarget && (
             <div className="detail-card team-review-target-card">
               <h4>本次提交内容</h4>
@@ -4878,10 +5609,21 @@ export default function App() {
                 }
 
                 const assigneeLabels: string[] = [];
+                const existingTasks = loadReviewTasks();
                 teamAssigneeRoles.forEach((role, index) => {
                   const assignee = ROLE_PROFILES[role];
+                  const existingTask = existingTasks.find(
+                    (task) =>
+                      task.sessionId === currentSessionId &&
+                      task.contentType === target &&
+                      task.assigneeRole === role
+                  );
+                  const now = Date.now();
                   const task: ReviewTask = {
-                    id: `rt_${Date.now()}_${index}_${Math.random().toString(36).slice(2, 8)}`,
+                    ...existingTask,
+                    id:
+                      existingTask?.id ||
+                      `rt_${now}_${index}_${Math.random().toString(36).slice(2, 8)}`,
                     sessionId: currentSessionId,
                     title: taskTitle,
                     contentType: target,
@@ -4890,10 +5632,14 @@ export default function App() {
                     assignerName: ROLE_PROFILES.ops.name,
                     deadline,
                     status: 'pending',
-                    createdAt: Date.now(),
-                    updatedAt: Date.now(),
+                    createdAt: existingTask?.createdAt || now,
+                    updatedAt: now,
                     baseCopyText: baseCopy || undefined,
                     copyRevisionBase: baseCopy || undefined,
+                    reviewRound: (existingTask?.reviewRound || 0) + 1,
+                    completedReviewCount:
+                      existingTask?.completedReviewCount ||
+                      (existingTask?.status === 'completed' ? 1 : 0),
                   };
                   upsertReviewTask(task);
                   assigneeLabels.push(`${assignee.name}（${assignee.dept}）`);
@@ -5012,6 +5758,86 @@ function VideoPreviewPlayer({ version }: { version: VideoRenderVersion }) {
   );
 }
 
+function DrawableImagePreview({ item }: { item: LibraryItem }) {
+  const [brushActive, setBrushActive] = useState(false);
+  const [strokes, setStrokes] = useState<string[]>([]);
+  const [activeStroke, setActiveStroke] = useState<string>('');
+  const drawingRef = useRef(false);
+  const activeStrokeRef = useRef('');
+
+  const pointFromEvent = (event: React.PointerEvent<SVGSVGElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / rect.width) * 1000;
+    const y = ((event.clientY - rect.top) / rect.height) * 1000;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  };
+
+  const finishStroke = () => {
+    const completedStroke = activeStrokeRef.current;
+    if (completedStroke) setStrokes((prev) => [...prev, completedStroke]);
+    activeStrokeRef.current = '';
+    setActiveStroke('');
+    drawingRef.current = false;
+  };
+
+  return (
+    <div className="image-draw-editor">
+      <div className="image-draw-toolbar">
+        <button
+          type="button"
+          className={`btn image-draw-tool ${brushActive ? 'primary active' : 'soft'}`}
+          onClick={() => setBrushActive((active) => !active)}
+        >
+          <Paintbrush className="h-3.5 w-3.5" />
+          画笔
+        </button>
+        <button
+          type="button"
+          className="btn soft image-draw-tool"
+          disabled={strokes.length === 0 && !activeStroke}
+          onClick={() => {
+            setStrokes([]);
+            activeStrokeRef.current = '';
+            setActiveStroke('');
+            drawingRef.current = false;
+          }}
+        >
+          <Eraser className="h-3.5 w-3.5" />
+          清除
+        </button>
+      </div>
+      <div className="image-draw-canvas">
+        <img src={item.contentUrl} alt={item.title} draggable={false} />
+        <svg
+          viewBox="0 0 1000 1000"
+          preserveAspectRatio="none"
+          className={`image-draw-layer ${brushActive ? 'active' : ''}`}
+          onPointerDown={(event) => {
+            if (!brushActive) return;
+            event.currentTarget.setPointerCapture(event.pointerId);
+            drawingRef.current = true;
+            const point = pointFromEvent(event);
+            activeStrokeRef.current = point;
+            setActiveStroke(point);
+          }}
+          onPointerMove={(event) => {
+            if (!brushActive || !drawingRef.current) return;
+            activeStrokeRef.current = `${activeStrokeRef.current} ${pointFromEvent(event)}`;
+            setActiveStroke(activeStrokeRef.current);
+          }}
+          onPointerUp={finishStroke}
+          onPointerCancel={finishStroke}
+        >
+          {strokes.map((points, index) => (
+            <polyline key={index} points={points} className="image-draw-stroke" />
+          ))}
+          {activeStroke && <polyline points={activeStroke} className="image-draw-stroke" />}
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 function WorkspaceRightPanel({
   state,
   setState,
@@ -5019,6 +5845,8 @@ function WorkspaceRightPanel({
   fillQuick,
   toast,
   setDrawerOpen,
+  openedFile,
+  onCloseOpenedFile,
   generatedImages,
   generatedImageMeta,
   imageReviewOrigins,
@@ -5036,8 +5864,16 @@ function WorkspaceRightPanel({
   pptVersions,
   selectedPptVersionId,
   selectedPptTemplateId,
+  pptTemplateOptions,
+  pptTemplateSource,
+  richTextContent,
+  onRichTextChange,
+  creatorPptPageIndex,
+  onCreatorPptPageChange,
+  creatorPptComments,
   onSelectPptTemplate,
   onPptOutlineChange,
+  onRollbackPptSlides,
   onConfirmPptDesigns,
   onRegeneratePptOutline,
   isGenerating,
@@ -5080,6 +5916,7 @@ function WorkspaceRightPanel({
   userRole,
   reviewerMode,
   reviewContentType,
+  reviewerPptPageIndex,
   reviewerAllowedTabs,
   posterPlaceholder,
   onSavePptOutlineReview,
@@ -5094,6 +5931,8 @@ function WorkspaceRightPanel({
   fillQuick: (text: string) => void;
   toast: (text: string) => void;
   setDrawerOpen: (open: boolean) => void;
+  openedFile: LibraryItem | null;
+  onCloseOpenedFile: () => void;
   generatedImages: string[];
   generatedImageMeta: GeneratedImageMeta[];
   imageReviewOrigins: string[];
@@ -5111,8 +5950,16 @@ function WorkspaceRightPanel({
   pptVersions: PptDesignVersion[];
   selectedPptVersionId: string | null;
   selectedPptTemplateId: string | null;
+  pptTemplateOptions: PptBuiltinTemplate[];
+  pptTemplateSource: 'referenced' | 'recommended';
+  richTextContent: string;
+  onRichTextChange: (html: string) => void;
+  creatorPptPageIndex: number;
+  onCreatorPptPageChange: (index: number) => void;
+  creatorPptComments: PptReviewComment[];
   onSelectPptTemplate: (id: string | null) => void;
   onPptOutlineChange: (outline: PptOutline) => void;
+  onRollbackPptSlides: (slides: PptSlide[]) => void;
   onConfirmPptDesigns: (mode?: 'template' | 'no-template') => void;
   onRegeneratePptOutline: () => void;
   isGenerating: boolean;
@@ -5155,6 +6002,7 @@ function WorkspaceRightPanel({
   userRole: UserRole;
   reviewerMode: boolean;
   reviewContentType?: TeamContentType;
+  reviewerPptPageIndex: number;
   reviewerAllowedTabs: TabKey[] | null;
   posterPlaceholder: string;
   onSavePptOutlineReview: () => void;
@@ -5167,7 +6015,49 @@ function WorkspaceRightPanel({
     reviewerMode && reviewerAllowedTabs?.length
       ? state.tabs.filter((t) => reviewerAllowedTabs.includes(t))
       : state.tabs;
+  const previewFile: LibraryItem | null =
+    openedFile ||
+    (generatedImages[0]
+      ? {
+          id: -1,
+          cat: '生成图片',
+          title: generatedImageMeta[0]?.copyTitle || '生成图片',
+          meta: 'AI 生成图片 · 可预览和修改',
+          cms: false,
+          def: false,
+          addedAt: Date.now(),
+          fileName: '生成图片.svg',
+          contentType: 'image',
+          contentUrl: generatedImages[0],
+          mimeType: 'image/svg+xml',
+        }
+      : null);
+  const isGeneratedImagePreview = previewFile?.cat === '生成图片' && previewFile.contentType === 'image';
   const [selectedCopyRevisionIndex, setSelectedCopyRevisionIndex] = useState<number | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [previewHistoryId, setPreviewHistoryId] = useState<string | null>(null);
+  const [restoredFrom, setRestoredFrom] = useState<string | null>(null);
+  const historyVersions = [
+    { id: 'latest', label: restoredFrom ? `当前版本（回溯自 ${restoredFrom}）` : '当前版本', time: '刚刚' },
+    { id: 'v2', label: '版本 V2', time: '今天 15:24' },
+    { id: 'v1', label: '版本 V1', time: '今天 10:08' },
+  ];
+  const selectedHistory = historyVersions.find((version) => version.id === previewHistoryId);
+  const historyDepth = previewHistoryId === 'v1' ? 2 : previewHistoryId === 'v2' ? 1 : 0;
+  const previewOutline = useMemo(() => {
+    if (!pptOutline || historyDepth === 0) return pptOutline;
+    return {
+      ...pptOutline,
+      chapters: pptOutline.chapters.slice(
+        0,
+        Math.max(1, pptOutline.chapters.length - historyDepth)
+      ),
+    };
+  }, [historyDepth, pptOutline]);
+  const previewSlides = useMemo(() => {
+    if (!pptResult || historyDepth === 0) return pptResult?.slides || [];
+    return pptResult.slides.slice(0, Math.max(1, pptResult.slides.length - historyDepth));
+  }, [historyDepth, pptResult]);
   const revisedCopyIndex = useMemo(
     () => findCopyIndexForRevision(copies, copyRevisionBase, copyRevisions),
     [copies, copyRevisionBase, copyRevisions]
@@ -5179,21 +6069,33 @@ function WorkspaceRightPanel({
     }
   }, [revisedCopyIndex, selectedCopyRevisionIndex]);
 
+  const restoreHistoryVersion = () => {
+    if (!selectedHistory) return;
+    if (state.active === 'ppt-outline' && previewOutline) {
+      onPptOutlineChange(previewOutline);
+    }
+    if (state.active === 'ppt-design' && previewSlides.length) {
+      onRollbackPptSlides(previewSlides);
+    }
+    setRestoredFrom(selectedHistory.label);
+    setPreviewHistoryId(null);
+    toast(`已回溯至 ${selectedHistory.label}`);
+  };
+
   const teamReviewButton = (contentType: TeamContentType) => (
     reviewerMode ? null : (
     <div className="team-review-strip">
       <button
         type="button"
-        className={`btn ${teamModificationInProgress ? '' : 'warn'}`}
+        className={`btn team-review-action-btn ${teamModificationInProgress ? '' : 'warn'}`}
         disabled={teamModificationInProgress}
         style={{
-          width: '100%',
           opacity: teamModificationInProgress ? 0.6 : 1,
           cursor: teamModificationInProgress ? 'not-allowed' : 'pointer',
         }}
         onClick={() => !teamModificationInProgress && onOpenTeamReview(contentType)}
       >
-        {teamModificationInProgress ? '团队修改中...' : '提交团队修改'}
+        {teamModificationInProgress ? '团队审阅中...' : '提交团队审阅'}
       </button>
     </div>
     )
@@ -5528,12 +6430,58 @@ function WorkspaceRightPanel({
           </>
         );
 
+      case 'rich-text':
+        return (
+          <>
+            <RichTextEditor
+              value={richTextContent || WORKSPACE_MOCK_RICH_TEXT}
+              onChange={onRichTextChange}
+            />
+            <div className="content-submit-actions">
+              <button
+                type="button"
+                className="btn soft"
+                onClick={() => {
+                  const content = richTextContent || WORKSPACE_MOCK_RICH_TEXT;
+                  const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>图文内容</title></head><body>${content}</body></html>`;
+                  downloadDataUrl(
+                    `data:text/html;charset=utf-8,${encodeURIComponent(html)}`,
+                    '图文内容.html'
+                  );
+                  toast('图文内容已下载');
+                }}
+              >
+                下载图文
+              </button>
+              {!reviewerMode && (
+                <>
+                  <button
+                    type="button"
+                    className="btn warn"
+                    disabled={teamModificationInProgress}
+                    onClick={() => !teamModificationInProgress && onOpenTeamReview('rich-text')}
+                  >
+                    {teamModificationInProgress ? '团队审阅中...' : '提交团队审阅'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn green"
+                    onClick={() => fillQuick('提交当前图文内容到Veeva Vault审批:')}
+                  >
+                    提交 Veeva Vault 审批
+                  </button>
+                </>
+              )}
+            </div>
+          </>
+        );
+
       case 'team':
         if (!teamResult) {
           return (
             <div className="detail-card">
               <h4>团队修改</h4>
-              <div className="small">在对话中提交团队修改邀请，或点击「进入团队修改」由 AI 整合反馈。</div>
+              <div className="small">在对话中提交团队审阅邀请，或点击「进入团队修改」由 AI 整合反馈。</div>
             </div>
           );
         }
@@ -5614,7 +6562,7 @@ function WorkspaceRightPanel({
               <h4>图片生成详情</h4>
               <div className="small">
                 {hasGenerated
-                  ? `已生成 ${generatedImages.length} 张配图，按 ${groupImagesByCopy(generatedImages, generatedImageMeta).length} 篇文案分类。勾选后提交团队修改；点击图片可进入编辑。`
+                  ? `已生成 ${generatedImages.length} 张配图，按 ${groupImagesByCopy(generatedImages, generatedImageMeta).length} 篇文案分类。勾选后提交团队审阅；点击图片可进入编辑。`
                   : '尚未生成配图，以下为示意预览。请先在对话中生成图片，并说明每个文案想生成几张。'}
               </div>
             </div>
@@ -5916,11 +6864,13 @@ function WorkspaceRightPanel({
           <div className="ppt-outline-tab-layout">
             <PptOutlineEditor
               variant="inline"
-              outline={pptOutline}
+              outline={previewOutline || pptOutline}
               onChange={onPptOutlineChange}
               onGenerateDesigns={onConfirmPptDesigns}
               onRegenerateOutline={onRegeneratePptOutline}
               selectedTemplateId={selectedPptTemplateId}
+              templates={pptTemplateOptions}
+              templateSource={pptTemplateSource}
               onSelectTemplate={onSelectPptTemplate}
               isGenerating={isGenerating}
               reviewerMode={reviewerMode}
@@ -5932,6 +6882,7 @@ function WorkspaceRightPanel({
                 <PptOutlineGenerateFooter
                   isGenerating={isGenerating}
                   selectedTemplateId={selectedPptTemplateId}
+                  templates={pptTemplateOptions}
                   onGenerateDesigns={onConfirmPptDesigns}
                 />
               </div>
@@ -5941,18 +6892,24 @@ function WorkspaceRightPanel({
 
       case 'ppt-design': {
         if (reviewerMode) {
+          const slide = previewSlides[reviewerPptPageIndex] || previewSlides[0];
+          if (!slide) {
+            return (
+              <div className="detail-card">
+                <h4>暂无 PPT 页面</h4>
+                <div className="small">当前任务尚未包含可审阅的 PPT 成品。</div>
+              </div>
+            );
+          }
           return (
-            <div className="detail-card">
-              <h4>PPT 大纲审阅</h4>
-              <div className="small">请切换到「PPT大纲」标签编辑结构；生成 PPT 成品由内容运营负责。</div>
-              <button
-                type="button"
-                className="btn soft"
-                style={{ marginTop: 12 }}
-                onClick={() => setState((prev) => ({ ...prev, active: 'ppt-outline' }))}
-              >
-                前往 PPT 大纲
-              </button>
+            <div className="reviewer-ppt-stage">
+              <div className="reviewer-ppt-stage-head">
+                <strong>第 {slide.page ?? reviewerPptPageIndex + 1} 页</strong>
+                <span>{slide.title}</span>
+              </div>
+              <div className="reviewer-ppt-slide-canvas">
+                <img src={slideToPreviewUrl(slide)} alt={slide.title} />
+              </div>
             </div>
           );
         }
@@ -5977,48 +6934,20 @@ function WorkspaceRightPanel({
         const singleVersion = pptVersions.length <= 1;
         const activeVersion =
           pptVersions.find((v) => v.id === selectedPptVersionId) || pptVersions[0];
-        const activePptFileUrl = activeVersion?.fileUrl;
-        const activePptFileName = activeVersion?.fileName || activeVersion?.name || '预置PPT.pptx';
+        const creatorActivePageIndex = Math.min(
+          creatorPptPageIndex,
+          Math.max(previewSlides.length - 1, 0)
+        );
+        const creatorActiveSlide = previewSlides[creatorActivePageIndex] || previewSlides[0];
         return (
           <>
-            {singleVersion ? (
-              <div className="detail-card detail-card-ppt-design">
-                <div className="ppt-design-title-row">
-                  <div>
-                    <h4>{activeVersion?.name || 'PPT 成品'}</h4>
-                    <div className="small">
-                      {activeVersion?.styleTag || '拜耳蓝绿'}
-                      {activeVersion?.description ? ` · ${activeVersion.description}` : ''}
-                    </div>
-                  </div>
-                  <div className="quick-row">
-                    {pptResult?.slides.length ? (
-                      <button type="button" className="btn primary" onClick={exportAllPptPages}>
-                        一键导出全部页面
-                      </button>
-                    ) : null}
-                    {activePptFileUrl ? (
-                      <a className="btn soft" href={activePptFileUrl} download={activePptFileName}>
-                        下载PPT
-                      </a>
-                    ) : !pptResult?.slides.length ? (
-                      <button type="button" className="btn primary" onClick={exportAllPptPages}>
-                        一键导出全部页面
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            ) : (
+            {!singleVersion && (
               <div className="detail-card detail-card-ppt-design">
                 <div className="ppt-design-title-row">
                   <div>
                     <h4>选择 PPT 设计方案</h4>
                     <div className="small">共 {pptVersions.length} 套拜耳蓝绿风格方案</div>
                   </div>
-                  <button type="button" className="btn primary" onClick={exportAllPptPages}>
-                    一键导出全部页面
-                  </button>
                 </div>
                 <div className="ppt-version-grid">
                   {pptVersions.map((v) => (
@@ -6041,30 +6970,96 @@ function WorkspaceRightPanel({
                 </div>
               </div>
             )}
-            {pptResult && (
-              <PptSlidesPanel
-                slides={pptResult.slides}
-                title={pptResult.title || pptOutline?.title}
-                onEditSlide={onOpenPptSlideEditor}
-              />
+            {pptResult && creatorActiveSlide && (
+              <div className="creator-ppt-preview-card">
+                <div className="creator-ppt-thumbnails">
+                  {previewSlides.map((slide, index) => {
+                    const commentCount = creatorPptComments.filter(
+                      (comment) => comment.pageIndex === index
+                    ).length;
+                    return (
+                      <button
+                        key={`${slide.page}-${index}`}
+                        type="button"
+                        className={creatorActivePageIndex === index ? 'active' : ''}
+                        onClick={() => onCreatorPptPageChange(index)}
+                      >
+                        <span className="creator-ppt-thumbnail-page">{slide.page ?? index + 1}</span>
+                        <img src={slideToPreviewUrl(slide)} alt={`第 ${slide.page ?? index + 1} 页`} />
+                        {commentCount > 0 && (
+                          <span className="creator-ppt-thumbnail-comments">{commentCount}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="creator-ppt-stage">
+                  <div className="creator-ppt-stage-head">
+                    <div>
+                      <strong>第 {creatorActiveSlide.page ?? creatorActivePageIndex + 1} 页</strong>
+                      <span>{creatorActiveSlide.title}</span>
+                    </div>
+                    {!selectedHistory && (
+                      <button
+                        type="button"
+                        className="btn soft"
+                        onClick={() => onOpenPptSlideEditor(creatorActivePageIndex)}
+                      >
+                        手动调整
+                      </button>
+                    )}
+                  </div>
+                  <div className="creator-ppt-slide-canvas">
+                    <DrawableImagePreview
+                      key={`${creatorActiveSlide.page}-${creatorActivePageIndex}`}
+                      item={{
+                        id: -(creatorActivePageIndex + 1),
+                        cat: 'PPT 页面',
+                        title: creatorActiveSlide.title,
+                        meta: `第 ${creatorActiveSlide.page ?? creatorActivePageIndex + 1} 页`,
+                        cms: false,
+                        def: false,
+                        addedAt: Date.now(),
+                        contentType: 'image',
+                        contentUrl: slideToPreviewUrl(creatorActiveSlide),
+                        mimeType: 'image/svg+xml',
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
             )}
             <div className="ppt-design-foot-actions">
-              {state.tabs.includes('ppt-outline') && (
-                <button
-                  type="button"
-                  className="btn soft"
-                  onClick={() => setState((prev) => ({ ...prev, active: 'ppt-outline' }))}
-                >
-                  返回编辑大纲
-                </button>
-              )}
               {!singleVersion && (
                 <button type="button" className="btn soft" onClick={() => fillQuick('生成设计')}>
                   重新生成设计
                 </button>
               )}
             </div>
-            {teamAndVeevaActions('ppt')}
+            <div className="content-submit-actions">
+              <button type="button" className="btn soft" onClick={exportAllPptPages}>
+                一键导出全部页面
+              </button>
+              {!reviewerMode && (
+                <>
+                  <button
+                    type="button"
+                    className="btn warn"
+                    disabled={teamModificationInProgress}
+                    onClick={() => !teamModificationInProgress && onOpenTeamReview('ppt')}
+                  >
+                    {teamModificationInProgress ? '团队审阅中...' : '提交团队审阅'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn green"
+                    onClick={() => fillQuick('提交当前选中内容到Veeva Vault审批:')}
+                  >
+                    提交 Veeva Vault 审批
+                  </button>
+                </>
+              )}
+            </div>
           </>
         );
       }
@@ -6086,7 +7081,7 @@ function WorkspaceRightPanel({
             <div className="detail-card">
               <h4>Metadata</h4>
               <div className="small">
-                品牌:可申达<br />
+                品牌:未指定<br />
                 渠道:小红书<br />
                 受众:公众<br />
                 用途:疾病教育<br />
@@ -6112,8 +7107,11 @@ function WorkspaceRightPanel({
   return (
     <aside className="wpanel right">
       <div className="right-head">
+        <div className="workspace-preview-title">内容预览</div>
         <div className="tabs">
-          {visibleTabs.length > 0 ? visibleTabs.map((k) => (
+          {previewFile && !isGeneratedImagePreview ? (
+            <span className="tab active">文件预览</span>
+          ) : visibleTabs.length > 0 ? visibleTabs.map((k) => (
               <button
                 key={k}
                 type="button"
@@ -6122,21 +7120,127 @@ function WorkspaceRightPanel({
               >
                 {tabNames[k]}
               </button>
-            )) : (
-            <span className="small" style={{ padding: '12px' }}>
-              产物会在这里形成详情标签
-            </span>
-          )}
+          )) : null}
         </div>
       </div>
       <div className="detail">
-        {visibleTabs.length > 0 && (
-          <div className="ppt-compliance-check detail-compliance-check">
-            <span className="ppt-compliance-dot" aria-hidden />
-            生成内容已通过智能合规校验
+        {!reviewerMode && <div className="preview-history-row">
+          <div className="preview-history-control">
+            <button
+              type="button"
+              className="preview-history-trigger"
+              onClick={() => setHistoryOpen((open) => !open)}
+              aria-expanded={historyOpen}
+            >
+              <History className="h-3.5 w-3.5" />
+              查看历史版本
+              <ChevronDown className={`h-3.5 w-3.5 transition ${historyOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {historyOpen && (
+              <div className="preview-history-menu">
+                {historyVersions.map((version) => (
+                  <button
+                    key={version.id}
+                    type="button"
+                    className={`preview-history-option ${
+                      (version.id === 'latest' && !previewHistoryId) ||
+                      previewHistoryId === version.id
+                        ? 'active'
+                        : ''
+                    }`}
+                    onClick={() => {
+                      setPreviewHistoryId(version.id === 'latest' ? null : version.id);
+                      setHistoryOpen(false);
+                    }}
+                  >
+                    <span>{version.label}</span>
+                    <small>{version.time}</small>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>}
+        {selectedHistory && (
+          <div className="preview-history-banner">
+            <div>
+              <strong>正在预览 {selectedHistory.label}</strong>
+              <span>{selectedHistory.time}</span>
+            </div>
+            <div className="preview-history-actions">
+              <button type="button" className="btn primary" onClick={restoreHistoryVersion}>
+                回溯至该版本
+              </button>
+            </div>
           </div>
         )}
-        {renderDetail()}
+        <div className={selectedHistory ? 'preview-history-readonly' : undefined}>
+        {previewFile && (!isGeneratedImagePreview || state.active === 'visual') ? (
+          <div className="workspace-file-preview">
+            {previewFile.contentType === 'image' && previewFile.contentUrl ? (
+              <>
+                <DrawableImagePreview item={previewFile} />
+                <div className="image-preview-submit-actions">
+                  <button
+                    type="button"
+                    className="btn soft"
+                    onClick={() =>
+                      downloadDataUrl(
+                        previewFile.contentUrl || '',
+                        previewFile.fileName || `${previewFile.title}.svg`
+                      )
+                    }
+                  >
+                    下载图片
+                  </button>
+                  {!reviewerMode && (
+                    <>
+                      <button
+                        type="button"
+                        className="btn warn"
+                        disabled={teamModificationInProgress}
+                        onClick={() => !teamModificationInProgress && onOpenTeamReview('visual')}
+                      >
+                        {teamModificationInProgress ? '团队审阅中...' : '提交团队审阅'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn green"
+                        onClick={() => fillQuick('提交当前图片和文案到Veeva Vault审批:')}
+                      >
+                        提交 Veeva 审批
+                      </button>
+                    </>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="workspace-file-preview-head">
+                  <div className="min-w-0">
+                    <strong className="block truncate text-[13px] text-foreground">{previewFile.fileName || previewFile.title}</strong>
+                    <span className="mt-0.5 block text-[10.5px] text-muted-foreground">{previewFile.meta}</span>
+                  </div>
+                  <button type="button" className="btn soft" onClick={onCloseOpenedFile}>
+                    关闭预览
+                  </button>
+                </div>
+                <MaterialContentPreview item={previewFile} />
+              </>
+            )}
+          </div>
+        ) : (
+          <>
+            {visibleTabs.length > 0 && (
+              <div className="ppt-compliance-check detail-compliance-check">
+                <span className="ppt-compliance-dot" aria-hidden />
+                生成内容已通过智能合规校验
+              </div>
+            )}
+            {renderDetail()}
+          </>
+        )}
+        </div>
       </div>
     </aside>
   );

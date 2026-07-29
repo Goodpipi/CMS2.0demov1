@@ -7,6 +7,8 @@ export interface LibraryItem {
   meta: string;
   cms: boolean;
   def: boolean;
+  /** 当前任务是否引用；未设置时沿用默认素材状态 */
+  referenced?: boolean;
   addedAt: number;
   fileName?: string;
   contentType?: MaterialContentType;
@@ -15,4 +17,6 @@ export interface LibraryItem {
   /** 图片 / PDF 的 data URL */
   contentUrl?: string;
   mimeType?: string;
+  /** CMS 同步内容的有效期，ISO 日期 */
+  validUntil?: string;
 }

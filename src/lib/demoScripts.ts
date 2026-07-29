@@ -1,7 +1,7 @@
 import type { TopicItem } from '@/types/content';
 import { loadDemoScenario, type DemoScenario } from '@/lib/demoMode';
 
-const SLIDE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540"><defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#eaf7ff"/><stop offset="1" stop-color="#f4fff0"/></linearGradient></defs><rect width="960" height="540" fill="url(#g)"/><text x="48" y="80" font-size="36" font-weight="800" fill="#103C8F">可申达</text><text x="48" y="160" font-size="28" fill="#40536a">演示脚本 · 固定输出</text></svg>`;
+const SLIDE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540"><defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop stop-color="#eaf7ff"/><stop offset="1" stop-color="#f4fff0"/></linearGradient></defs><rect width="960" height="540" fill="url(#g)"/><text x="48" y="80" font-size="36" font-weight="800" fill="#103C8F">医学内容</text><text x="48" y="160" font-size="28" fill="#40536a">演示脚本 · 固定输出</text></svg>`;
 
 const POSTER_SVGS: Record<DemoScenario, string> = {
   'patient-education': `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 560"><rect width="900" height="560" fill="#f2f9ff"/><text x="60" y="120" font-size="48" font-weight="900" fill="#103C8F">肾脏健康科普</text><text x="60" y="180" font-size="22" fill="#40536a">患者教育 · 演示脚本</text></svg>`,
@@ -18,7 +18,7 @@ const INSIGHT_TOPICS: Record<DemoScenario, TopicItem[]> = {
     },
     {
       title: '慢性肾病风险因素：生活方式与筛查',
-      reason: '可申达公众教育常见角度，合规表达空间充足。',
+      reason: '公众疾病教育常见角度，合规表达空间充足。',
       source: '参考知识包、合规手册',
     },
     {
@@ -111,9 +111,9 @@ const CHAT_REPLIES: Record<DemoScenario, string[]> = {
 };
 
 const SESSION_TITLES: Record<DemoScenario, string> = {
-  'patient-education': '可申达｜患者教育演示',
-  academic: '可申达｜学术会议演示',
-  hcp: '可申达｜HCP 沟通演示',
+  'patient-education': '患者教育演示',
+  academic: '学术会议演示',
+  hcp: 'HCP 沟通演示',
 };
 
 const DELAY_MS: Record<string, [number, number]> = {

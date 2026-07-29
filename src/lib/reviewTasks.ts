@@ -17,18 +17,22 @@ export type ReviewerWorkspaceSnapshot = Pick<
   'pptOutline' | 'pptVersions' | 'pptResult' | 'videoVersions'
 >;
 
-/** 审阅任务可访问的标签（医学部/市场部 PPT 仅改大纲，不含生成成品） */
+/** 审阅任务可访问的标签 */
 export function reviewerTabsForContentType(
   contentType: TeamContentType,
-  _workspace?: ReviewerWorkspaceSnapshot | SessionWorkspace | null | undefined
+  workspace?: ReviewerWorkspaceSnapshot | SessionWorkspace | null | undefined
 ): TabKey[] {
   switch (contentType) {
     case 'copy':
       return ['copy'];
+    case 'rich-text':
+      return ['rich-text'];
     case 'visual':
       return ['visual'];
     case 'ppt':
-      return ['ppt-outline'];
+      return workspace?.pptResult?.slides?.length || workspace?.pptVersions?.some((version) => version.slides?.length)
+        ? ['ppt-design']
+        : ['ppt-outline'];
     case 'video':
       return ['video-render'];
     default:
@@ -137,7 +141,7 @@ export function seedReviewTasksIfEmpty(): void {
     {
       id: 'rt_demo_medical',
       sessionId: DEMO_SESSION_ID,
-      title: '可申达｜小红书疾病教育图文',
+      title: '小红书疾病教育图文',
       contentType: 'copy',
       assigneeRole: 'medical',
       assigneeName: '小王',
@@ -152,7 +156,7 @@ export function seedReviewTasksIfEmpty(): void {
     {
       id: 'rt_demo_visual',
       sessionId: DEMO_SESSION_ID,
-      title: '可申达｜配图团队审阅',
+      title: '配图团队审阅',
       contentType: 'visual',
       assigneeRole: 'medical',
       assigneeName: '小王',

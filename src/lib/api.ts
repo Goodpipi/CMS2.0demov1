@@ -11,20 +11,12 @@ import type {
   PptDesignVersion,
   PosterResult,
 } from '@/types/content';
-import { isDemoMode } from '@/lib/demoMode';
-import { getDemoResponse, simulateDemoDelay } from '@/lib/demoScripts';
-
 const API_BASE = '/api';
 const CLIENT_TIMEOUT_MS = 120_000;
 const API_CONNECT_RETRIES = 4;
 const API_CONNECT_RETRY_MS = 450;
 
 export type ApiMeta = { mockUsed?: boolean; mockReason?: string };
-
-const DEMO_META: ApiMeta = {
-  mockUsed: true,
-  mockReason: 'Demo Mode（演示模式）',
-};
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -59,12 +51,6 @@ async function fetchWithRetry(url: string, init: RequestInit): Promise<Response>
 }
 
 async function post<T>(path: string, body: unknown): Promise<T & ApiMeta> {
-  if (isDemoMode()) {
-    await simulateDemoDelay(path);
-    const data = getDemoResponse(path, body as Record<string, unknown>) as T;
-    return { ...data, ...DEMO_META };
-  }
-
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), CLIENT_TIMEOUT_MS);
   let res: Response;
@@ -77,14 +63,14 @@ async function post<T>(path: string, body: unknown): Promise<T & ApiMeta> {
     });
   } catch (e) {
     if (e instanceof Error && e.name === 'AbortError') {
-      throw new Error('请求超时，请稍后重试或检查演示站服务是否可用');
+      throw new Error('请求超时，请稍后重试或检查 AI 服务是否可用');
     }
     if (isConnectionError(e)) {
       throw new Error(
         '无法连接本地 AI 服务（API 可能仍在启动）。请确认已运行 npm start，或稍等几秒后重试。'
       );
     }
-    throw new Error('无法连接 AI 服务，请检查网络或联系管理员确认演示站 API 是否正常');
+    throw new Error('无法连接 AI 服务，请检查网络或联系管理员确认 API 是否正常');
   } finally {
     clearTimeout(timer);
   }
@@ -115,24 +101,12 @@ export type HealthStatus = {
 };
 
 export async function checkHealth(): Promise<HealthStatus> {
-  if (isDemoMode()) {
-    return {
-      ok: true,
-      deepseekConfigured: false,
-      mockOnly: true,
-      fallbackMock: true,
-      demoMode: true,
-    };
-  }
   const res = await fetchWithRetry(`${API_BASE}/health`, { method: 'GET' });
   return res.json();
 }
 
 /** 启动阶段轮询，直到 API 可访问（开发时 Vite 常早于 Express 就绪） */
 export async function waitForApiHealth(maxAttempts = 12, intervalMs = 400): Promise<HealthStatus> {
-  if (isDemoMode()) {
-    return checkHealth();
-  }
   let lastError: unknown;
   for (let i = 0; i < maxAttempts; i++) {
     try {
@@ -147,7 +121,7 @@ export async function waitForApiHealth(maxAttempts = 12, intervalMs = 400): Prom
 
 export function generateInsight(materials: LibraryItem[], userNote?: string, seedTopics?: TopicItem[]) {
   return post<{ topics: TopicItem[]; summary: string }>('/generate/insight', {
-    materials: materials.filter((m) => m.def),
+    materials: materials.filter((m) => m.referenced ?? m.def),
     userNote,
     seedTopics: seedTopics?.length ? seedTopics : undefined,
   });
@@ -160,7 +134,7 @@ export function generateCopy(
   copiesPerTopic?: number
 ) {
   return post<{ copies: CopyItem[] }>('/generate/copy', {
-    materials: materials.filter((m) => m.def),
+    materials: materials.filter((m) => m.referenced ?? m.def),
     topics,
     userNote,
     copiesPerTopic: copiesPerTopic ?? 3,
@@ -199,7 +173,7 @@ export function generatePptOutline(params: {
   userNote?: string;
 }) {
   return post<PptOutline>('/generate/ppt-outline', {
-    materials: params.materials.filter((m) => m.def),
+    materials: params.materials.filter((m) => m.referenced ?? m.def),
     brief: params.brief,
     audience: params.audience,
     scenario: params.scenario,
@@ -248,7 +222,11 @@ export function chat(
   history: { role: string; content: string }[],
   message: string
 ) {
-  return post<{ reply: string }>('/chat', { materials: materials.filter((m) => m.def), history, message });
+  return post<{ reply: string }>('/chat', {
+    materials: materials.filter((m) => m.referenced ?? m.def),
+    history,
+    message,
+  });
 }
 
 export function generateSessionTitle(messages: { role: string; content: string }[]) {

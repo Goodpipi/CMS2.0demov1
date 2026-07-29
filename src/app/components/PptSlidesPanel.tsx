@@ -39,13 +39,18 @@ export function PptSlidesPanel({ slides, title, onEditSlide }: PptSlidesPanelPro
     downloadDataUrl(url, `${deckTitle}-第${pageNo}页-${safeFilename(slide.title || '')}.png`);
   };
 
+  if (!slides.length) return null;
+
   return (
     <div className="ppt-slides-panel">
       <div className="ppt-slide-grid">
         {slides.map((slide, index) => {
           const preview = slideToPreviewUrl(slide);
           return (
-            <div key={slide.page ?? index} className="ppt-slide-card">
+            <div
+              key={slide.page ?? index}
+              className="ppt-slide-card"
+            >
               <PptSlidePreviewImage slide={slide} index={index} />
               <div className="ppt-slide-card-meta">
                 <strong>

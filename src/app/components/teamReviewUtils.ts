@@ -3,6 +3,7 @@ import type { TabKey } from '@/types/session';
 
 export const TEAM_CONTENT_LABELS: Record<TeamContentType, string> = {
   copy: '文案',
+  'rich-text': '图文',
   visual: '图片',
   video: '视频',
   ppt: 'PPT',
@@ -59,6 +60,7 @@ export function buildTeamReviewPayload(
     copies: CopyItem[];
     selectedCopies: boolean[];
     getCopyBody: () => string;
+    richTextContent: string;
     generatedImages: string[];
     selectedImages: boolean[];
     videoResult: VideoResult | null;
@@ -79,6 +81,13 @@ export function buildTeamReviewPayload(
       return {
         title: list[0]?.title || '文案',
         body: finalBody,
+      };
+    }
+    case 'rich-text': {
+      if (!ctx.richTextContent.trim()) return null;
+      return {
+        title: '图文内容',
+        body: ctx.richTextContent,
       };
     }
     case 'visual': {

@@ -20,6 +20,7 @@ export type TabKey =
   | 'insight'
   | 'topic-recommendation'
   | 'copy'
+  | 'rich-text'
   | 'team'
   | 'visual'
   | 'video-script'
@@ -33,6 +34,10 @@ export interface ChatMessage {
   html: string;
   model: string;
   quick?: string[];
+  /** 本地 Mock 图片消息，随会话持久化 */
+  imageUrl?: string;
+  imageTitle?: string;
+  imageActionLabel?: string;
   /** 生成中的占位消息，完成后移除 */
   loading?: boolean;
 }
@@ -43,6 +48,7 @@ export interface SessionAppState {
   insight: boolean;
   topicRecommendation: boolean;
   copy: boolean;
+  richText: boolean;
   team: boolean;
   visual: boolean;
   videoScript: boolean;
@@ -65,6 +71,7 @@ export interface SessionWorkspace {
   pptVersions: PptDesignVersion[];
   selectedPptVersionId: string | null;
   selectedPptTemplateId: string | null;
+  richTextContent?: string;
   generatedImages: string[];
   generatedImageMeta?: GeneratedImageMeta[];
   /** 团队审阅前或上次采纳时的原图（与 generatedImages 下标对齐） */

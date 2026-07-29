@@ -2,7 +2,7 @@ import type { LibraryItem, TopicItem } from '@/types/content';
 import { isInsightQuickAction } from '@/app/components/conversationGuide';
 
 export const HOT_INSIGHT_CATEGORY = '热点洞察';
-export const BRAND_NAME = '可申达';
+export const BRAND_NAME = '品牌';
 
 export const WORKSPACE_QUICK_PROMPTS = [
   { label: '基于素材生成话题洞察', prefix: '基于素材生成话题洞察：' },
@@ -44,11 +44,13 @@ export interface TopicRecommendationItem {
 }
 
 export function getTaskHotInsightMaterials(materials: LibraryItem[]): LibraryItem[] {
-  return materials.filter((m) => m.cat === HOT_INSIGHT_CATEGORY && m.def);
+  return materials.filter(
+    (m) => m.cat === HOT_INSIGHT_CATEGORY && (m.referenced ?? m.def)
+  );
 }
 
 export function getTaskMaterials(materials: LibraryItem[]): LibraryItem[] {
-  return materials.filter((m) => m.def);
+  return materials.filter((m) => m.referenced ?? m.def);
 }
 
 export function isTopicInsightAgentIntent(text: string): boolean {
@@ -124,8 +126,12 @@ export function buildTopicRecommendations(params: {
   apiTopics: TopicItem[];
 }): TopicRecommendationItem[] {
   const { materials, userNote, apiTopics } = params;
-  const briefing = materials.find((m) => m.cat === '品牌briefing' && m.def);
-  const channelMat = materials.find((m) => m.cat === '渠道特色' && m.def);
+  const briefing = materials.find(
+    (m) => m.cat === '品牌briefing' && (m.referenced ?? m.def)
+  );
+  const channelMat = materials.find(
+    (m) => m.cat === '渠道特色' && (m.referenced ?? m.def)
+  );
 
   return apiTopics.map((topic, index) => ({
     title: topic.title,

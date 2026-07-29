@@ -1,8 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { readFileForPreview, buildPreviewFieldsFromTitle } from '@/lib/materialContent';
 import type { LibraryItem, MaterialContentType } from '@/types/library';
+import {
+  BRAND_ASSETS,
+  BrandPreview,
+  TEMPLATE_ASSETS,
+  TemplatePreview,
+  type BrandAsset,
+  type TemplateAsset,
+} from '@/app/components/AssetLibraryPage';
+import { MaterialContentPreview } from '@/app/components/MaterialContentPreview';
 
 export interface PickedMaterial {
+  existingId?: number;
   title: string;
   meta: string;
   cat: string;
@@ -12,32 +22,65 @@ export interface PickedMaterial {
   contentText?: string;
   contentUrl?: string;
   mimeType?: string;
+  validUntil?: string;
 }
 interface MaterialPickerModalProps {
   open: boolean;
   defaultCat?: string;
   initialTab?: 'upload' | 'cms';
   categories: string[];
+  mode?: 'manage' | 'reference';
+  knowledgeItems?: LibraryItem[];
   onClose: () => void;
   onConfirm: (item: PickedMaterial) => void;
 }
 
 const MOCK_CMS_POOL = [
-  { title: '可申达 Approved Claims Library v2026.04', cat: '参考知识', status: 'Approved' },
-  { title: '小红书肾脏健康热点观察 2026-05', cat: '热点洞察', status: 'Approved' },
-  { title: '公众渠道疾病教育合规手册', cat: '合规手册', status: 'Approved' },
-  { title: 'Bayer Blue-Green Visual Kit 2026', cat: '渠道特色', status: 'Approved' },
-  { title: '可申达 2026 品牌沟通 Briefing', cat: '品牌briefing', status: 'Approved' },
-  { title: '慢性肾病风险认知患者教育手册', cat: '参考知识', status: 'Approved' },
-  { title: '小红书高互动标题样本集', cat: '热点洞察', status: 'Draft' },
-  { title: 'HCP 拜访核心信息卡', cat: '参考知识', status: 'Approved' },
+  { title: 'Approved Claims Library v2026.04', cat: '参考知识', status: 'Approved', validUntil: '2027-04-30' },
+  { title: '小红书肾脏健康热点观察 2026-05', cat: '热点洞察', status: 'Approved', validUntil: '2026-11-30' },
+  { title: '公众渠道疾病教育合规手册', cat: '合规手册', status: 'Approved', validUntil: '2027-06-30' },
+  { title: 'Bayer Blue-Green Visual Kit 2026', cat: '渠道特色', status: 'Approved', validUntil: '2026-12-31' },
+  { title: '2026 品牌沟通 Briefing', cat: '品牌briefing', status: 'Approved', validUntil: '2026-12-31' },
+  { title: '慢性肾病风险认知患者教育手册', cat: '参考知识', status: 'Approved', validUntil: '2027-03-31' },
+  { title: '小红书高互动标题样本集', cat: '热点洞察', status: 'Draft', validUntil: '2026-09-30' },
+  { title: 'HCP 拜访核心信息卡', cat: '参考知识', status: 'Approved', validUntil: '2027-01-31' },
 ];
+
+function ReferencePickerRow({
+  title,
+  subtitle,
+  badge,
+  onPreview,
+  onAdd,
+}: {
+  title: string;
+  subtitle: string;
+  badge: string;
+  onPreview: () => void;
+  onAdd: () => void;
+}) {
+  return (
+    <div className="cms-result-row reference-picker-row">
+      <button type="button" className="reference-picker-main" onClick={onPreview}>
+        <strong>{title}</strong>
+        <span className="small">{subtitle}</span>
+      </button>
+      <span className="badge">{badge}</span>
+      <div className="reference-picker-actions">
+        <button type="button" className="btn soft" onClick={onPreview}>预览</button>
+        <button type="button" className="btn primary" onClick={onAdd}>添加</button>
+      </div>
+    </div>
+  );
+}
 
 export function MaterialPickerModal({
   open,
   defaultCat = '参考知识',
   initialTab = 'upload',
   categories,
+  mode = 'manage',
+  knowledgeItems = [],
   onClose,
   onConfirm,
 }: MaterialPickerModalProps) {
@@ -46,6 +89,13 @@ export function MaterialPickerModal({
   const [cmsQuery, setCmsQuery] = useState('');
   const [cmsLoading, setCmsLoading] = useState(false);
   const [cmsResults, setCmsResults] = useState<typeof MOCK_CMS_POOL>([]);
+  const [referenceGroup, setReferenceGroup] = useState<'knowledge' | 'template' | 'brand'>('knowledge');
+  const [referencePreview, setReferencePreview] = useState<
+    | { kind: 'knowledge'; item: LibraryItem }
+    | { kind: 'template'; item: TemplateAsset }
+    | { kind: 'brand'; item: BrandAsset }
+    | null
+  >(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const searchCms = (query = cmsQuery) => {
@@ -68,6 +118,14 @@ export function MaterialPickerModal({
     if (open) {
       setTab(initialTab);
       setCat(defaultCat);
+      setReferenceGroup(
+        defaultCat === '模板' || defaultCat === '参考模板'
+          ? 'template'
+          : defaultCat === '品牌元素'
+            ? 'brand'
+            : 'knowledge'
+      );
+      setReferencePreview(null);
       if (initialTab === 'cms') searchCms('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- open 时同步初始 tab
@@ -79,10 +137,11 @@ export function MaterialPickerModal({
     const file = e.target.files?.[0];
     if (!file) return;
     const preview = await readFileForPreview(file);
+    const targetCat = mode === 'reference' ? '参考知识' : cat;
     onConfirm({
-      title: `${cat}｜${file.name}`,
+      title: mode === 'reference' ? file.name : `${targetCat}｜${file.name}`,
       meta: `本地上传 · ${(file.size / 1024).toFixed(0)}KB · 已解析`,
-      cat,
+      cat: targetCat,
       cms: false,
       fileName: file.name,
       ...preview,
@@ -95,11 +154,74 @@ export function MaterialPickerModal({
     onConfirm({
       title: item.title,
       meta: `CMS · ${item.status} · 已关联到任务`,
-      cat: item.cat,
+      cat: mode === 'reference' ? '参考知识' : item.cat,
       cms: true,
+      validUntil: item.validUntil,
       ...buildPreviewFieldsFromTitle(item.title, true),
     });
     onClose();
+  };
+
+  const pickKnowledge = (item: LibraryItem) => {
+    onConfirm({
+      existingId: item.id,
+      title: item.title,
+      meta: item.meta,
+      cat: '参考知识',
+      cms: item.cms,
+      fileName: item.fileName,
+      contentType: item.contentType,
+      contentText: item.contentText,
+      contentUrl: item.contentUrl,
+      mimeType: item.mimeType,
+      validUntil: item.validUntil,
+    });
+    onClose();
+  };
+
+  const pickTemplate = (item: TemplateAsset) => {
+    const kindLabel = item.kind === 'ppt' ? 'PPT 模板' : item.kind === 'image' ? '图片模板' : '富文本模板';
+    onConfirm({
+      title: item.title,
+      meta: `${kindLabel} · ${item.ratio} · ${item.tag}`,
+      cat: '模板',
+      cms: false,
+      contentType: item.previewUrl ? 'image' : 'text',
+      contentUrl: item.previewUrl,
+      contentText: item.previewUrl ? undefined : `${item.title}\n\n${item.description}\n\n规格：${item.ratio}`,
+    });
+    onClose();
+  };
+
+  const pickBrand = (item: BrandAsset) => {
+    onConfirm({
+      title: item.title,
+      meta: `品牌元素 · ${item.category} · ${item.format}`,
+      cat: '品牌元素',
+      cms: false,
+      contentType: item.previewUrl ? 'image' : 'text',
+      contentUrl: item.previewUrl,
+      contentText: item.previewUrl ? undefined : `${item.title}\n\n${item.description}\n\n格式：${item.format}`,
+    });
+    onClose();
+  };
+
+  const previewCms = (item: (typeof MOCK_CMS_POOL)[0]) => {
+    const fields = buildPreviewFieldsFromTitle(item.title, true);
+    setReferencePreview({
+      kind: 'knowledge',
+      item: {
+        id: Date.now(),
+        title: item.title,
+        meta: `CMS · ${item.status} · 有效期至 ${item.validUntil}`,
+        cat: '参考知识',
+        cms: true,
+        def: false,
+        addedAt: Date.now(),
+        validUntil: item.validUntil,
+        ...fields,
+      },
+    });
   };
 
   return (
@@ -110,7 +232,31 @@ export function MaterialPickerModal({
       }}
     >
       <div className="modal material-picker-modal" onClick={(e) => e.stopPropagation()}>
-        <h3>添加素材</h3>
+        <h3>{mode === 'reference' ? '添加引用素材' : '添加素材'}</h3>
+        {mode === 'reference' ? (
+          <div className="picker-tabs" role="tablist" aria-label="引用素材分类">
+            {([
+              ['knowledge', '参考知识'],
+              ['template', '参考模板'],
+              ['brand', '品牌元素'],
+            ] as const).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={tab !== 'cms' && referenceGroup === id}
+                className={`picker-tab ${tab !== 'cms' && referenceGroup === id ? 'active' : ''}`}
+                onClick={() => {
+                  setReferenceGroup(id);
+                  setTab('upload');
+                  setReferencePreview(null);
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        ) : (
         <div className="picker-tabs">
           <button
             type="button"
@@ -130,7 +276,9 @@ export function MaterialPickerModal({
             搜索 CMS
           </button>
         </div>
+        )}
 
+        {mode === 'manage' && (
         <label className="props-field" style={{ marginTop: 12 }}>
           <span>素材分类</span>
           <select className="select" value={cat} onChange={(e) => setCat(e.target.value)}>
@@ -141,18 +289,35 @@ export function MaterialPickerModal({
             ))}
           </select>
         </label>
+        )}
 
-        {tab === 'upload' && (
+        <input
+          ref={fileRef}
+          type="file"
+          hidden
+          accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.png,.jpg,.jpeg,.svg,.txt,.md"
+          onChange={onFileChange}
+        />
+
+        {mode === 'manage' && tab === 'upload' && (
           <div className="picker-upload-zone" onClick={() => fileRef.current?.click()}>
-            <input
-              ref={fileRef}
-              type="file"
-              hidden
-              accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.png,.jpg,.jpeg,.svg,.txt,.md"
-              onChange={onFileChange}
-            />
             <strong>点击选择本地文件</strong>
             <div className="small">支持 PDF、Office、图片、文本等</div>
+          </div>
+        )}
+
+        {mode === 'reference' && referencePreview?.kind === 'knowledge' && (
+          <div className="reference-preview-panel">
+            <div className="reference-preview-head">
+              <div>
+                <strong>{referencePreview.item.title}</strong>
+                <div className="small">素材预览</div>
+              </div>
+              <button type="button" className="btn soft" onClick={() => setReferencePreview(null)}>
+                关闭预览
+              </button>
+            </div>
+            <MaterialContentPreview item={referencePreview.item} />
           </div>
         )}
 
@@ -160,7 +325,7 @@ export function MaterialPickerModal({
           <div className="picker-cms">
             <div className="cms-status">
               <span className="dot" />
-              CMS 已连接（演示） · Vault: China-Marketing
+              CMS 已连接 · Vault: China-Marketing
             </div>
             <div className="filters" style={{ marginTop: 10 }}>
               <input
@@ -181,33 +346,139 @@ export function MaterialPickerModal({
               </div>
             ) : (
               <div className="cms-result-list">
-                {(cmsResults.length ? cmsResults : MOCK_CMS_POOL).map((item, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    className="cms-result-row"
-                    onClick={() => pickCms(item)}
-                  >
-                    <div>
-                      <strong>{item.title}</strong>
-                      <div className="small">{item.cat}</div>
-                    </div>
-                    <span className={`badge ${item.status === 'Approved' ? 'green' : 'warn'}`}>
-                      {item.status}
-                    </span>
-                  </button>
-                ))}
+                {(cmsResults.length ? cmsResults : MOCK_CMS_POOL).map((item, i) =>
+                  mode === 'reference' ? (
+                    <ReferencePickerRow
+                      key={i}
+                      title={item.title}
+                      subtitle={`${item.cat} · 有效期至 ${item.validUntil}`}
+                      badge={item.status}
+                      onPreview={() => previewCms(item)}
+                      onAdd={() => pickCms(item)}
+                    />
+                  ) : (
+                    <button
+                      key={i}
+                      type="button"
+                      className="cms-result-row"
+                      onClick={() => pickCms(item)}
+                    >
+                      <div>
+                        <strong>{item.title}</strong>
+                        <div className="small">{item.cat} · 有效期至 {item.validUntil}</div>
+                      </div>
+                      <span className={`badge ${item.status === 'Approved' ? 'green' : 'warn'}`}>
+                        {item.status}
+                      </span>
+                    </button>
+                  )
+                )}
               </div>
             )}
           </div>
         )}
 
-        <div className="quick-row" style={{ marginTop: 14 }}>
+        {mode === 'reference' && tab !== 'cms' && (
+          <div className="cms-result-list reference-material-list">
+            {referenceGroup === 'knowledge' &&
+              knowledgeItems
+                .filter((item) => !['参考模板', '模板', '品牌元素'].includes(item.cat))
+                .map((item) => (
+                  <ReferencePickerRow
+                    key={item.id}
+                    title={item.title}
+                    subtitle={item.meta}
+                    badge={item.cms ? 'CMS' : '知识库'}
+                    onPreview={() => setReferencePreview({ kind: 'knowledge', item })}
+                    onAdd={() => pickKnowledge(item)}
+                  />
+                ))}
+            {referenceGroup === 'template' &&
+              TEMPLATE_ASSETS.map((item) => (
+                <ReferencePickerRow
+                  key={item.id}
+                  title={item.title}
+                  subtitle={item.description}
+                  badge={item.kind === 'ppt' ? 'PPT' : item.kind === 'image' ? '图片' : '富文本'}
+                  onPreview={() => setReferencePreview({ kind: 'template', item })}
+                  onAdd={() => pickTemplate(item)}
+                />
+              ))}
+            {referenceGroup === 'brand' &&
+              BRAND_ASSETS.map((item) => (
+                <ReferencePickerRow
+                  key={item.id}
+                  title={item.title}
+                  subtitle={item.description}
+                  badge={item.category}
+                  onPreview={() => setReferencePreview({ kind: 'brand', item })}
+                  onAdd={() => pickBrand(item)}
+                />
+              ))}
+            {referenceGroup === 'knowledge' &&
+              knowledgeItems.filter((item) => !['参考模板', '模板', '品牌元素'].includes(item.cat)).length === 0 && (
+              <div className="small reference-material-empty">知识库中暂无可引用知识</div>
+            )}
+          </div>
+        )}
+
+        <div className="quick-row" style={{ marginTop: 14, justifyContent: 'flex-end' }}>
           <button type="button" className="btn" onClick={onClose}>
             取消
           </button>
+          {mode === 'reference' && (
+            <>
+              <button type="button" className="btn soft" onClick={() => fileRef.current?.click()}>
+                手动上传
+              </button>
+              <button
+                type="button"
+                className="btn primary"
+                onClick={() => {
+                  setTab('cms');
+                  searchCms();
+                }}
+              >
+                CMS 搜索
+              </button>
+            </>
+          )}
         </div>
       </div>
+      {mode === 'reference' && referencePreview && referencePreview.kind !== 'knowledge' && (
+        <div
+          className="reference-asset-preview-bg"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setReferencePreview(null);
+          }}
+        >
+          <div className="reference-asset-preview-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="reference-asset-preview-head">
+              <div>
+                <h3>{referencePreview.item.title}</h3>
+                <div className="small">
+                  {referencePreview.kind === 'template'
+                    ? `${referencePreview.item.ratio} · ${referencePreview.item.tag}`
+                    : `${referencePreview.item.category} · ${referencePreview.item.format}`}
+                </div>
+              </div>
+              <button type="button" className="btn soft" onClick={() => setReferencePreview(null)}>
+                关闭
+              </button>
+            </div>
+            <div className="reference-asset-preview-content">
+              {referencePreview.kind === 'template' ? (
+                <TemplatePreview asset={referencePreview.item} />
+              ) : (
+                <div className="reference-brand-preview">
+                  <BrandPreview asset={referencePreview.item} />
+                </div>
+              )}
+            </div>
+            <p className="reference-asset-preview-description">{referencePreview.item.description}</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

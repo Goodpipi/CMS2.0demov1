@@ -3,7 +3,7 @@ import type { ChatMessage, ChatSession, SessionStatus } from '@/types/session';
 const STORAGE_KEY = 'acp_chat_sessions_v1';
 export const DEMO_SESSION_ID = 'sess_demo_team';
 /** 新建对话的默认标题；非此标题视为已命名，不再自动改名 */
-export const DEFAULT_SESSION_TITLE = '可申达｜新内容任务';
+export const DEFAULT_SESSION_TITLE = '新内容任务';
 
 export function loadAllSessions(): ChatSession[] {
   try {
@@ -119,7 +119,7 @@ export function fallbackSessionTitle(messages: ChatMessage[]): string {
   const text = userTexts[userTexts.length - 1] || userTexts[0] || '';
   if (!text) return DEFAULT_SESSION_TITLE;
   const core = text.length > 20 ? `${text.slice(0, 20)}…` : text;
-  return `可申达｜${core}`;
+  return core;
 }
 
 export function seedSessionsIfEmpty(): ChatSession[] {
@@ -130,7 +130,7 @@ export function seedSessionsIfEmpty(): ChatSession[] {
   const seeds: ChatSession[] = [
     {
       id: DEMO_SESSION_ID,
-      title: '可申达｜小红书疾病教育图文',
+      title: '小红书疾病教育图文',
       titleLocked: true,
       createdAt: now - 3600000,
       updatedAt: now - 600000,
@@ -192,7 +192,7 @@ export function seedSessionsIfEmpty(): ChatSession[] {
     },
     {
       id: 'sess_demo_hcp',
-      title: '可申达｜HCP拜访材料改写',
+      title: 'HCP拜访材料改写',
       titleLocked: true,
       createdAt: now - 86400000,
       updatedAt: now - 43200000,
@@ -247,7 +247,7 @@ export function seedSessionsIfEmpty(): ChatSession[] {
     },
     {
       id: 'sess_demo_patient',
-      title: '可申达｜患者教育长图',
+      title: '患者教育长图',
       titleLocked: true,
       createdAt: now - 86400000 * 5,
       updatedAt: now - 86400000 * 4,

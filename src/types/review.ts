@@ -17,6 +17,25 @@ export const ROLE_PROFILES: Record<UserRole, RoleProfile> = {
 
 export type ReviewTaskStatus = 'pending' | 'in_progress' | 'completed';
 
+export interface PptCommentReply {
+  id: string;
+  authorRole: UserRole;
+  authorName: string;
+  content: string;
+  createdAt: number;
+}
+
+export interface PptReviewComment {
+  id: string;
+  pageIndex: number;
+  pageNumber: number;
+  authorRole: UserRole;
+  authorName: string;
+  content: string;
+  createdAt: number;
+  replies: PptCommentReply[];
+}
+
 /** 运营分配给医学部 / 市场部的团队修改任务 */
 export interface ReviewTask {
   id: string;
@@ -35,6 +54,12 @@ export interface ReviewTask {
   /** 审阅者保存的文案修改记录（运营端可查看） */
   copyRevisions?: CopyRevision[];
   copyRevisionBase?: string;
+  /** PPT 按页批注及内容创作者回复 */
+  pptComments?: PptReviewComment[];
+  /** 同一任务被再次发起审阅的轮次 */
+  reviewRound?: number;
+  /** 已完成的审阅轮次数，用于二次审阅时保留历史状态 */
+  completedReviewCount?: number;
 }
 
 export type CopyDiffKind = 'equal' | 'add' | 'delete';

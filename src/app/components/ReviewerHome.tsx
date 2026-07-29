@@ -10,11 +10,11 @@ interface ReviewerHomeProps {
 function statusLabel(status: ReviewTask['status']): string {
   switch (status) {
     case 'completed':
-      return '已修改';
+      return '已审阅';
     case 'in_progress':
-      return '修改中';
+      return '审阅中';
     default:
-      return '待修改';
+      return '待审阅';
   }
 }
 
@@ -36,22 +36,19 @@ const CONTENT_LABELS: Record<ReviewTask['contentType'], string> = {
   ppt: 'PPT',
 };
 
-export function ReviewerHome({ tasks, deptLabel, onOpenTask }: ReviewerHomeProps) {
+export function ReviewerHome({ tasks, deptLabel: _deptLabel, onOpenTask }: ReviewerHomeProps) {
   return (
     <div className="reviewer-home">
       <div style={{ textAlign: 'center', marginBottom: 32 }}>
         <h1 style={{ fontSize: 40, fontWeight: 900, margin: '0 0 12px', color: 'var(--blue)' }}>
-          {deptLabel} · 团队修改任务
+          内容审阅
         </h1>
-        <p style={{ fontSize: 17, color: 'var(--muted)', margin: 0 }}>
-          内容运营分配的任务如下，点击进入详情完成审阅与修改。
-        </p>
       </div>
 
       {tasks.length === 0 ? (
         <div className="detail-card" style={{ textAlign: 'center', padding: 40 }}>
           <h4>暂无待办任务</h4>
-          <div className="small">运营提交团队修改后，任务会出现在此列表。</div>
+          <div className="small">运营提交团队审阅后，任务会出现在此列表。</div>
         </div>
       ) : (
         <div className="review-task-list">

@@ -1,7 +1,7 @@
 /** 为视频方案生成蓝绿风格封面（SVG Data URL） */
 export function buildVideoPosterDataUrl(title: string, styleTag = ''): string {
   const safeTitle = title.slice(0, 24).replace(/[<>&]/g, '');
-  const sub = styleTag || '可申达 · 疾病教育';
+  const sub = styleTag || '疾病教育';
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540">
     <defs>
       <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">

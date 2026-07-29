@@ -1,6 +1,6 @@
 import type { LibraryItem } from '@/types/library';
 import { formatMaterialAddedTime } from '@/lib/libraryUtils';
-import { Check, FileText, Star } from 'lucide-react';
+import { Check, FileText, Star, Trash2 } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 
 export function materialFileKind(item: LibraryItem): {
@@ -40,6 +40,7 @@ interface LibraryMaterialCardProps {
   onToggleSelect: () => void;
   onToggleDefault: () => void;
   onPreview: () => void;
+  onDelete: () => void;
 }
 
 export function LibraryMaterialCard({
@@ -48,9 +49,14 @@ export function LibraryMaterialCard({
   onToggleSelect,
   onToggleDefault,
   onPreview,
+  onDelete,
 }: LibraryMaterialCardProps) {
   const kind = materialFileKind(item);
   const badge = sourceBadge(item);
+  const cmsExpired =
+    item.cms && item.validUntil
+      ? new Date(`${item.validUntil}T23:59:59`).getTime() < Date.now()
+      : false;
 
   return (
     <article
@@ -102,20 +108,34 @@ export function LibraryMaterialCard({
             {badge.label}
           </span>
         </div>
-        <button
-          type="button"
-          className={cn(
-            'grid h-6 w-6 place-items-center rounded-full transition',
-            item.def ? 'text-[#FFB547]' : 'text-muted-foreground/50 hover:text-[#FFB547]'
-          )}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleDefault();
-          }}
-          title={item.def ? '取消默认' : '设为默认'}
-        >
-          <Star className="h-3.5 w-3.5" fill={item.def ? '#FFB547' : 'none'} strokeWidth={2.2} />
-        </button>
+        <div className="flex items-center gap-0.5">
+          <button
+            type="button"
+            className={cn(
+              'grid h-6 w-6 place-items-center rounded-full transition',
+              item.def ? 'text-[#FFB547]' : 'text-muted-foreground/50 hover:text-[#FFB547]'
+            )}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleDefault();
+            }}
+            title={item.def ? '取消默认' : '设为默认'}
+          >
+            <Star className="h-3.5 w-3.5" fill={item.def ? '#FFB547' : 'none'} strokeWidth={2.2} />
+          </button>
+          <button
+            type="button"
+            className="grid h-6 w-6 place-items-center rounded-full text-muted-foreground/50 transition hover:bg-destructive/10 hover:text-destructive"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            title="删除知识"
+            aria-label={`删除 ${item.title}`}
+          >
+            <Trash2 className="h-3.5 w-3.5" strokeWidth={2.2} />
+          </button>
+        </div>
       </div>
 
       <div className="relative z-10 flex items-start gap-2.5">
@@ -148,6 +168,19 @@ export function LibraryMaterialCard({
           {item.def && (
             <span className="rounded-md border border-[#FFB547]/30 bg-[#FFB547]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#a16207]">
               默认
+            </span>
+          )}
+          {item.cms && item.validUntil && (
+            <span
+              className={cn(
+                'rounded-md border px-1.5 py-0.5 text-[10px] font-medium',
+                cmsExpired
+                  ? 'border-destructive/30 bg-destructive/10 text-destructive'
+                  : 'border-[#7762B8]/25 bg-[#7762B8]/10 text-[#5f4a9b]'
+              )}
+              title={`CMS 内容有效期至 ${item.validUntil}`}
+            >
+              {cmsExpired ? '已过期' : `有效期至 ${item.validUntil}`}
             </span>
           )}
         </div>

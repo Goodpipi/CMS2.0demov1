@@ -37,13 +37,13 @@ export const ACADEMIC_DEMO_TEXT = {
   askScene: '当然可以。请问这张图片主要应用于什么场景？',
   askFormat: '好的，已识别应用场景为【学术传播会议】。\n请问您希望生成什么内容形式？',
   askBrief:
-    '好的，已识别您的需求：\n应用场景：学术传播会议\n内容形式：会议海报\n当前品牌：可申达\n\n为了生成更符合业务需求的内容，建议补充以下信息：\n• 视觉风格\n• 会议名称\n• 会议时间\n• 会议地点\n• 会议主题\n\n您可以补充以上信息，也可以直接生成。',
+    '好的，已识别您的需求：\n应用场景：学术传播会议\n内容形式：会议海报\n\n为了生成更符合业务需求的内容，建议补充以下信息：\n• 视觉风格\n• 会议名称\n• 会议时间\n• 会议地点\n• 会议主题\n\n您可以补充以上信息，也可以直接生成。',
   posterGenerating:
     '已收到。我将结合：\n• 已上传素材\n• 您的要求\n\n为您生成会议海报。正在生成中……',
   posterDone:
     '会议海报已生成。请在右侧查看和编辑。\n\n您还可以继续：',
   caseGenerating:
-    '好的，已识别您的需求：\n应用场景：学术传播会议\n内容形式：病例卡\n当前品牌：可申达\n\n我将结合：\n• 已上传素材\n• 已上传图片的视觉风格\n\n为您生成病例卡。正在生成中……',
+    '好的，已识别您的需求：\n应用场景：学术传播会议\n内容形式：病例卡\n\n我将结合：\n• 已上传素材\n• 已上传图片的视觉风格\n\n为您生成病例卡。正在生成中……',
   caseDone:
     '病例卡已生成。您还可以继续：\n\n请问您下一步想生成什么内容？',
 };
@@ -56,7 +56,7 @@ export const PATIENT_VIDEO_DEMO_BUTTONS = {
 
 export const PATIENT_VIDEO_DEMO_TEXT = {
   recognized:
-    '好的，已识别您的需求：\n\n应用场景：患者教育\n内容形式：视频\n当前品牌：可申达\n视频时长：10秒\n核心主题：糖尿病患者健康饮食\n\n请问先为您生成视频脚本还是直接生成视频？',
+    '好的，已识别您的需求：\n\n应用场景：患者教育\n内容形式：视频\n视频时长：10秒\n核心主题：糖尿病患者健康饮食\n\n请问先为您生成视频脚本还是直接生成视频？',
   scriptGenerating: '收到。\n\n正在为您生成视频脚本……',
   scriptDone: '视频脚本已生成。\n\n请在右侧查看或手动编辑。',
   videoGenerating: '正在为您生成视频，请稍后……',
@@ -74,7 +74,7 @@ export const HCP_PPT_DEMO_BUTTONS = {
 export const HCP_PPT_DEMO_TEXT = {
   askScene: '收到，当然可以。\n\n请问这份内容主要应用于什么场景？',
   askRequirements:
-    '好的，已识别您的需求：\n\n应用场景：HCP临床沟通\n内容形式：PPT\n当前品牌：可申达\n\n为了生成更符合业务需求的内容，建议补充以下信息：\n\n• 视觉风格\n• 章节数要求\n• 页数要求\n\n您可以补充以上信息，也可以直接生成。',
+    '好的，已识别您的需求：\n\n应用场景：HCP临床沟通\n内容形式：PPT\n\n为了生成更符合业务需求的内容，建议补充以下信息：\n\n• 视觉风格\n• 章节数要求\n• 页数要求\n\n您可以补充以上信息，也可以直接生成。',
   askPath:
     '收到您的要求。\n\n请问是否需要先生成PPT大纲？\n\n您也可以选择直接生成PPT。',
   outlineGenerating: '正在为您生成大纲，请稍后……',
@@ -165,7 +165,7 @@ function svgDataUrl(svg: string): string {
 }
 
 export const HCP_PPT_OUTLINE_01: PptOutline = {
-  title: '可申达在G1-2期T2D相关患者的肾脏保护价值',
+  title: 'G1-2期T2D相关患者的肾脏保护价值',
   audience: 'HCP',
   scenario: 'HCP临床沟通',
   chapters: [
@@ -194,7 +194,7 @@ export const HCP_PPT_OUTLINE_01: PptOutline = {
         {
           id: 'hcp-p3',
           title: 'G1-2期患者关键肾脏指标变化',
-          bullets: ['用图表展示eGFR与UACR相关趋势', '突出可申达相关数据观察点', '避免超出资料范围的疗效承诺'],
+          bullets: ['用图表展示eGFR与UACR相关趋势', '突出相关数据观察点', '避免超出资料范围的疗效承诺'],
           speakerNotes: '以数据图表为主，减少大段文字。',
         },
         {
@@ -244,7 +244,7 @@ export const HCP_PPT_RESULT_01: PptDesignVersion = {
   slides: HCP_PPT_SLIDES_01,
   coverDataUrl: '/demo-assets/hcp-ppt-slides/HCP_PPT_Result_01_01.png',
   fileUrl: '/demo-assets/%E5%8F%AF%E7%94%B3%E8%BE%BE_G1-2%E6%9C%9F%E4%B8%B4%E5%BA%8A%E6%95%B0%E6%8D%AE%E6%B1%87%E6%80%BB%20(3).pptx',
-  fileName: '可申达_G1-2期临床数据汇总 (3).pptx',
+  fileName: 'G1-2期临床数据汇总 (3).pptx',
 };
 
 const POSTER_RESULT_01 = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1520">
@@ -321,7 +321,7 @@ const CASE_CARD_RESULT_01 = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 
   <rect x="70" y="64" width="940" height="1390" rx="44" fill="#fff" stroke="#c9dfed" stroke-width="2"/>
   <rect x="70" y="64" width="940" height="220" rx="44" fill="url(#cardHead)"/>
   <rect x="70" y="202" width="940" height="82" fill="url(#cardHead)"/>
-  <text x="118" y="144" font-family="Arial, sans-serif" font-size="34" font-weight="800" fill="#fff">可申达病例卡</text>
+  <text x="118" y="144" font-family="Arial, sans-serif" font-size="34" font-weight="800" fill="#fff">病例卡</text>
   <text x="118" y="210" font-family="Arial, sans-serif" font-size="56" font-weight="900" fill="#fff">CKD 合并代谢风险患者管理</text>
   <text x="118" y="328" font-family="Arial, sans-serif" font-size="26" font-weight="800" fill="#103C8F">患者概况</text>
   <g font-family="Arial, sans-serif" font-size="24" fill="#36506b">

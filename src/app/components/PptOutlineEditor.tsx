@@ -8,7 +8,7 @@ import {
   removeChapterFromOutline,
   removePageFromOutline,
 } from './pptUtils';
-import { PPT_BUILTIN_TEMPLATES } from './pptTemplates';
+import { PPT_BUILTIN_TEMPLATES, type PptBuiltinTemplate } from './pptTemplates';
 
 interface PptOutlineEditorProps {
   outline: PptOutline;
@@ -16,6 +16,8 @@ interface PptOutlineEditorProps {
   onGenerateDesigns: (mode: 'template' | 'no-template') => void;
   onRegenerateOutline: () => void;
   selectedTemplateId: string | null;
+  templates?: PptBuiltinTemplate[];
+  templateSource?: 'referenced' | 'recommended';
   onSelectTemplate: (templateId: string | null) => void;
   isGenerating?: boolean;
   /** 医学部 / 市场部审阅：仅编辑大纲，不触发生成 */
@@ -31,10 +33,12 @@ interface PptOutlineEditorProps {
 export function PptOutlineGenerateFooter({
   isGenerating = false,
   selectedTemplateId,
+  templates = PPT_BUILTIN_TEMPLATES,
   onGenerateDesigns,
 }: {
   isGenerating?: boolean;
   selectedTemplateId: string | null;
+  templates?: PptBuiltinTemplate[];
   onGenerateDesigns: (mode: 'template' | 'no-template') => void;
 }) {
   return (
@@ -59,7 +63,7 @@ export function PptOutlineGenerateFooter({
       </div>
       <div className="small ppt-generate-hint">
         {selectedTemplateId
-          ? `已选「${PPT_BUILTIN_TEMPLATES.find((t) => t.id === selectedTemplateId)?.name}」· 左：3 套方案 · 右：按模板一套`
+          ? `已选「${templates.find((t) => t.id === selectedTemplateId)?.name}」· 将按该模板生成`
           : '请先在上方选择模板，或点击「不选用模板直接生成」'}
       </div>
     </footer>
@@ -102,6 +106,8 @@ export function PptOutlineEditor({
   onGenerateDesigns,
   onRegenerateOutline,
   selectedTemplateId,
+  templates = PPT_BUILTIN_TEMPLATES,
+  templateSource = 'recommended',
   onSelectTemplate,
   isGenerating = false,
   reviewerMode = false,
@@ -405,10 +411,12 @@ export function PptOutlineEditor({
           <section className="ppt-template-section">
             <h4 className="ppt-template-heading">选择 PPT 模板（可选）</h4>
             <div className="small" style={{ marginBottom: 10 }}>
-              可选一套内置模板；不选用模板时在下方生成 3 套方案供对比。
+              {templateSource === 'referenced'
+                ? '以下为左侧引用素材中已添加的模板。'
+                : '未添加引用模板，已根据受众、场景与内容推荐 4 个模板。'}
             </div>
             <div className="ppt-template-grid">
-              {PPT_BUILTIN_TEMPLATES.map((tpl) => (
+              {templates.map((tpl) => (
                 <button
                   key={tpl.id}
                   type="button"
@@ -447,6 +455,7 @@ export function PptOutlineEditor({
           <PptOutlineGenerateFooter
             isGenerating={isGenerating}
             selectedTemplateId={selectedTemplateId}
+            templates={templates}
             onGenerateDesigns={onGenerateDesigns}
           />
         ) : null}

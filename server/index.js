@@ -9,7 +9,7 @@ import {
   parseJsonSafe,
   buildMaterialContext,
 } from './lib/deepseek.js';
-import { getMockData, getMockCopy } from './mockData.js';
+import { getMockData } from './mockData.js';
 import { assignCopyTopicTitles, ensureCopyCount } from './copyUtils.js';
 import { enrichPptDesignVersions, flattenOutlinePages } from './lib/pptSlides.js';
 import { getPptTemplate } from './lib/pptTemplates.js';
@@ -51,53 +51,24 @@ app.use(
 );
 app.use(express.json({ limit: '2mb' }));
 
-const mockOnly = () => process.env.MOCK_AI === '1' || process.env.MOCK_AI === 'true';
-const fallbackEnabled = () =>
-  process.env.FALLBACK_MOCK !== '0' && process.env.FALLBACK_MOCK !== 'false';
-
-function shouldUseMockFallback(err) {
-  if (!fallbackEnabled()) return false;
-  // 演示工作台优先保证流程不中断：DeepSeek/API 抖动时统一降级为演示数据。
-  if (err) console.warn('[ai fallback eligible]', err.message);
-  return true;
-}
-
 app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
     deepseekConfigured: Boolean(process.env.DEEPSEEK_API_KEY),
     model: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
-    mockOnly: mockOnly(),
-    fallbackMock: fallbackEnabled(),
   });
 });
 
-async function runAgent(systemExtra, userPrompt, jsonMode = true, mockKind = 'generic') {
-  if (mockOnly()) {
-    const data = getMockData(mockKind, userPrompt);
-    const result = jsonMode && typeof data === 'object' ? data : data;
-    return { result, mockUsed: true, mockReason: '演示模式（MOCK_AI=1）' };
-  }
-
-  try {
-    const content = await chatCompletion({
-      messages: [
-        { role: 'system', content: `${SYSTEM_BASE}\n${systemExtra}` },
-        { role: 'user', content: userPrompt },
-      ],
-      jsonMode,
-    });
-    const result = jsonMode ? parseJsonSafe(content) : content;
-    return { result, mockUsed: false };
-  } catch (e) {
-    if (shouldUseMockFallback(e)) {
-      console.warn(`[mock fallback] ${mockKind}:`, e.message);
-      const data = getMockData(mockKind, userPrompt);
-      const result = jsonMode && typeof data === 'object' ? data : data;
-      return { result, mockUsed: true, mockReason: e.message };
-    }
-    throw e;
-  }
+async function runAgent(systemExtra, userPrompt, jsonMode = true) {
+  const content = await chatCompletion({
+    messages: [
+      { role: 'system', content: `${SYSTEM_BASE}\n${systemExtra}` },
+      { role: 'user', content: userPrompt },
+    ],
+    jsonMode,
+  });
+  const result = jsonMode ? parseJsonSafe(content) : content;
+  return { result, mockUsed: false };
 }
 
 function sendOk(res, data, meta = {}) {
@@ -133,24 +104,14 @@ app.post('/api/generate/copy', async (req, res) => {
       topics.length > 0
         ? topics
         : [{ title: userNote || '基于素材与对话内容', reason: '', source: '用户描述' }];
-    let data;
-    let mockUsed;
-    let mockReason;
-    if (mockOnly()) {
-      data = getMockCopy(topicList, count, userNote);
-      mockUsed = true;
-      mockReason = '演示模式（MOCK_AI=1）';
-    } else {
-      const agent = await runAgent(
-        '',
-        promptCopy(ctx, topicList, userNote, count),
-        true,
-        'copy'
-      );
-      data = agent.result;
-      mockUsed = agent.mockUsed;
-      mockReason = agent.mockReason;
-    }
+    const agent = await runAgent(
+      '',
+      promptCopy(ctx, topicList, userNote, count),
+      true
+    );
+    const data = agent.result;
+    const mockUsed = agent.mockUsed;
+    const mockReason = agent.mockReason;
     const normalized = {
       ...data,
       copies: ensureCopyCount(data?.copies || [], topicList, count),

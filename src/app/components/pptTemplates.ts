@@ -1,6 +1,8 @@
 /** 大纲页可选的内置 PPT 模板（与首页 PPT 模板名称对应） */
 export interface PptBuiltinTemplate {
   id: string;
+  /** 引用素材映射到服务端内置模板时使用的实际模板 ID */
+  generationTemplateId?: string;
   name: string;
   description: string;
   styleTag: string;

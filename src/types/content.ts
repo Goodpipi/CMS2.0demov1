@@ -21,7 +21,7 @@ export interface CopyItem {
   topicTitle?: string;
 }
 
-export type TeamContentType = 'copy' | 'visual' | 'video' | 'ppt';
+export type TeamContentType = 'copy' | 'rich-text' | 'visual' | 'video' | 'ppt';
 
 export interface TeamResult {
   contentType: TeamContentType;

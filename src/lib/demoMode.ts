@@ -24,16 +24,12 @@ export function subscribeDemoMode(fn: () => void): () => void {
 }
 
 export function loadAppMode(): AppMode {
-  try {
-    return localStorage.getItem(MODE_KEY) === 'demo' ? 'demo' : 'real';
-  } catch {
-    return 'real';
-  }
+  return 'real';
 }
 
-export function saveAppMode(mode: AppMode): void {
+export function saveAppMode(_mode: AppMode): void {
   try {
-    localStorage.setItem(MODE_KEY, mode);
+    localStorage.removeItem(MODE_KEY);
   } catch {
     /* ignore */
   }
@@ -60,9 +56,9 @@ export function saveDemoScenario(scenario: DemoScenario): void {
 }
 
 export function isDemoMode(): boolean {
-  return loadAppMode() === 'demo';
+  return false;
 }
 
 export function getDemoModeLabel(): string {
-  return `演示模式 · ${DEMO_SCENARIO_LABELS[loadDemoScenario()]}`;
+  return '真实 AI 模式';
 }

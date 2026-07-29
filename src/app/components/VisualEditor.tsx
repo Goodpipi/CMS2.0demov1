@@ -93,6 +93,7 @@ interface VisualEditorProps {
     layers: DragLayer[];
   }) => Promise<{ dataUrl: string; svg?: string; title?: string }>;
   isGenerating?: boolean;
+  allowBrush?: boolean;
 }
 
 function getMaskBounds(canvas: HTMLCanvasElement): { x: number; y: number; w: number; h: number } | null {
@@ -134,8 +135,9 @@ export function VisualEditor({
   onUpdate,
   onGenerate,
   isGenerating = false,
+  allowBrush = true,
 }: VisualEditorProps) {
-  const [mode, setMode] = useState<EditMode>('brush');
+  const [mode, setMode] = useState<EditMode>(allowBrush ? 'brush' : 'drag');
   const [brushTool, setBrushTool] = useState<BrushTool>('brush');
   const [editPrompt, setEditPrompt] = useState(
     '把圈选区域调整得更清爽，减少营销感，保持拜耳蓝绿风格。'
@@ -147,6 +149,10 @@ export function VisualEditor({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [props, setProps] = useState<ElementProps | null>(null);
   const [insertTool, setInsertTool] = useState<InsertShapeType | null>(null);
+
+  useEffect(() => {
+    if (!allowBrush && mode !== 'drag') setMode('drag');
+  }, [allowBrush, mode]);
   const [historyTick, setHistoryTick] = useState(0);
 
   const svgHostRef = useRef<HTMLDivElement>(null);
@@ -575,6 +581,7 @@ export function VisualEditor({
       <aside className="wpanel visual-editor-side visual-editor-props">
         <h3 className="section-title">视觉编辑</h3>
 
+        {allowBrush && (
         <div className="visual-editor-mode-tabs" role="tablist" aria-label="编辑方式">
           <button
             type="button"
@@ -595,8 +602,9 @@ export function VisualEditor({
             设计编辑
           </button>
         </div>
+        )}
 
-        {mode === 'brush' && (
+        {allowBrush && mode === 'brush' && (
           <div className="visual-editor-tool-row" role="group" aria-label="圈选工具">
             <button
               type="button"
@@ -969,7 +977,7 @@ export function VisualEditor({
           </>
         )}
 
-        {mode === 'brush' && (
+        {allowBrush && mode === 'brush' && (
           <div className="small" style={{ marginTop: 10 }}>
             {brushTool === 'brush'
               ? '用画笔圈出需 AI 重绘的区域（红色笔迹）。'
@@ -996,19 +1004,21 @@ export function VisualEditor({
               <div className="visual-editor-load-hint">正在加载配图…</div>
             )}
           </div>
-          <canvas
+          {allowBrush && <canvas
             ref={canvasRef}
             className={`visual-editor-mask-canvas ${mode === 'brush' ? 'active' : ''}`}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerLeave={onPointerUp}
-          />
+          />}
         </div>
       </main>
 
       <aside className="wpanel visual-editor-side">
-        <h3 className="section-title">AI 局部修改</h3>
+        <h3 className="section-title">{allowBrush ? 'AI 局部修改' : '手动调整'}</h3>
+        {allowBrush && (
+        <>
         <textarea
           className="select"
           style={{ height: 110, width: '100%', resize: 'none' }}
@@ -1023,6 +1033,8 @@ export function VisualEditor({
         >
           {isGenerating ? '生成中…' : '生成新版本'}
         </button>
+        </>
+        )}
         {mode === 'drag' && (
           <button className="btn soft" style={{ width: '100%', marginTop: 8 }} onClick={handleSaveDrag}>
             保存精调并返回

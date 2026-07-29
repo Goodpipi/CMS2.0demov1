@@ -24,18 +24,6 @@ function sessionToneClasses(status: SessionStatus): string {
   }
 }
 
-function lovableStatusClass(status: SessionStatus): string {
-  switch (status) {
-    case 'in_progress':
-    case 'team':
-      return 'border-accent/30 bg-accent/15 text-accent-foreground';
-    case 'submitted':
-      return 'border-primary/20 bg-primary/10 text-primary';
-    default:
-      return 'border-border bg-secondary text-secondary-foreground';
-  }
-}
-
 interface HomeHistorySidebarProps {
   open: boolean;
   sessions: ChatSession[];
@@ -91,7 +79,6 @@ function SessionSourceRow({
   isActive,
   deriveSessionSubtitle,
   deriveSessionStatus,
-  sessionStatusLabel,
   formatSessionTime,
   projects,
   onOpen,
@@ -102,7 +89,6 @@ function SessionSourceRow({
   isActive: boolean;
   deriveSessionSubtitle: (session: ChatSession) => string;
   deriveSessionStatus: (session: ChatSession) => SessionStatus;
-  sessionStatusLabel: (status: SessionStatus) => string;
   formatSessionTime: (ts: number) => string;
   projects: ChatProject[];
   onOpen: () => void;
@@ -149,15 +135,7 @@ function SessionSourceRow({
           <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
             {deriveSessionSubtitle(session)}
           </div>
-          <div className="mt-1 flex items-center justify-between gap-2">
-            <span
-              className={cn(
-                'inline-flex rounded-full border px-1.5 py-0 text-[9.5px] font-medium leading-5',
-                lovableStatusClass(status)
-              )}
-            >
-              {sessionStatusLabel(status)}
-            </span>
+          <div className="mt-1 flex items-center justify-end">
             <span className="shrink-0 text-[10px] text-muted-foreground/80">
               {formatSessionTime(session.updatedAt)}
             </span>
@@ -244,7 +222,6 @@ export function HomeHistorySidebar({
   onSessionsChange,
   deriveSessionSubtitle,
   deriveSessionStatus,
-  sessionStatusLabel,
   formatSessionTime,
 }: HomeHistorySidebarProps) {
   const [projects, setProjects] = useState<ChatProject[]>(() => loadAllProjects());
@@ -343,7 +320,6 @@ export function HomeHistorySidebar({
       isActive={session.id === currentSessionId}
       deriveSessionSubtitle={deriveSessionSubtitle}
       deriveSessionStatus={deriveSessionStatus}
-      sessionStatusLabel={sessionStatusLabel}
       formatSessionTime={formatSessionTime}
       projects={projects}
       onOpen={() => onOpenSession(session.id)}

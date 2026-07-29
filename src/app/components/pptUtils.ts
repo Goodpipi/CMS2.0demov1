@@ -72,7 +72,7 @@ export function normalizeOutline(
   });
 
   return {
-    title: raw.title || '可申达 演示文稿',
+    title: raw.title || '医学演示文稿',
     audience: raw.audience || audience,
     scenario: raw.scenario || scenario,
     chapters,
