@@ -34,6 +34,17 @@ import type {
   GeneratedImageMeta,
 } from '@/types/content';
 import {
+  applyTabForModificationTarget,
+  createMockModificationTasks,
+  formatModificationTaskTime,
+  MODIFICATION_TASK_FILTERS,
+  MODIFICATION_TASK_STATUS_LABEL,
+  type ModificationTask,
+  type ModificationTaskFilter,
+} from '@/lib/modificationTasks';
+import { applyElementAiToSvg } from '@/lib/elementAiEdit';
+import { SelectableSvgPreview, type SelectableSvgSelection } from '@/app/components/SelectableSvgPreview';
+import {
   buildTeamReviewPayload,
   TEAM_CONTENT_LABELS,
   teamReviewSupported,
@@ -150,6 +161,7 @@ import {
   Library as LibraryIcon,
   Eraser,
   Paintbrush,
+  ListTodo,
   Plus,
   Presentation,
   Search,
@@ -279,6 +291,7 @@ export default function App() {
   const [inputValue, setInputValue] = useState('');
   const [homeAgentIntent, setHomeAgentIntent] = useState<HomeEntryIntent | null>(null);
   const [selectedModel, setSelectedModel] = useState('GPT-5.5');
+  const [composerMode, setComposerMode] = useState<'agent' | 'plan'>('agent');
   const [topics, setTopics] = useState<TopicItem[]>([]);
   const [insightSummary, setInsightSummary] = useState('');
   const [hotInsightReport, setHotInsightReport] = useState<HotInsightReport | null>(null);
@@ -340,7 +353,20 @@ export default function App() {
   const [reviewPptNotes, setReviewPptNotes] = useState<Record<number, PptReviewComment[]>>({});
   const [reviewPptNoteDraft, setReviewPptNoteDraft] = useState('');
   const [reviewerReplyDrafts, setReviewerReplyDrafts] = useState<Record<string, string>>({});
-  const [creatorRightTab, setCreatorRightTab] = useState<'ai' | 'comments'>('ai');
+  const [creatorRightTab, setCreatorRightTab] = useState<'ai' | 'tasks' | 'comments'>('ai');
+  const [modificationTasks, setModificationTasks] = useState<ModificationTask[]>(() =>
+    createMockModificationTasks()
+  );
+  const [modificationTaskFilter, setModificationTaskFilter] =
+    useState<ModificationTaskFilter>('all');
+  const [workspaceElementSel, setWorkspaceElementSel] = useState<{
+    slideIndex: number;
+    elementId: string;
+    label: string;
+    isText: boolean;
+    svgMarkup: string;
+  } | null>(null);
+  const [workspaceElementBusy, setWorkspaceElementBusy] = useState(false);
   const [creatorReplyDrafts, setCreatorReplyDrafts] = useState<Record<string, string>>({});
   const [creatorPptPageIndex, setCreatorPptPageIndex] = useState(0);
   const [copyRevisions, setCopyRevisions] = useState<CopyRevision[]>([]);
@@ -502,6 +528,8 @@ export default function App() {
     isHydratingRef.current = true;
     setCreatorPptPageIndex(0);
     setCreatorRightTab('ai');
+    setComposerMode('agent');
+    setWorkspaceElementSel(null);
     setCurrentSessionId(session.id);
     setTaskTitle(session.title);
     const locked =
@@ -1180,6 +1208,14 @@ export default function App() {
   };
 
   const getComposerPlaceholder = () => {
+    if (composerMode === 'plan') {
+      return '描述目标，AI 先给出实施计划（不会直接改产出物）…';
+    }
+    if (workspaceElementSel) {
+      return workspaceElementSel.isText
+        ? `修改「${workspaceElementSel.label}」：例如改成「核心信息」、字号加大、换成拜耳蓝…`
+        : `修改「${workspaceElementSel.label}」：例如换成绿色、缩小一点、半透明…`;
+    }
     const ctx = entryContext;
     if (!ctx) return '直接说你想做什么：生成图片、PPT、视频、文案或话题洞察…';
     switch (ctx.intent) {
@@ -1199,6 +1235,48 @@ export default function App() {
         return '直接说你想做什么…';
     }
   };
+
+  const toggleComposerMode = useCallback(() => {
+    setComposerMode((prev) => (prev === 'agent' ? 'plan' : 'agent'));
+  }, []);
+
+  const buildPlanReplyHtml = useCallback((goal: string) => {
+    const shortGoal = goal.length > 48 ? `${goal.slice(0, 48)}…` : goal;
+    const focus = workspaceElementSel
+      ? `围绕已选中元素「${workspaceElementSel.label}」`
+      : state.active
+        ? `围绕当前预览「${tabNames[state.active] || state.active}」`
+        : '结合当前任务上下文';
+    return `
+      <div class="proposed-plan">
+        <div class="proposed-plan-eyebrow">Proposed Plan</div>
+        <strong class="proposed-plan-title">针对「${shortGoal}」的实施计划</strong>
+        <p class="proposed-plan-desc">${focus}，先规划再执行；确认后可切换到 Agent 模式落地。</p>
+        <ol class="proposed-plan-steps">
+          <li>澄清目标与约束，确认受众、合规口径与交付物范围</li>
+          <li>盘点现有素材 / 大纲 / 页面，标出需改动的关键元素</li>
+          <li>给出分步修改方案（文案 → 视觉 → 结构），每步可单独验收</li>
+          <li>按步骤执行并在预览区核对，必要时回滚到上一版本</li>
+        </ol>
+      </div>
+    `;
+  }, [workspaceElementSel, state.active]);
+
+  const runPlanModeTurn = useCallback(
+    (goal: string) => {
+      addMsg('user', goal, selectedModel);
+      setInputValue('');
+      setSelectedPrompt('');
+      setTimeout(() => {
+        addMsg('ai', buildPlanReplyHtml(goal), selectedModel, [
+          '按此计划执行',
+          '继续完善计划',
+          '切换到 Agent 模式',
+        ]);
+      }, 420);
+    },
+    [selectedModel, buildPlanReplyHtml]
+  );
 
   const reset = (
     initialPrompt = '',
@@ -1238,6 +1316,8 @@ export default function App() {
     setSelectedPptVersionId(null);
     setCreatorPptPageIndex(0);
     setCreatorRightTab('ai');
+    setComposerMode('agent');
+    setWorkspaceElementSel(null);
     setRichTextContent('');
     setSelectedPptTemplateId(
       entry?.intent === 'ppt-template' && entry.templateTitle
@@ -1481,7 +1561,15 @@ export default function App() {
 
   const send = () => {
     const text = inputValue.trim();
-    if (!text) return;
+    if (!text || workspaceElementBusy) return;
+    if (composerMode === 'plan') {
+      runPlanModeTurn(text);
+      return;
+    }
+    if (workspaceElementSel) {
+      void applyWorkspaceElementAi(text);
+      return;
+    }
     addMsg('user', text, selectedModel);
     setInputValue('');
     setSelectedPrompt('');
@@ -2783,6 +2871,28 @@ export default function App() {
   const fillQuick = (text: string) => {
     if (isGenerating) {
       toast('请等待当前 AI 生成完成');
+      return;
+    }
+    if (text === '切换到 Agent 模式') {
+      setComposerMode('agent');
+      toast('已切换到 Agent 模式');
+      return;
+    }
+    if (text === '继续完善计划') {
+      setComposerMode('plan');
+      setInputValue('请补充验收标准、风险点与优先级：');
+      toast('仍在计划模式，可继续完善');
+      return;
+    }
+    if (text === '按此计划执行') {
+      setComposerMode('agent');
+      addMsg('user', text, selectedModel);
+      addMsg(
+        'ai',
+        '已退出计划模式，开始按计划执行。你可以指定从哪一步开始，或直接下达生成指令。',
+        selectedModel,
+        ['生成PPT', '生成图片', '生成图文']
+      );
       return;
     }
     if (runDemoScenarioScript(text, { addUserMessage: true })) return;
@@ -4255,6 +4365,163 @@ export default function App() {
   const creatorCurrentPageComments = creatorPptComments.filter(
     ({ comment }) => comment.pageIndex === creatorPptPageIndex
   );
+  const filteredModificationTasks = useMemo(() => {
+    const list =
+      modificationTaskFilter === 'all'
+        ? modificationTasks
+        : modificationTasks.filter((task) => task.status === modificationTaskFilter);
+    return [...list].sort((a, b) => b.updatedAt - a.updatedAt);
+  }, [modificationTasks, modificationTaskFilter]);
+  const runningModificationTaskCount = modificationTasks.filter(
+    (task) => task.status === 'running'
+  ).length;
+
+  const openModificationTaskDetail = useCallback(
+    (task: ModificationTask) => {
+      setWorkspacePreviewMaterial(null);
+      setWorkspaceElementSel(null);
+      setState((prev) => applyTabForModificationTarget(prev, task.targetTab));
+      if (task.pageIndex != null) {
+        setCreatorPptPageIndex(task.pageIndex);
+      }
+      setCreatorRightTab('tasks');
+      toast(`已定位到「${task.targetLabel}」`);
+    },
+    [toast]
+  );
+
+  const cancelModificationTask = useCallback((taskId: string) => {
+    setModificationTasks((prev) =>
+      prev.map((task) =>
+        task.id === taskId && task.status === 'running'
+          ? {
+              ...task,
+              status: 'cancelled',
+              resultSummary: '任务已取消，未继续写入产出物。',
+              updatedAt: Date.now(),
+            }
+          : task
+      )
+    );
+    toast('任务已取消');
+  }, [toast]);
+
+  const restartModificationTask = useCallback((taskId: string) => {
+    setModificationTasks((prev) =>
+      prev.map((task) =>
+        task.id === taskId && task.status === 'cancelled'
+          ? {
+              ...task,
+              status: 'running',
+              resultSummary: '任务已重新启动，AI 正在按原 prompt 继续修改…',
+              updatedAt: Date.now(),
+            }
+          : task
+      )
+    );
+    toast('任务已重新运转');
+  }, [toast]);
+
+  const handleCreatorPptPageChange = useCallback((index: number) => {
+    setCreatorPptPageIndex(index);
+    setWorkspaceElementSel(null);
+  }, []);
+
+  const handleWorkspaceElementSelect = useCallback((selection: SelectableSvgSelection | null, slideIndex: number) => {
+    if (!selection) {
+      setWorkspaceElementSel(null);
+      return;
+    }
+    setWorkspaceElementSel((prev) => {
+      if (prev?.elementId === selection.id && prev.slideIndex === slideIndex) {
+        return null;
+      }
+      return {
+        slideIndex,
+        elementId: selection.id,
+        label: selection.label,
+        isText: selection.isText,
+        svgMarkup: selection.svgMarkup,
+      };
+    });
+    setCreatorRightTab('ai');
+  }, []);
+
+  const applyWorkspaceElementAi = useCallback(
+    async (promptText: string) => {
+      if (!workspaceElementSel || !promptText.trim() || !pptResult) return;
+      const prompt = promptText.trim();
+      const target = workspaceElementSel;
+      const markup = target.svgMarkup.trim();
+      if (!markup) {
+        toast('当前页面无法解析为可编辑 SVG');
+        return;
+      }
+      addMsg('user', prompt, selectedModel);
+      setInputValue('');
+      setSelectedPrompt('');
+      setWorkspaceElementBusy(true);
+      try {
+        await new Promise((r) => setTimeout(r, 480));
+        const result = applyElementAiToSvg(markup, target.elementId, prompt);
+        if (!result) {
+          addMsg('ai', '未能修改选中元素，请重新点选后再试。', selectedModel);
+          toast('未能修改选中元素，请重新选择后再试');
+          return;
+        }
+        const slides = pptResult.slides.map((item, index) =>
+          index === target.slideIndex
+            ? {
+                ...item,
+                svg: result.svg,
+                imageUrl: undefined,
+              }
+            : item
+        );
+        setPptResult({ ...pptResult, slides });
+        if (selectedPptVersionId) {
+          setPptVersions((prev) =>
+            prev.map((version) =>
+              version.id === selectedPptVersionId ? { ...version, slides } : version
+            )
+          );
+        }
+        const now = Date.now();
+        setModificationTasks((prev) => [
+          {
+            id: `mod-task-live-${now}`,
+            prompt,
+            status: 'completed',
+            targetTab: 'ppt-design',
+            pageIndex: target.slideIndex,
+            targetLabel: `PPT 设计 · 第 ${target.slideIndex + 1} 页 · ${target.label}`,
+            resultSummary: result.summary,
+            createdAt: now,
+            updatedAt: now,
+          },
+          ...prev,
+        ]);
+        setWorkspaceElementSel((prev) =>
+          prev
+            ? {
+                ...prev,
+                label: result.elementLabel,
+                svgMarkup: result.svg,
+              }
+            : prev
+        );
+        addMsg(
+          'ai',
+          `已按你的指令修改「${result.elementLabel}」。<br>${result.summary}`,
+          selectedModel
+        );
+        toast(result.summary);
+      } finally {
+        setWorkspaceElementBusy(false);
+      }
+    },
+    [workspaceElementSel, pptResult, selectedPptVersionId, selectedModel, toast]
+  );
 
   const activeProjectName = useMemo(() => {
     if (!activeProjectId) return null;
@@ -4928,30 +5195,51 @@ export default function App() {
               </div>
             </div>
 
-            {hasCompletedPptReview && (
-            <div className="creator-right-tabs" role="tablist" aria-label="对话与批注">
+            <div
+              className={`creator-right-tabs ${hasCompletedPptReview ? 'has-comments' : ''}`}
+              role="tablist"
+              aria-label="对话、任务与批注"
+            >
               <button
                 type="button"
+                role="tab"
+                aria-selected={creatorRightTab === 'ai'}
                 className={creatorRightTab === 'ai' ? 'active' : ''}
                 onClick={() => setCreatorRightTab('ai')}
               >
-                AI 对话
+                对话
               </button>
               <button
                 type="button"
-                className={creatorRightTab === 'comments' ? 'active' : ''}
-                onClick={() => {
-                  refreshReviewTasks();
-                  setCreatorRightTab('comments');
-                }}
+                role="tab"
+                aria-selected={creatorRightTab === 'tasks'}
+                className={creatorRightTab === 'tasks' ? 'active' : ''}
+                onClick={() => setCreatorRightTab('tasks')}
               >
-                查看批注
-                {creatorPptComments.length > 0 && <span>{creatorPptComments.length}</span>}
+                全部任务
+                {runningModificationTaskCount > 0 && (
+                  <span>{runningModificationTaskCount}</span>
+                )}
               </button>
+              {hasCompletedPptReview && (
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={creatorRightTab === 'comments'}
+                  className={creatorRightTab === 'comments' ? 'active' : ''}
+                  onClick={() => {
+                    refreshReviewTasks();
+                    setCreatorRightTab('comments');
+                  }}
+                >
+                  批注
+                  {creatorPptComments.length > 0 && <span>{creatorPptComments.length}</span>}
+                </button>
+              )}
             </div>
-            )}
 
-            {!hasCompletedPptReview || creatorRightTab === 'ai' ? (
+            {creatorRightTab === 'ai' ||
+            (creatorRightTab === 'comments' && !hasCompletedPptReview) ? (
             <>
             {activeReviewTaskId && activeReviewTask && (
                 <div className="review-task-banner">
@@ -5041,6 +5329,13 @@ export default function App() {
                   <span className="prompt-token">{selectedPrompt}</span>
                 </div>
               )}
+              {workspaceElementSel && (
+                <div className="attach-row">
+                  <span className="prompt-token">
+                    已选中 · 第 {workspaceElementSel.slideIndex + 1} 页 · {workspaceElementSel.label}
+                  </span>
+                </div>
+              )}
 
               {!reviewFocusMode && (
                 <div className="composer-guides quick-row">
@@ -5057,30 +5352,157 @@ export default function App() {
                 </div>
               )}
 
-              <div className="compose-line">
-                <button className="icon-btn" title="上传本地文件或搜索 CMS" onClick={() => openMaterialPicker('chat')}>＋</button>
-                <select
-                  className="model-select"
-                  value={selectedModel}
-                  onChange={e => setSelectedModel(e.target.value)}
-                >
-                  <option>GPT-5.5</option>
-                </select>
-                <textarea
-                  placeholder={getComposerPlaceholder()}
-                  value={inputValue}
-                  onChange={e => setInputValue(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      send();
-                    }
-                  }}
-                />
-                <button className="btn primary" onClick={send}>发送</button>
+              <div className={`compose-shell ${composerMode === 'plan' ? 'is-plan-mode' : ''}`}>
+                <div className="compose-main">
+                  <button
+                    className="icon-btn"
+                    title="上传本地文件或搜索 CMS"
+                    onClick={() => openMaterialPicker('chat')}
+                  >
+                    ＋
+                  </button>
+                  <textarea
+                    placeholder={getComposerPlaceholder()}
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    disabled={workspaceElementBusy}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Tab' && e.shiftKey) {
+                        e.preventDefault();
+                        toggleComposerMode();
+                        return;
+                      }
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        send();
+                      }
+                    }}
+                  />
+                </div>
+                <div className="compose-footer">
+                  <div className="compose-footer-left">
+                    <div className="composer-mode-switch" role="group" aria-label="协作模式">
+                      <button
+                        type="button"
+                        className={composerMode === 'agent' ? 'active' : ''}
+                        onClick={() => setComposerMode('agent')}
+                        title="Agent 模式：直接执行"
+                      >
+                        Agent
+                      </button>
+                      <button
+                        type="button"
+                        className={composerMode === 'plan' ? 'active plan' : ''}
+                        onClick={() => setComposerMode('plan')}
+                        title="Plan 模式：先出计划再执行（Shift+Tab）"
+                      >
+                        <ListTodo className="h-3.5 w-3.5" strokeWidth={2.2} />
+                        Plan
+                      </button>
+                    </div>
+                    <select
+                      className="model-select"
+                      value={selectedModel}
+                      onChange={(e) => setSelectedModel(e.target.value)}
+                    >
+                      <option>GPT-5.5</option>
+                    </select>
+                    {composerMode === 'plan' && (
+                      <span className="composer-mode-hint">只规划，不直接改产出物</span>
+                    )}
+                  </div>
+                  <button
+                    className="btn primary compose-send"
+                    onClick={send}
+                    disabled={workspaceElementBusy}
+                  >
+                    {workspaceElementBusy
+                      ? '修改中…'
+                      : composerMode === 'plan'
+                        ? '生成计划'
+                        : '发送'}
+                  </button>
+                </div>
               </div>
             </div>
             </>
+            ) : creatorRightTab === 'tasks' ? (
+              <div className="creator-tasks-view">
+                <div className="creator-tasks-filters" role="tablist" aria-label="任务状态筛选">
+                  {MODIFICATION_TASK_FILTERS.map(({ key, label }) => {
+                    const count =
+                      key === 'all'
+                        ? modificationTasks.length
+                        : modificationTasks.filter((task) => task.status === key).length;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        role="tab"
+                        aria-selected={modificationTaskFilter === key}
+                        className={modificationTaskFilter === key ? 'active' : ''}
+                        onClick={() => setModificationTaskFilter(key)}
+                      >
+                        {label}
+                        <span>{count}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="creator-tasks-list">
+                  {filteredModificationTasks.length > 0 ? (
+                    filteredModificationTasks.map((task) => (
+                      <article
+                        key={task.id}
+                        className={`creator-task-card status-${task.status}`}
+                      >
+                        <div className="creator-task-card-head">
+                          <span className={`creator-task-status status-${task.status}`}>
+                            {MODIFICATION_TASK_STATUS_LABEL[task.status]}
+                          </span>
+                          <span className="creator-task-target">{task.targetLabel}</span>
+                        </div>
+                        <p className="creator-task-prompt">{task.prompt}</p>
+                        {task.resultSummary && (
+                          <p className="creator-task-summary">{task.resultSummary}</p>
+                        )}
+                        <div className="creator-task-meta">
+                          <span>更新于 {formatModificationTaskTime(task.updatedAt)}</span>
+                        </div>
+                        <div className="creator-task-actions">
+                          <button
+                            type="button"
+                            className="btn soft"
+                            onClick={() => openModificationTaskDetail(task)}
+                          >
+                            查看详情
+                          </button>
+                          {task.status === 'running' && (
+                            <button
+                              type="button"
+                              className="btn warn"
+                              onClick={() => cancelModificationTask(task.id)}
+                            >
+                              取消任务
+                            </button>
+                          )}
+                          {task.status === 'cancelled' && (
+                            <button
+                              type="button"
+                              className="btn primary"
+                              onClick={() => restartModificationTask(task.id)}
+                            >
+                              重新运转
+                            </button>
+                          )}
+                        </div>
+                      </article>
+                    ))
+                  ) : (
+                    <div className="creator-tasks-empty">当前筛选下暂无修改任务</div>
+                  )}
+                </div>
+              </div>
             ) : (
               <div className="creator-comments-view">
                 <div className="creator-comments-summary">
@@ -5245,8 +5667,10 @@ export default function App() {
             richTextContent={richTextContent}
             onRichTextChange={setRichTextContent}
             creatorPptPageIndex={creatorPptPageIndex}
-            onCreatorPptPageChange={setCreatorPptPageIndex}
+            onCreatorPptPageChange={handleCreatorPptPageChange}
             creatorPptComments={creatorPptComments.map(({ comment }) => comment)}
+            workspaceElementId={workspaceElementSel?.elementId ?? null}
+            onWorkspaceElementSelect={handleWorkspaceElementSelect}
             onSelectPptTemplate={setSelectedPptTemplateId}
             onPptOutlineChange={setPptOutline}
             onRollbackPptSlides={(slides) => {
@@ -5909,6 +6333,8 @@ function WorkspaceRightPanel({
   creatorPptPageIndex,
   onCreatorPptPageChange,
   creatorPptComments,
+  workspaceElementId,
+  onWorkspaceElementSelect,
   onSelectPptTemplate,
   onPptOutlineChange,
   onRollbackPptSlides,
@@ -5997,6 +6423,8 @@ function WorkspaceRightPanel({
   creatorPptPageIndex: number;
   onCreatorPptPageChange: (index: number) => void;
   creatorPptComments: PptReviewComment[];
+  workspaceElementId: string | null;
+  onWorkspaceElementSelect: (selection: SelectableSvgSelection | null, slideIndex: number) => void;
   onSelectPptTemplate: (id: string | null) => void;
   onPptOutlineChange: (outline: PptOutline) => void;
   onRollbackPptSlides: (slides: PptSlide[]) => void;
@@ -7063,20 +7491,15 @@ function WorkspaceRightPanel({
                     )}
                   </div>
                   <div className="creator-ppt-slide-canvas">
-                    <DrawableImagePreview
-                      key={`${creatorActiveSlide.page}-${creatorActivePageIndex}`}
-                      item={{
-                        id: -(creatorActivePageIndex + 1),
-                        cat: 'PPT 页面',
-                        title: creatorActiveSlide.title,
-                        meta: `第 ${creatorActiveSlide.page ?? creatorActivePageIndex + 1} 页`,
-                        cms: false,
-                        def: false,
-                        addedAt: Date.now(),
-                        contentType: 'image',
-                        contentUrl: slideToPreviewUrl(creatorActiveSlide),
-                        mimeType: 'image/svg+xml',
-                      }}
+                    <SelectableSvgPreview
+                      key={`${creatorActiveSlide.page}-${creatorActivePageIndex}-${(creatorActiveSlide.svg || '').slice(0, 48)}`}
+                      svgMarkup={creatorActiveSlide.svg}
+                      imageSrc={slideToPreviewUrl(creatorActiveSlide)}
+                      selectedId={workspaceElementId}
+                      disabled={Boolean(selectedHistory)}
+                      onSelect={(selection) =>
+                        onWorkspaceElementSelect(selection, creatorActivePageIndex)
+                      }
                     />
                   </div>
                 </div>
