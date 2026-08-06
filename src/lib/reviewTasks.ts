@@ -1,5 +1,11 @@
-import type { CopyRevision, ReviewTask, ReviewTaskStatus } from '@/types/review';
-import type { UserRole } from '@/types/review';
+import type {
+  CopyRevision,
+  PptCommentReply,
+  PptReviewComment,
+  ReviewTask,
+  ReviewTaskStatus,
+  UserRole,
+} from '@/types/review';
 import type { TeamContentType } from '@/types/content';
 import type { TabKey } from '@/types/session';
 import type { SessionWorkspace } from '@/types/session';
@@ -132,6 +138,175 @@ export function updateTaskStatus(id: string, status: ReviewTaskStatus): void {
   const task = getReviewTask(id);
   if (!task) return;
   upsertReviewTask({ ...task, status });
+}
+
+/** 同一会话下的审阅任务 */
+export function tasksForSession(sessionId: string): ReviewTask[] {
+  return loadReviewTasks().filter((t) => t.sessionId === sessionId);
+}
+
+/** 按会话 + 内容类型 + 审阅人查找原任务（用于二次发起） */
+export function findReviewTask(
+  sessionId: string,
+  contentType: TeamContentType,
+  assigneeRole: 'medical' | 'marketing'
+): ReviewTask | undefined {
+  return loadReviewTasks().find(
+    (t) =>
+      t.sessionId === sessionId &&
+      t.contentType === contentType &&
+      t.assigneeRole === assigneeRole
+  );
+}
+
+function makeId(prefix: string): string {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** 向审阅任务添加 PPT 页级批注 */
+export function addPptComment(
+  taskId: string,
+  input: {
+    pageIndex: number;
+    pageNumber: number;
+    authorRole: UserRole;
+    authorName: string;
+    content: string;
+  }
+): PptReviewComment | undefined {
+  const task = getReviewTask(taskId);
+  if (!task) return undefined;
+  const now = Date.now();
+  const comment: PptReviewComment = {
+    id: makeId('ppt_comment'),
+    pageIndex: input.pageIndex,
+    pageNumber: input.pageNumber,
+    authorRole: input.authorRole,
+    authorName: input.authorName,
+    content: input.content.trim(),
+    createdAt: now,
+    replies: [],
+  };
+  if (!comment.content) return undefined;
+  upsertReviewTask({
+    ...task,
+    status: task.status === 'pending' ? 'in_progress' : task.status,
+    pptComments: [...(task.pptComments || []), comment],
+  });
+  return comment;
+}
+
+/** 为批注添加回复（创作者或审阅者） */
+export function addPptCommentReply(
+  taskId: string,
+  commentId: string,
+  input: {
+    authorRole: UserRole;
+    authorName: string;
+    content: string;
+  }
+): PptCommentReply | undefined {
+  const task = getReviewTask(taskId);
+  if (!task) return undefined;
+  const content = input.content.trim();
+  if (!content) return undefined;
+  const now = Date.now();
+  const reply: PptCommentReply = {
+    id: makeId('reply'),
+    authorRole: input.authorRole,
+    authorName: input.authorName,
+    content,
+    createdAt: now,
+  };
+  const comments = task.pptComments || [];
+  if (!comments.some((c) => c.id === commentId)) return undefined;
+  upsertReviewTask({
+    ...task,
+    status:
+      input.authorRole !== 'ops' && task.status !== 'completed'
+        ? 'in_progress'
+        : task.status,
+    pptComments: comments.map((comment) =>
+      comment.id === commentId
+        ? { ...comment, replies: [...(comment.replies || []), reply] }
+        : comment
+    ),
+  });
+  return reply;
+}
+
+export type ReopenReviewTaskInput = {
+  title: string;
+  deadline: string;
+  assignerName: string;
+  baseCopyText?: string;
+  copyRevisionBase?: string;
+};
+
+/**
+ * 重新打开原审阅任务：状态重置为 pending，更新截止时间与轮次，
+ * 保留全部历史批注、回复与文案修订。
+ */
+export function reopenReviewTask(
+  existing: ReviewTask,
+  input: ReopenReviewTaskInput
+): ReviewTask {
+  const now = Date.now();
+  const completedReviewCount = Math.max(
+    existing.completedReviewCount || 0,
+    existing.status === 'completed' ? 1 : 0
+  );
+  const task: ReviewTask = {
+    ...existing,
+    title: input.title,
+    deadline: input.deadline,
+    assignerName: input.assignerName,
+    status: 'pending',
+    updatedAt: now,
+    baseCopyText: input.baseCopyText ?? existing.baseCopyText,
+    copyRevisionBase: input.copyRevisionBase ?? existing.copyRevisionBase,
+    reviewRound: (existing.reviewRound || 0) + 1,
+    completedReviewCount,
+    // 显式保留历史线程
+    pptComments: existing.pptComments || [],
+    copyRevisions: existing.copyRevisions,
+  };
+  upsertReviewTask(task);
+  return task;
+}
+
+/** 创建新的审阅任务（首次发起） */
+export function createReviewTask(input: {
+  sessionId: string;
+  title: string;
+  contentType: TeamContentType;
+  assigneeRole: 'medical' | 'marketing';
+  assigneeName: string;
+  assignerName: string;
+  deadline: string;
+  baseCopyText?: string;
+  copyRevisionBase?: string;
+}): ReviewTask {
+  const now = Date.now();
+  const task: ReviewTask = {
+    id: makeId('rt'),
+    sessionId: input.sessionId,
+    title: input.title,
+    contentType: input.contentType,
+    assigneeRole: input.assigneeRole,
+    assigneeName: input.assigneeName,
+    assignerName: input.assignerName,
+    deadline: input.deadline,
+    status: 'pending',
+    createdAt: now,
+    updatedAt: now,
+    baseCopyText: input.baseCopyText,
+    copyRevisionBase: input.copyRevisionBase,
+    reviewRound: 1,
+    pptComments: [],
+  };
+  upsertReviewTask(task);
+  return task;
 }
 
 export function seedReviewTasksIfEmpty(): void {

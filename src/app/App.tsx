@@ -34,14 +34,10 @@ import type {
   GeneratedImageMeta,
 } from '@/types/content';
 import {
-  applyTabForModificationTarget,
-  createMockModificationTasks,
-  formatModificationTaskTime,
-  MODIFICATION_TASK_FILTERS,
-  MODIFICATION_TASK_STATUS_LABEL,
-  type ModificationTask,
-  type ModificationTaskFilter,
-} from '@/lib/modificationTasks';
+  createMockTaskQueue,
+  QUEUE_STATUS_LABEL,
+  type TaskQueueItem,
+} from '@/lib/taskQueue';
 import { applyElementAiToSvg } from '@/lib/elementAiEdit';
 import { SelectableSvgPreview, type SelectableSvgSelection } from '@/app/components/SelectableSvgPreview';
 import {
@@ -83,7 +79,11 @@ import { OpsImageReviewPanel } from '@/app/components/OpsImageReviewPanel';
 import { alignImageReviewArrays } from '@/lib/imageReviewUtils';
 import { parseFigmaCaptureId } from '@/lib/figmaCapture';
 import { ReviewerVisualPanel } from '@/app/components/ReviewerVisualPanel';
-import { RichTextEditor } from '@/app/components/RichTextEditor';
+import {
+  RichTextEditor,
+  buildRichTextHtmlDocument,
+} from '@/app/components/RichTextEditor';
+import { PptCommentThread } from '@/app/components/PptCommentThread';
 import { loadUserRole, saveUserRole, isReviewerRole } from '@/lib/userRole';
 import {
   loadReviewTasks,
@@ -96,11 +96,15 @@ import {
   mergeSessionCopyRevisions,
   sessionCopyRevisionBase,
   propagateCopyRevisionsToSession,
+  findReviewTask,
+  addPptComment,
+  addPptCommentReply,
+  reopenReviewTask,
+  createReviewTask,
 } from '@/lib/reviewTasks';
 import { createCopyRevision, downloadDataUrl, latestCopyText, saveCopyRevisionMerged, normalizeCopyRevisions } from '@/lib/copyRevisionUtils';
 import {
   HOT_INSIGHT_CATEGORY,
-  WORKSPACE_QUICK_PROMPTS,
   TOPIC_INSIGHT_BRANCH_CHIPS,
   buildHotInsightReport,
   buildTopicRecommendations,
@@ -152,6 +156,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   Database,
   FileText,
   Filter,
@@ -353,12 +358,9 @@ export default function App() {
   const [reviewPptNotes, setReviewPptNotes] = useState<Record<number, PptReviewComment[]>>({});
   const [reviewPptNoteDraft, setReviewPptNoteDraft] = useState('');
   const [reviewerReplyDrafts, setReviewerReplyDrafts] = useState<Record<string, string>>({});
-  const [creatorRightTab, setCreatorRightTab] = useState<'ai' | 'tasks' | 'comments'>('ai');
-  const [modificationTasks, setModificationTasks] = useState<ModificationTask[]>(() =>
-    createMockModificationTasks()
-  );
-  const [modificationTaskFilter, setModificationTaskFilter] =
-    useState<ModificationTaskFilter>('all');
+  const [creatorRightTab, setCreatorRightTab] = useState<'ai' | 'comments'>('ai');
+  const [taskQueue, setTaskQueue] = useState<TaskQueueItem[]>(() => createMockTaskQueue());
+  const [taskQueueOpen, setTaskQueueOpen] = useState(true);
   const [workspaceElementSel, setWorkspaceElementSel] = useState<{
     slideIndex: number;
     elementId: string;
@@ -1655,11 +1657,6 @@ export default function App() {
       return;
     }
     retry();
-  };
-
-  const insertWorkspaceGuide = (prefix: string) => {
-    setInputValue(prefix);
-    setSelectedPrompt(prefix.replace(/[：:]\s*$/, ''));
   };
 
   const executeHotInsightReportSkill = (userNote = '') => {
@@ -3625,32 +3622,15 @@ export default function App() {
   const replyToPptComment = (taskId: string, commentId: string) => {
     const content = creatorReplyDrafts[commentId]?.trim();
     if (!content) return;
-    const task = getReviewTask(taskId);
-    if (!task) {
+    const reply = addPptCommentReply(taskId, commentId, {
+      authorRole: 'ops',
+      authorName: ROLE_PROFILES.ops.name,
+      content,
+    });
+    if (!reply) {
       toast('批注所属审阅任务不存在');
       return;
     }
-    const now = Date.now();
-    upsertReviewTask({
-      ...task,
-      pptComments: (task.pptComments || []).map((comment) =>
-        comment.id === commentId
-          ? {
-              ...comment,
-              replies: [
-                ...(comment.replies || []),
-                {
-                  id: `reply_${now}_${Math.random().toString(36).slice(2, 8)}`,
-                  authorRole: 'ops',
-                  authorName: ROLE_PROFILES.ops.name,
-                  content,
-                  createdAt: now,
-                },
-              ],
-            }
-          : comment
-      ),
-    });
     setCreatorReplyDrafts((prev) => ({ ...prev, [commentId]: '' }));
     refreshReviewTasks();
     toast('回复已同步给审阅者');
@@ -3659,30 +3639,12 @@ export default function App() {
   const replyToCreatorAsReviewer = (commentId: string) => {
     const content = reviewerReplyDrafts[commentId]?.trim();
     if (!content || !activeReviewTaskId) return;
-    const task = getReviewTask(activeReviewTaskId);
-    if (!task) return;
-    const now = Date.now();
-    upsertReviewTask({
-      ...task,
-      status: 'in_progress',
-      pptComments: (task.pptComments || []).map((comment) =>
-        comment.id === commentId
-          ? {
-              ...comment,
-              replies: [
-                ...(comment.replies || []),
-                {
-                  id: `reply_${now}_${Math.random().toString(36).slice(2, 8)}`,
-                  authorRole: userRole,
-                  authorName: ROLE_PROFILES[userRole].name,
-                  content,
-                  createdAt: now,
-                },
-              ],
-            }
-          : comment
-      ),
+    const reply = addPptCommentReply(activeReviewTaskId, commentId, {
+      authorRole: userRole,
+      authorName: ROLE_PROFILES[userRole].name,
+      content,
     });
+    if (!reply) return;
     setReviewerReplyDrafts((prev) => ({ ...prev, [commentId]: '' }));
     refreshReviewTasks();
     toast('回复已同步给内容创作者');
@@ -4349,9 +4311,6 @@ export default function App() {
   const creatorPptReviewTasks = reviewTasks.filter(
     (task) => task.sessionId === currentSessionId && task.contentType === 'ppt'
   );
-  const hasCompletedPptReview = creatorPptReviewTasks.some(
-    (task) => task.status === 'completed' || (task.completedReviewCount || 0) > 0
-  );
   const creatorPptComments = creatorPptReviewTasks
     .flatMap((task) =>
       (task.pptComments || []).map((comment) => ({
@@ -4362,64 +4321,53 @@ export default function App() {
       }))
     )
     .sort((a, b) => a.comment.createdAt - b.comment.createdAt);
+  /** 仅当当前会话存在审阅批注时展示「AI 对话 / 查看批注」切换 */
+  const showCreatorCommentTabs = creatorPptComments.length > 0;
   const creatorCurrentPageComments = creatorPptComments.filter(
     ({ comment }) => comment.pageIndex === creatorPptPageIndex
   );
-  const filteredModificationTasks = useMemo(() => {
-    const list =
-      modificationTaskFilter === 'all'
-        ? modificationTasks
-        : modificationTasks.filter((task) => task.status === modificationTaskFilter);
-    return [...list].sort((a, b) => b.updatedAt - a.updatedAt);
-  }, [modificationTasks, modificationTaskFilter]);
-  const runningModificationTaskCount = modificationTasks.filter(
-    (task) => task.status === 'running'
-  ).length;
 
-  const openModificationTaskDetail = useCallback(
-    (task: ModificationTask) => {
-      setWorkspacePreviewMaterial(null);
-      setWorkspaceElementSel(null);
-      setState((prev) => applyTabForModificationTarget(prev, task.targetTab));
-      if (task.pageIndex != null) {
-        setCreatorPptPageIndex(task.pageIndex);
-      }
-      setCreatorRightTab('tasks');
-      toast(`已定位到「${task.targetLabel}」`);
-    },
-    [toast]
-  );
+  useEffect(() => {
+    if (!showCreatorCommentTabs && creatorRightTab === 'comments') {
+      setCreatorRightTab('ai');
+    }
+  }, [showCreatorCommentTabs, creatorRightTab]);
+  const queuedItems = taskQueue.filter((item) => item.status === 'queued');
+  const visibleQueueItems = taskQueue.filter((item) => item.status !== 'done');
 
-  const cancelModificationTask = useCallback((taskId: string) => {
-    setModificationTasks((prev) =>
-      prev.map((task) =>
-        task.id === taskId && task.status === 'running'
-          ? {
-              ...task,
-              status: 'cancelled',
-              resultSummary: '任务已取消，未继续写入产出物。',
-              updatedAt: Date.now(),
-            }
-          : task
-      )
-    );
-    toast('任务已取消');
-  }, [toast]);
+  const removeQueueItem = useCallback((id: string) => {
+    setTaskQueue((prev) => prev.filter((item) => item.id !== id));
+  }, []);
 
-  const restartModificationTask = useCallback((taskId: string) => {
-    setModificationTasks((prev) =>
-      prev.map((task) =>
-        task.id === taskId && task.status === 'cancelled'
-          ? {
-              ...task,
-              status: 'running',
-              resultSummary: '任务已重新启动，AI 正在按原 prompt 继续修改…',
-              updatedAt: Date.now(),
-            }
-          : task
-      )
-    );
-    toast('任务已重新运转');
+  const moveQueueItem = useCallback((id: string, direction: -1 | 1) => {
+    setTaskQueue((prev) => {
+      const queued = prev.filter((item) => item.status === 'queued');
+      const index = queued.findIndex((item) => item.id === id);
+      if (index < 0) return prev;
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= queued.length) return prev;
+      const reordered = [...queued];
+      const [picked] = reordered.splice(index, 1);
+      reordered.splice(nextIndex, 0, picked);
+      let qi = 0;
+      return prev.map((item) => {
+        if (item.status !== 'queued') return item;
+        return reordered[qi++];
+      });
+    });
+  }, []);
+
+  const promoteQueueItem = useCallback((id: string) => {
+    setTaskQueue((prev) => {
+      const target = prev.find((item) => item.id === id);
+      if (!target || target.status !== 'queued') return prev;
+      return prev.map((item) => {
+        if (item.id === id) return { ...item, status: 'running' as const };
+        if (item.status === 'running') return { ...item, status: 'queued' as const };
+        return item;
+      });
+    });
+    toast('已提升为当前执行任务');
   }, [toast]);
 
   const handleCreatorPptPageChange = useCallback((index: number) => {
@@ -4486,21 +4434,6 @@ export default function App() {
             )
           );
         }
-        const now = Date.now();
-        setModificationTasks((prev) => [
-          {
-            id: `mod-task-live-${now}`,
-            prompt,
-            status: 'completed',
-            targetTab: 'ppt-design',
-            pageIndex: target.slideIndex,
-            targetLabel: `PPT 设计 · 第 ${target.slideIndex + 1} 页 · ${target.label}`,
-            resultSummary: result.summary,
-            createdAt: now,
-            updatedAt: now,
-          },
-          ...prev,
-        ]);
         setWorkspaceElementSel((prev) =>
           prev
             ? {
@@ -5195,10 +5128,11 @@ export default function App() {
               </div>
             </div>
 
+            {showCreatorCommentTabs && (
             <div
-              className={`creator-right-tabs ${hasCompletedPptReview ? 'has-comments' : ''}`}
+              className="creator-right-tabs has-comments"
               role="tablist"
-              aria-label="对话、任务与批注"
+              aria-label="AI 对话与查看批注"
             >
               <button
                 type="button"
@@ -5207,39 +5141,25 @@ export default function App() {
                 className={creatorRightTab === 'ai' ? 'active' : ''}
                 onClick={() => setCreatorRightTab('ai')}
               >
-                对话
+                AI 对话
               </button>
               <button
                 type="button"
                 role="tab"
-                aria-selected={creatorRightTab === 'tasks'}
-                className={creatorRightTab === 'tasks' ? 'active' : ''}
-                onClick={() => setCreatorRightTab('tasks')}
+                aria-selected={creatorRightTab === 'comments'}
+                className={creatorRightTab === 'comments' ? 'active' : ''}
+                onClick={() => {
+                  refreshReviewTasks();
+                  setCreatorRightTab('comments');
+                }}
               >
-                全部任务
-                {runningModificationTaskCount > 0 && (
-                  <span>{runningModificationTaskCount}</span>
-                )}
+                查看批注
+                {creatorPptComments.length > 0 && <span>{creatorPptComments.length}</span>}
               </button>
-              {hasCompletedPptReview && (
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={creatorRightTab === 'comments'}
-                  className={creatorRightTab === 'comments' ? 'active' : ''}
-                  onClick={() => {
-                    refreshReviewTasks();
-                    setCreatorRightTab('comments');
-                  }}
-                >
-                  批注
-                  {creatorPptComments.length > 0 && <span>{creatorPptComments.length}</span>}
-                </button>
-              )}
             </div>
+            )}
 
-            {creatorRightTab === 'ai' ||
-            (creatorRightTab === 'comments' && !hasCompletedPptReview) ? (
+            {!showCreatorCommentTabs || creatorRightTab === 'ai' ? (
             <>
             {activeReviewTaskId && activeReviewTask && (
                 <div className="review-task-banner">
@@ -5310,6 +5230,90 @@ export default function App() {
             </div>
 
             <div className="composer">
+              {visibleQueueItems.length > 0 && (
+                <div className={`task-queue-panel ${taskQueueOpen ? 'is-open' : ''}`}>
+                  <button
+                    type="button"
+                    className="task-queue-toggle"
+                    onClick={() => setTaskQueueOpen((open) => !open)}
+                    aria-expanded={taskQueueOpen}
+                  >
+                    <span className="task-queue-toggle-left">
+                      <ListTodo className="h-3.5 w-3.5" strokeWidth={2.2} />
+                      Task Queue
+                      <span className="task-queue-count">{visibleQueueItems.length}</span>
+                    </span>
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 task-queue-chevron ${taskQueueOpen ? 'is-open' : ''}`}
+                    />
+                  </button>
+                  {taskQueueOpen && (
+                    <div className="task-queue-list">
+                      {visibleQueueItems.map((item) => {
+                        const queuedIndex = queuedItems.findIndex((q) => q.id === item.id);
+                        return (
+                          <div
+                            key={item.id}
+                            className={`task-queue-item status-${item.status}`}
+                          >
+                            <div className="task-queue-item-main">
+                              <span className={`task-queue-status status-${item.status}`}>
+                                {item.status === 'running' && (
+                                  <span className="task-queue-spinner" aria-hidden />
+                                )}
+                                {QUEUE_STATUS_LABEL[item.status]}
+                              </span>
+                              <div className="task-queue-item-body">
+                                <p>{item.prompt}</p>
+                                {item.context && <small>{item.context}</small>}
+                              </div>
+                            </div>
+                            <div className="task-queue-item-actions">
+                              {item.status === 'queued' && (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="task-queue-icon-btn"
+                                    title="上移"
+                                    disabled={queuedIndex <= 0}
+                                    onClick={() => moveQueueItem(item.id, -1)}
+                                  >
+                                    <ChevronUp className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="task-queue-icon-btn"
+                                    title="下移"
+                                    disabled={queuedIndex < 0 || queuedIndex >= queuedItems.length - 1}
+                                    onClick={() => moveQueueItem(item.id, 1)}
+                                  >
+                                    <ChevronDown className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="task-queue-text-btn"
+                                    onClick={() => promoteQueueItem(item.id)}
+                                  >
+                                    立即执行
+                                  </button>
+                                </>
+                              )}
+                              <button
+                                type="button"
+                                className="task-queue-icon-btn"
+                                title="移除"
+                                onClick={() => removeQueueItem(item.id)}
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
               {attachments.length > 0 && (
                 <div className="attach-row">
                   {attachments.map((pill, i) => (
@@ -5334,21 +5338,6 @@ export default function App() {
                   <span className="prompt-token">
                     已选中 · 第 {workspaceElementSel.slideIndex + 1} 页 · {workspaceElementSel.label}
                   </span>
-                </div>
-              )}
-
-              {!reviewFocusMode && (
-                <div className="composer-guides quick-row">
-                  {WORKSPACE_QUICK_PROMPTS.map(({ label, prefix }) => (
-                    <button
-                      key={label}
-                      type="button"
-                      className="chip"
-                      onClick={() => insertWorkspaceGuide(prefix)}
-                    >
-                      {label}
-                    </button>
-                  ))}
                 </div>
               )}
 
@@ -5426,83 +5415,6 @@ export default function App() {
               </div>
             </div>
             </>
-            ) : creatorRightTab === 'tasks' ? (
-              <div className="creator-tasks-view">
-                <div className="creator-tasks-filters" role="tablist" aria-label="任务状态筛选">
-                  {MODIFICATION_TASK_FILTERS.map(({ key, label }) => {
-                    const count =
-                      key === 'all'
-                        ? modificationTasks.length
-                        : modificationTasks.filter((task) => task.status === key).length;
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        role="tab"
-                        aria-selected={modificationTaskFilter === key}
-                        className={modificationTaskFilter === key ? 'active' : ''}
-                        onClick={() => setModificationTaskFilter(key)}
-                      >
-                        {label}
-                        <span>{count}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="creator-tasks-list">
-                  {filteredModificationTasks.length > 0 ? (
-                    filteredModificationTasks.map((task) => (
-                      <article
-                        key={task.id}
-                        className={`creator-task-card status-${task.status}`}
-                      >
-                        <div className="creator-task-card-head">
-                          <span className={`creator-task-status status-${task.status}`}>
-                            {MODIFICATION_TASK_STATUS_LABEL[task.status]}
-                          </span>
-                          <span className="creator-task-target">{task.targetLabel}</span>
-                        </div>
-                        <p className="creator-task-prompt">{task.prompt}</p>
-                        {task.resultSummary && (
-                          <p className="creator-task-summary">{task.resultSummary}</p>
-                        )}
-                        <div className="creator-task-meta">
-                          <span>更新于 {formatModificationTaskTime(task.updatedAt)}</span>
-                        </div>
-                        <div className="creator-task-actions">
-                          <button
-                            type="button"
-                            className="btn soft"
-                            onClick={() => openModificationTaskDetail(task)}
-                          >
-                            查看详情
-                          </button>
-                          {task.status === 'running' && (
-                            <button
-                              type="button"
-                              className="btn warn"
-                              onClick={() => cancelModificationTask(task.id)}
-                            >
-                              取消任务
-                            </button>
-                          )}
-                          {task.status === 'cancelled' && (
-                            <button
-                              type="button"
-                              className="btn primary"
-                              onClick={() => restartModificationTask(task.id)}
-                            >
-                              重新运转
-                            </button>
-                          )}
-                        </div>
-                      </article>
-                    ))
-                  ) : (
-                    <div className="creator-tasks-empty">当前筛选下暂无修改任务</div>
-                  )}
-                </div>
-              </div>
             ) : (
               <div className="creator-comments-view">
                 <div className="creator-comments-summary">
@@ -5512,44 +5424,23 @@ export default function App() {
                 <div className="creator-comments-list">
                   {creatorCurrentPageComments.length > 0 ? (
                     creatorCurrentPageComments.map(({ taskId, reviewerName, reviewerDept, comment }) => (
-                      <article key={comment.id} className="creator-comment-thread">
-                        <div className="creator-comment-meta">
-                          <strong>第 {comment.pageNumber} 页 · {reviewerName}</strong>
-                          <span>{reviewerDept}</span>
-                        </div>
-                        <p>{comment.content}</p>
-                        {(comment.replies || []).map((reply) => (
-                          <div
-                            key={reply.id}
-                            className={`creator-comment-reply ${
-                              reply.authorRole === 'ops' ? 'reply-ops' : 'reply-reviewer'
-                            }`}
-                          >
-                            <strong>{reply.authorName} 回复</strong>
-                            <span>{reply.content}</span>
-                          </div>
-                        ))}
-                        <div className="creator-comment-compose">
-                          <textarea
-                            value={creatorReplyDrafts[comment.id] || ''}
-                            onChange={(event) =>
-                              setCreatorReplyDrafts((prev) => ({
-                                ...prev,
-                                [comment.id]: event.target.value,
-                              }))
-                            }
-                            placeholder="回复这条批注…"
-                          />
-                          <button
-                            type="button"
-                            className="btn primary"
-                            disabled={!creatorReplyDrafts[comment.id]?.trim()}
-                            onClick={() => replyToPptComment(taskId, comment.id)}
-                          >
-                            回复
-                          </button>
-                        </div>
-                      </article>
+                      <PptCommentThread
+                        key={comment.id}
+                        variant="creator"
+                        comment={comment}
+                        metaTitle={`第 ${comment.pageNumber} 页 · ${reviewerName}`}
+                        metaSubtitle={reviewerDept}
+                        replyDraft={creatorReplyDrafts[comment.id] || ''}
+                        onReplyDraftChange={(value) =>
+                          setCreatorReplyDrafts((prev) => ({
+                            ...prev,
+                            [comment.id]: value,
+                          }))
+                        }
+                        onReply={() => replyToPptComment(taskId, comment.id)}
+                        replyPlaceholder="回复这条批注…"
+                        showReplyComposer
+                      />
                     ))
                   ) : (
                     <div className="reviewer-ppt-comments-empty">
@@ -5748,43 +5639,24 @@ export default function App() {
               <div className="reviewer-ppt-comment-list reviewer-ppt-comment-list-expanded">
                 {(reviewPptNotes[reviewPptPageIndex] || []).length > 0 ? (
                   (reviewPptNotes[reviewPptPageIndex] || []).map((note) => (
-                    <div key={note.id} className="reviewer-ppt-comment">
-                      <strong>{note.authorName}</strong>
-                      <span>{note.content}</span>
-                      {(note.replies || []).map((reply) => (
-                        <div
-                          key={reply.id}
-                          className={`reviewer-ppt-comment-reply ${
-                            reply.authorRole === 'ops' ? 'reply-ops' : 'reply-reviewer'
-                          }`}
-                        >
-                          <strong>{reply.authorName} 回复</strong>
-                          <span>{reply.content}</span>
-                        </div>
-                      ))}
-                      {(note.replies || []).some((reply) => reply.authorRole === 'ops') && (
-                        <div className="reviewer-comment-reply-compose">
-                          <textarea
-                            value={reviewerReplyDrafts[note.id] || ''}
-                            onChange={(event) =>
-                              setReviewerReplyDrafts((prev) => ({
-                                ...prev,
-                                [note.id]: event.target.value,
-                              }))
-                            }
-                            placeholder="回复内容创作者…"
-                          />
-                          <button
-                            type="button"
-                            className="btn primary"
-                            disabled={!reviewerReplyDrafts[note.id]?.trim()}
-                            onClick={() => replyToCreatorAsReviewer(note.id)}
-                          >
-                            回复
-                          </button>
-                        </div>
+                    <PptCommentThread
+                      key={note.id}
+                      variant="reviewer"
+                      comment={note}
+                      metaTitle={note.authorName}
+                      replyDraft={reviewerReplyDrafts[note.id] || ''}
+                      onReplyDraftChange={(value) =>
+                        setReviewerReplyDrafts((prev) => ({
+                          ...prev,
+                          [note.id]: value,
+                        }))
+                      }
+                      onReply={() => replyToCreatorAsReviewer(note.id)}
+                      replyPlaceholder="回复内容创作者…"
+                      showReplyComposer={(note.replies || []).some(
+                        (reply) => reply.authorRole === 'ops'
                       )}
-                    </div>
+                    />
                   ))
                 ) : (
                   <div className="reviewer-ppt-comments-empty">当前页面暂无批注</div>
@@ -5804,25 +5676,15 @@ export default function App() {
                   onClick={() => {
                     const content = reviewPptNoteDraft.trim();
                     if (!content || !activeReviewTaskId) return;
-                    const task = getReviewTask(activeReviewTaskId);
-                    if (!task) return;
-                    const now = Date.now();
-                    const note: PptReviewComment = {
-                      id: `ppt_comment_${now}_${Math.random().toString(36).slice(2, 8)}`,
+                    const note = addPptComment(activeReviewTaskId, {
                       pageIndex: reviewPptPageIndex,
-                      pageNumber: reviewPptSlides[reviewPptPageIndex]?.page ?? reviewPptPageIndex + 1,
+                      pageNumber:
+                        reviewPptSlides[reviewPptPageIndex]?.page ?? reviewPptPageIndex + 1,
                       authorRole: userRole,
                       authorName: ROLE_PROFILES[userRole].name,
                       content,
-                      createdAt: now,
-                      replies: [],
-                    };
-                    const nextComments = [...(task.pptComments || []), note];
-                    upsertReviewTask({ ...task, status: 'in_progress', pptComments: nextComments });
-                    setReviewPptNotes((prev) => ({
-                      ...prev,
-                      [reviewPptPageIndex]: [...(prev[reviewPptPageIndex] || []), note],
-                    }));
+                    });
+                    if (!note) return;
                     setReviewPptNoteDraft('');
                     refreshReviewTasks();
                     toast('批注已添加');
@@ -6069,54 +5931,61 @@ export default function App() {
                 }
 
                 const assigneeLabels: string[] = [];
-                const existingTasks = loadReviewTasks();
-                teamAssigneeRoles.forEach((role, index) => {
+                let reopenCount = 0;
+                let createCount = 0;
+                teamAssigneeRoles.forEach((role) => {
                   const assignee = ROLE_PROFILES[role];
-                  const existingTask = existingTasks.find(
-                    (task) =>
-                      task.sessionId === currentSessionId &&
-                      task.contentType === target &&
-                      task.assigneeRole === role
-                  );
-                  const now = Date.now();
-                  const task: ReviewTask = {
-                    ...existingTask,
-                    id:
-                      existingTask?.id ||
-                      `rt_${now}_${index}_${Math.random().toString(36).slice(2, 8)}`,
-                    sessionId: currentSessionId,
-                    title: taskTitle,
-                    contentType: target,
-                    assigneeRole: role,
-                    assigneeName: assignee.name,
-                    assignerName: ROLE_PROFILES.ops.name,
-                    deadline,
-                    status: 'pending',
-                    createdAt: existingTask?.createdAt || now,
-                    updatedAt: now,
-                    baseCopyText: baseCopy || undefined,
-                    copyRevisionBase: baseCopy || undefined,
-                    reviewRound: (existingTask?.reviewRound || 0) + 1,
-                    completedReviewCount:
-                      existingTask?.completedReviewCount ||
-                      (existingTask?.status === 'completed' ? 1 : 0),
-                  };
-                  upsertReviewTask(task);
+                  const existingTask = findReviewTask(currentSessionId, target, role);
+                  if (existingTask) {
+                    reopenReviewTask(existingTask, {
+                      title: taskTitle,
+                      deadline,
+                      assignerName: ROLE_PROFILES.ops.name,
+                      baseCopyText: baseCopy || undefined,
+                      copyRevisionBase: baseCopy || undefined,
+                    });
+                    reopenCount += 1;
+                  } else {
+                    createReviewTask({
+                      sessionId: currentSessionId,
+                      title: taskTitle,
+                      contentType: target,
+                      assigneeRole: role,
+                      assigneeName: assignee.name,
+                      assignerName: ROLE_PROFILES.ops.name,
+                      deadline,
+                      baseCopyText: baseCopy || undefined,
+                      copyRevisionBase: baseCopy || undefined,
+                    });
+                    createCount += 1;
+                  }
                   assigneeLabels.push(`${assignee.name}（${assignee.dept}）`);
                 });
                 refreshReviewTasks();
                 const namesText = assigneeLabels.join('、');
                 setShowTeamModal(false);
                 setTeamAssigneeRoles([]);
-                toast(`已向 ${namesText} 分配${label}修改任务`);
+                const actionLabel =
+                  reopenCount > 0 && createCount === 0
+                    ? '重新发起'
+                    : createCount > 0 && reopenCount === 0
+                      ? '创建'
+                      : '分配';
+                toast(
+                  reopenCount > 0 && createCount === 0
+                    ? `已向 ${namesText} 重新发起${label}审阅（保留历史批注）`
+                    : `已向 ${namesText} 分配${label}修改任务`
+                );
                 addMsg(
                   'user',
-                  `向 ${namesText} 分配${label}团队修改任务（截止 ${deadline}）`,
+                  `向 ${namesText} ${actionLabel}${label}团队修改任务（截止 ${deadline}）`,
                   selectedModel
                 );
                 addMsg(
                   'ai',
-                  `已为 ${assigneeLabels.length} 位审阅人创建团队修改任务，他们将在各自首页任务列表中查看并修改。完成后你可在「团队修改」或「文案生成」标签查看修改详情。`,
+                  reopenCount > 0 && createCount === 0
+                    ? `已重新打开原审阅任务并通知 ${assigneeLabels.length} 位审阅人。历史批注与回复已保留，他们将在首页看到「待审阅」状态并可继续在原线程中批注。`
+                    : `已为 ${assigneeLabels.length} 位审阅人创建团队修改任务，他们将在各自首页任务列表中查看并修改。完成后你可在「团队修改」或「文案生成」标签查看修改详情。`,
                   'DeepSeek-V3.1'
                 );
               }}
@@ -6913,48 +6782,58 @@ function WorkspaceRightPanel({
 
       case 'rich-text':
         return (
-          <>
-            <RichTextEditor
-              value={richTextContent || WORKSPACE_MOCK_RICH_TEXT}
-              onChange={onRichTextChange}
-            />
-            <div className="content-submit-actions">
-              <button
-                type="button"
-                className="btn soft"
-                onClick={() => {
-                  const content = richTextContent || WORKSPACE_MOCK_RICH_TEXT;
-                  const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>图文内容</title></head><body>${content}</body></html>`;
-                  downloadDataUrl(
-                    `data:text/html;charset=utf-8,${encodeURIComponent(html)}`,
-                    '图文内容.html'
-                  );
-                  toast('图文内容已下载');
-                }}
-              >
-                下载图文
-              </button>
-              {!reviewerMode && (
-                <>
-                  <button
-                    type="button"
-                    className="btn warn"
-                    disabled={teamModificationInProgress}
-                    onClick={() => !teamModificationInProgress && onOpenTeamReview('rich-text')}
-                  >
-                    {teamModificationInProgress ? '团队审阅中...' : '提交团队审阅'}
-                  </button>
-                  <button
-                    type="button"
-                    className="btn green"
-                    onClick={() => fillQuick('提交当前图文内容到Veeva Vault审批:')}
-                  >
-                    提交 Veeva Vault 审批
-                  </button>
-                </>
-              )}
-            </div>
-          </>
+          <RichTextEditor
+            value={richTextContent || WORKSPACE_MOCK_RICH_TEXT}
+            onChange={onRichTextChange}
+            footerActions={
+              <>
+                <button
+                  type="button"
+                  className="btn soft"
+                  onClick={() => {
+                    const content = richTextContent || WORKSPACE_MOCK_RICH_TEXT;
+                    const html = buildRichTextHtmlDocument(content, '图文内容');
+                    downloadDataUrl(
+                      `data:text/html;charset=utf-8,${encodeURIComponent(html)}`,
+                      '图文内容.html'
+                    );
+                    toast('图文内容已下载');
+                  }}
+                >
+                  下载
+                </button>
+                {!reviewerMode && (
+                  <>
+                    <button
+                      type="button"
+                      className="btn warn"
+                      disabled={teamModificationInProgress}
+                      onClick={() => !teamModificationInProgress && onOpenTeamReview('rich-text')}
+                    >
+                      {teamModificationInProgress ? '团队审阅中...' : '提交团队审阅'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn green"
+                      onClick={() => {
+                        const content = richTextContent || WORKSPACE_MOCK_RICH_TEXT;
+                        const plain = content
+                          .replace(/<[^>]+>/g, ' ')
+                          .replace(/\s+/g, ' ')
+                          .trim()
+                          .slice(0, 800);
+                        fillQuick(
+                          `提交当前图文内容到Veeva Vault审批:\n${plain || '（当前图文正文）'}`
+                        );
+                      }}
+                    >
+                      提交 Veeva 审批
+                    </button>
+                  </>
+                )}
+              </>
+            }
+          />
         );
 
       case 'team':

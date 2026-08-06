@@ -32,7 +32,6 @@ import {
   type InsertShapeType,
   type SvgElementInfo,
 } from './svgEditorUtils';
-import { interpretElementAiPrompt } from '@/lib/elementAiEdit';
 
 export type EditMode = 'brush' | 'drag';
 export type BrushTool = 'brush' | 'eraser';
@@ -143,9 +142,6 @@ export function VisualEditor({
   const [editPrompt, setEditPrompt] = useState(
     '把圈选区域调整得更清爽，减少营销感，保持拜耳蓝绿风格。'
   );
-  const [elementAiPrompt, setElementAiPrompt] = useState('');
-  const [elementAiBusy, setElementAiBusy] = useState(false);
-  const [elementAiHint, setElementAiHint] = useState<string | null>(null);
   const [svgHtml, setSvgHtml] = useState('');
   const [showRasterBack, setShowRasterBack] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -297,7 +293,6 @@ export function VisualEditor({
     setSelectedId(id);
     setInsertTool(null);
     setProps(propsFromElement(readElementProps(el)));
-    setElementAiHint(null);
   }, []);
 
   const updateSelectedDom = useCallback(
@@ -574,37 +569,7 @@ export function VisualEditor({
   };
 
   const selectedMeta = elementList.find((e) => e.id === selectedId);
-  const showElementAiPanel = !allowBrush || mode === 'drag';
   const showBrushAiPanel = allowBrush && mode === 'brush';
-
-  const handleAiElementEdit = async () => {
-    if (!selectedId || selectedMeta?.isBackground || !props || !elementAiPrompt.trim()) return;
-    const targetId = selectedId;
-    const snapshotProps = props;
-    const snapshotMeta = selectedMeta;
-    const prompt = elementAiPrompt.trim();
-    setElementAiBusy(true);
-    setElementAiHint(null);
-    try {
-      await new Promise((r) => setTimeout(r, 520));
-      if (!svgHostRef.current?.querySelector(`[data-edit-id="${targetId}"]`)) {
-        setElementAiHint('选中元素已不存在，请重新选择后再试');
-        return;
-      }
-      const { patch, summary } = interpretElementAiPrompt(prompt, snapshotProps, snapshotMeta);
-      const el = svgHostRef.current.querySelector(`[data-edit-id="${targetId}"]`);
-      if (!el) return;
-      applyElementProps(el, patch);
-      setProps(propsFromElement(readElementProps(el)));
-      refreshElements();
-      pushEditHistory();
-      const svg = getCurrentSvg();
-      onUpdate(svgToDataUrl(svg), svg);
-      setElementAiHint(summary);
-    } finally {
-      setElementAiBusy(false);
-    }
-  };
 
   const handleSaveDrag = () => {
     const svg = getCurrentSvg();
@@ -1052,7 +1017,7 @@ export function VisualEditor({
       </main>
 
       <aside className="wpanel visual-editor-side">
-        <h3 className="section-title">{showBrushAiPanel ? 'AI 局部修改' : 'AI 精准修改'}</h3>
+        <h3 className="section-title">{showBrushAiPanel ? 'AI 局部修改' : '手动调整'}</h3>
 
         {showBrushAiPanel && (
           <>
@@ -1071,49 +1036,6 @@ export function VisualEditor({
               {isGenerating ? '生成中…' : '生成新版本'}
             </button>
           </>
-        )}
-
-        {showElementAiPanel && (
-          <div className="visual-editor-element-ai">
-            <p className="small" style={{ marginTop: 0, marginBottom: 10, lineHeight: 1.55 }}>
-              {selectedId && !selectedMeta?.isBackground
-                ? `已选中「${selectedMeta?.label || selectedId}」，输入修改指令后由 AI 精准调整该元素。`
-                : '请先在画布或左侧列表中选中一个元素，再输入修改指令。'}
-            </p>
-            <textarea
-              className="select visual-editor-element-ai-input"
-              style={{ height: 120, width: '100%', resize: 'vertical' }}
-              value={elementAiPrompt}
-              placeholder={
-                selectedMeta?.isText
-                  ? '例如：改成「核心信息」；字号加大；换成拜耳蓝；加粗'
-                  : '例如：换成绿色；缩小一点；半透明；颜色改为 #103C8F'
-              }
-              onChange={(e) => {
-                setElementAiPrompt(e.target.value);
-                if (elementAiHint) setElementAiHint(null);
-              }}
-              disabled={elementAiBusy}
-            />
-            {elementAiHint && (
-              <p className="small visual-editor-element-ai-hint" style={{ marginTop: 8, marginBottom: 0 }}>
-                {elementAiHint}
-              </p>
-            )}
-            <button
-              className="btn primary"
-              style={{ width: '100%', marginTop: 12 }}
-              disabled={
-                elementAiBusy ||
-                !selectedId ||
-                !!selectedMeta?.isBackground ||
-                !elementAiPrompt.trim()
-              }
-              onClick={() => void handleAiElementEdit()}
-            >
-              {elementAiBusy ? 'AI 修改中…' : 'AI 修改选中元素'}
-            </button>
-          </div>
         )}
 
         {mode === 'drag' && (
