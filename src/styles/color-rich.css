@@ -158,15 +158,15 @@
 }
 
 .chat-feed .chip.recommended {
-  background: #d8466a;
-  border-color: #d8466a;
+  background: #8AD329;
+  border-color: #8AD329;
   color: #fff;
   box-shadow: none;
 }
 
 .chat-feed .chip.recommended:hover {
-  background: #c93b60;
-  border-color: #c93b60;
+  background: #6FBD1F;
+  border-color: #6FBD1F;
   color: #fff;
   box-shadow: none;
 }
@@ -193,7 +193,7 @@
 .msg.user .chip {
   background: rgba(255, 255, 255, 0.96);
   border: 1px solid rgba(255, 255, 255, 0.85);
-  color: #103c8f;
+  color: #3BA6E8;
   font-weight: 600;
   box-shadow: 0 2px 8px rgba(8, 40, 90, 0.2);
 }

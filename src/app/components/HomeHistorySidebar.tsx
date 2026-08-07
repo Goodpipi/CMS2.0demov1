@@ -16,11 +16,11 @@ function sessionToneClasses(status: SessionStatus): string {
   switch (status) {
     case 'in_progress':
     case 'team':
-      return 'from-[#D8466A] to-[#7762B8]';
+      return 'from-[#8AD329] to-[#6FBD1F]';
     case 'submitted':
-      return 'from-[#4A9EE0] to-[#7762B8]';
+      return 'from-[#54B9F9] to-[#6FBD1F]';
     default:
-      return 'from-[#4A9EE0] to-[#3B7FBF]';
+      return 'from-[#54B9F9] to-[#3BA6E8]';
   }
 }
 
@@ -62,7 +62,7 @@ function HistorySection({
         <div className="flex min-w-0 flex-1 items-center gap-1.5 text-[12px] font-semibold text-foreground">
           {title}
           {badge !== undefined && badge > 0 && (
-            <span className="grid h-4 min-w-[16px] shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#4A9EE0] to-[#D8466A] px-1 text-[10px] font-bold text-white shadow-[0_2px_6px_-1px_rgba(59,127,191,0.5)]">
+            <span className="grid h-4 min-w-[16px] shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#54B9F9] to-[#8AD329] px-1 text-[10px] font-bold text-white shadow-[0_2px_6px_-1px_rgba(59, 150, 210,0.5)]">
               {badge}
             </span>
           )}
@@ -124,7 +124,7 @@ function SessionSourceRow({
       >
         <span
           className={cn(
-            'grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gradient-to-br shadow-[0_3px_8px_-2px_rgba(59,127,191,0.4)] ring-1 ring-white/40',
+            'grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gradient-to-br shadow-[0_3px_8px_-2px_rgba(59, 150, 210,0.4)] ring-1 ring-white/40',
             sessionToneClasses(status)
           )}
         >
@@ -363,7 +363,7 @@ export function HomeHistorySidebar({
             </span>
             <h3 className="section-title context-sidebar-title">历史对话</h3>
             {sessions.length > 0 && (
-              <span className="grid h-4 min-w-[16px] place-items-center rounded-full bg-gradient-to-br from-[#4A9EE0] to-[#D8466A] px-1 text-[10px] font-bold text-white shadow-[0_2px_6px_-1px_rgba(59,127,191,0.5)]">
+              <span className="grid h-4 min-w-[16px] place-items-center rounded-full bg-gradient-to-br from-[#54B9F9] to-[#8AD329] px-1 text-[10px] font-bold text-white shadow-[0_2px_6px_-1px_rgba(59, 150, 210,0.5)]">
                 {sessions.length}
               </span>
             )}

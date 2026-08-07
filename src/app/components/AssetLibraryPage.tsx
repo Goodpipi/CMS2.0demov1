@@ -244,7 +244,7 @@ export function AssetLibraryPage({ onNotify }: AssetLibraryPageProps) {
       title,
       description: `本地上传 · ${(file.size / 1024).toFixed(0)}KB`,
       ratio: templateKind === 'ppt' ? 'PPT 文件' : templateKind === 'image' ? '图片文件' : '富文本文件',
-      accent: '#4A9EE0',
+      accent: '#54B9F9',
       accentSoft: '#eaf4ff',
       tag: '上传',
       previewUrl,

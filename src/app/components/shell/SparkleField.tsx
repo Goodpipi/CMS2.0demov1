@@ -1,12 +1,12 @@
 const SPARKLES = [
-  { top: '8%', left: '12%', size: 10, delay: '0s', color: '#4A9EE0' },
-  { top: '18%', left: '82%', size: 14, delay: '1.2s', color: '#D8466A' },
-  { top: '62%', left: '6%', size: 8, delay: '0.6s', color: '#7762B8' },
-  { top: '72%', left: '88%', size: 12, delay: '2s', color: '#4A9EE0' },
-  { top: '35%', left: '92%', size: 9, delay: '1.6s', color: '#D8466A' },
-  { top: '48%', left: '4%', size: 11, delay: '2.4s', color: '#7762B8' },
-  { top: '85%', left: '40%', size: 7, delay: '0.9s', color: '#D8466A' },
-  { top: '14%', left: '48%', size: 9, delay: '2.8s', color: '#4A9EE0' },
+  { top: '8%', left: '12%', size: 10, delay: '0s', color: '#54B9F9' },
+  { top: '18%', left: '82%', size: 14, delay: '1.2s', color: '#8AD329' },
+  { top: '62%', left: '6%', size: 8, delay: '0.6s', color: '#6FBD1F' },
+  { top: '72%', left: '88%', size: 12, delay: '2s', color: '#54B9F9' },
+  { top: '35%', left: '92%', size: 9, delay: '1.6s', color: '#8AD329' },
+  { top: '48%', left: '4%', size: 11, delay: '2.4s', color: '#6FBD1F' },
+  { top: '85%', left: '40%', size: 7, delay: '0.9s', color: '#8AD329' },
+  { top: '14%', left: '48%', size: 9, delay: '2.8s', color: '#54B9F9' },
 ];
 
 const DOTS = [

@@ -22,16 +22,16 @@ export function materialFileKind(item: LibraryItem): {
 }
 
 function toneGradient(tone: 'cms' | 'pdf' | 'doc' | 'image' | 'file') {
-  if (tone === 'cms') return 'from-[#D8466A] to-[#7762B8]';
-  if (tone === 'image') return 'from-[#4A9EE0] via-[#7762B8] to-[#D8466A]';
-  return 'from-[#4A9EE0] to-[#3B7FBF]';
+  if (tone === 'cms') return 'from-[#8AD329] to-[#6FBD1F]';
+  if (tone === 'image') return 'from-[#54B9F9] via-[#6FBD1F] to-[#8AD329]';
+  return 'from-[#54B9F9] to-[#3BA6E8]';
 }
 
 function sourceBadge(item: LibraryItem) {
   if (item.cms) {
-    return { label: 'CMS', className: 'bg-[#D8466A]/15 text-[#a02d52] border-[#D8466A]/30' };
+    return { label: 'CMS', className: 'bg-[#8AD329]/15 text-[#4f8f14] border-[#8AD329]/30' };
   }
-  return { label: 'FILE', className: 'bg-[#4A9EE0]/15 text-[#2d5a8a] border-[#4A9EE0]/30' };
+  return { label: 'FILE', className: 'bg-[#54B9F9]/15 text-[#2d5a8a] border-[#54B9F9]/30' };
 }
 
 interface LibraryMaterialCardProps {
@@ -64,7 +64,7 @@ export function LibraryMaterialCard({
         'group relative overflow-hidden rounded-2xl glass-card glass-hover p-3.5 transition',
         'hover:-translate-y-0.5 hover:shadow-glow',
         selected
-          ? 'border-[#4A9EE0] ring-2 ring-[#4A9EE0]/30'
+          ? 'border-[#54B9F9] ring-2 ring-[#54B9F9]/30'
           : 'border-border/60 hover:border-primary/40'
       )}
       onClick={onPreview}
@@ -78,7 +78,7 @@ export function LibraryMaterialCard({
       tabIndex={0}
     >
       {selected && (
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#4A9EE0]/8 to-[#D8466A]/8" />
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#54B9F9]/8 to-[#8AD329]/8" />
       )}
 
       <div className="relative z-10 mb-2.5 flex items-center justify-between">
@@ -92,7 +92,7 @@ export function LibraryMaterialCard({
             className={cn(
               'grid h-5 w-5 place-items-center rounded-md border transition',
               selected
-                ? 'border-[#4A9EE0] bg-gradient-to-br from-[#4A9EE0] to-[#3B7FBF] text-white shadow-[0_3px_8px_-2px_rgba(59,127,191,0.5)]'
+                ? 'border-[#54B9F9] bg-gradient-to-br from-[#54B9F9] to-[#3BA6E8] text-white shadow-[0_3px_8px_-2px_rgba(59, 150, 210,0.5)]'
                 : 'border-border bg-background hover:border-primary'
             )}
             aria-label={`选择素材 ${item.title}`}
@@ -141,7 +141,7 @@ export function LibraryMaterialCard({
       <div className="relative z-10 flex items-start gap-2.5">
         <span
           className={cn(
-            'grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br shadow-[0_4px_10px_-2px_rgba(59,127,191,0.4)] ring-1 ring-white/40',
+            'grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br shadow-[0_4px_10px_-2px_rgba(59, 150, 210,0.4)] ring-1 ring-white/40',
             toneGradient(kind.tone)
           )}
         >
@@ -159,8 +159,8 @@ export function LibraryMaterialCard({
             className={cn(
               'rounded-md px-1.5 py-0.5 text-[10px] font-medium',
               item.cms
-                ? 'border border-[#D8466A]/30 bg-[#D8466A]/10 text-[#a02d52]'
-                : 'border border-[#4A9EE0]/30 bg-[#4A9EE0]/10 text-[#2d5a8a]'
+                ? 'border border-[#8AD329]/30 bg-[#8AD329]/10 text-[#4f8f14]'
+                : 'border border-[#54B9F9]/30 bg-[#54B9F9]/10 text-[#2d5a8a]'
             )}
           >
             {item.cms ? 'CMS' : '本地上传'}
@@ -176,7 +176,7 @@ export function LibraryMaterialCard({
                 'rounded-md border px-1.5 py-0.5 text-[10px] font-medium',
                 cmsExpired
                   ? 'border-destructive/30 bg-destructive/10 text-destructive'
-                  : 'border-[#7762B8]/25 bg-[#7762B8]/10 text-[#5f4a9b]'
+                  : 'border-[#6FBD1F]/25 bg-[#6FBD1F]/10 text-[#4f8f14]'
               )}
               title={`CMS 内容有效期至 ${item.validUntil}`}
             >

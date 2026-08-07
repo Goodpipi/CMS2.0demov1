@@ -17,14 +17,14 @@ body {
 }
 
 .btn.primary {
-  background: linear-gradient(90deg, #5bb0e8 0%, #4a9ee0 35%, #8e5bb8 65%, #d8466a 100%) !important;
+  background: linear-gradient(90deg, #54B9F9 0%, #6BCDE8 48%, #8AD329 100%) !important;
   border: 1px solid rgba(255, 255, 255, 0.45) !important;
   color: #fff !important;
   box-shadow:
-    0 16px 32px -10px rgba(74, 98, 180, 0.55),
-    0 8px 18px -6px rgba(216, 70, 106, 0.45),
+    0 16px 32px -10px rgba(84, 185, 249, 0.5),
+    0 8px 18px -6px rgba(138, 211, 41, 0.35),
     inset 0 1.5px 0 rgba(255, 255, 255, 0.7),
-    inset 0 -2.5px 0 rgba(120, 40, 90, 0.35);
+    inset 0 -2.5px 0 rgba(70, 140, 30, 0.28);
   border-radius: 999px;
 }
 
@@ -44,13 +44,13 @@ body {
   backdrop-filter: blur(20px) saturate(190%);
   border-radius: 12px;
   box-shadow:
-    0 8px 18px -6px rgba(74, 98, 180, 0.38),
+    0 8px 18px -6px rgba(84, 185, 249, 0.38),
     inset 0 1.5px 0 rgba(255, 255, 255, 1);
 }
 
 .btn.green {
-  background: linear-gradient(135deg, #d8466a 0%, #7762b8 100%) !important;
-  box-shadow: 0 8px 20px -6px rgba(216, 70, 106, 0.45);
+  background: linear-gradient(135deg, #8AD329 0%, #6FBD1F 100%) !important;
+  box-shadow: 0 8px 20px -6px rgba(138, 211, 41, 0.45);
 }
 
 /* —— Workspace layout —— */
@@ -67,10 +67,10 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.5) !important;
   border-radius: 24px !important;
   box-shadow:
-    0 40px 80px -32px rgba(74, 98, 180, 0.45),
-    0 18px 40px -20px rgba(216, 70, 106, 0.28),
+    0 40px 80px -32px rgba(84, 185, 249, 0.45),
+    0 18px 40px -20px rgba(138, 211, 41, 0.28),
     inset 0 1.5px 0 rgba(255, 255, 255, 0.95),
-    inset 0 -1px 0 rgba(120, 90, 180, 0.12) !important;
+    inset 0 -1px 0 rgba(100, 170, 40, 0.12) !important;
 }
 
 .wpanel.chat {
@@ -139,21 +139,21 @@ body {
   font-size: 13px;
   line-height: 1.65;
   box-shadow:
-    0 24px 48px -20px rgba(74, 98, 180, 0.4),
-    0 10px 24px -12px rgba(216, 70, 106, 0.25),
+    0 24px 48px -20px rgba(84, 185, 249, 0.4),
+    0 10px 24px -12px rgba(138, 211, 41, 0.25),
     inset 0 1.5px 0 rgba(255, 255, 255, 1);
   max-width: 78%;
 }
 
 .user .bubble {
-  background: linear-gradient(90deg, #5bb0e8 0%, #4a9ee0 35%, #8e5bb8 65%, #d8466a 100%) !important;
+  background: linear-gradient(118deg, #54B9F9 0%, #6BCDE8 45%, #8AD329 100%) !important;
   color: #fff !important;
   border-color: transparent !important;
   border-top-left-radius: 16px !important;
   border-top-right-radius: 6px !important;
   box-shadow:
-    0 16px 32px -10px rgba(74, 98, 180, 0.55),
-    0 8px 18px -6px rgba(216, 70, 106, 0.45);
+    0 16px 32px -10px rgba(84, 185, 249, 0.5),
+    0 8px 18px -6px rgba(138, 211, 41, 0.35);
   max-width: 60%;
   margin-left: auto;
 }
@@ -172,8 +172,8 @@ body {
 .chip,
 .chips button {
   border-radius: 999px !important;
-  border: 1px solid rgba(74, 158, 224, 0.3) !important;
-  background: rgba(74, 158, 224, 0.08) !important;
+  border: 1px solid rgba(84, 185, 249, 0.3) !important;
+  background: rgba(84, 185, 249, 0.08) !important;
   color: #2d5a8a !important;
   font-size: 11.5px !important;
   font-weight: 500;
@@ -184,8 +184,22 @@ body {
 .chip:hover,
 .chips button:hover {
   transform: translateY(-2px);
-  background: rgba(74, 158, 224, 0.15) !important;
-  box-shadow: 0 4px 12px -4px rgba(74, 158, 224, 0.5);
+  background: rgba(84, 185, 249, 0.15) !important;
+  box-shadow: 0 4px 12px -4px rgba(84, 185, 249, 0.5);
+}
+
+.chip.recommended,
+.chips button.recommended {
+  border-color: transparent !important;
+  background: linear-gradient(118deg, #54B9F9 0%, #8AD329 100%) !important;
+  color: #fff !important;
+}
+
+.chip.recommended:hover,
+.chips button.recommended:hover {
+  filter: brightness(1.06);
+  background: linear-gradient(118deg, #54B9F9 0%, #8AD329 100%) !important;
+  color: #fff !important;
 }
 
 /* —— Composer —— */
@@ -202,7 +216,7 @@ body {
   border-radius: 16px !important;
   padding: 10px !important;
   box-shadow:
-    0 0 24px -6px rgba(74, 98, 180, 0.22),
+    0 0 24px -6px rgba(84, 185, 249, 0.22),
     inset 0 2px 0 rgba(255, 255, 255, 1);
   gap: 8px;
   align-items: flex-end;
@@ -214,16 +228,16 @@ body {
   backdrop-filter: blur(48px) saturate(220%);
   border-radius: 16px !important;
   box-shadow:
-    0 0 24px -6px rgba(74, 98, 180, 0.22),
+    0 0 24px -6px rgba(84, 185, 249, 0.22),
     inset 0 2px 0 rgba(255, 255, 255, 1);
 }
 
-.compose-shell.is-plan-mode {
-  border-color: rgba(91, 110, 214, 0.45) !important;
-  background: linear-gradient(180deg, rgba(247, 248, 255, 0.98), rgba(255, 255, 255, 0.88)) !important;
+.compose-shell.is-global-scope {
+  border-color: rgba(84, 185, 249, 0.42) !important;
+  background: linear-gradient(180deg, rgba(238, 248, 255, 0.98), rgba(247, 253, 240, 0.92)) !important;
   box-shadow:
-    0 0 0 1px rgba(91, 110, 214, 0.1),
-    0 0 28px -8px rgba(91, 110, 214, 0.28),
+    0 0 0 1px rgba(84, 185, 249, 0.1),
+    0 0 28px -8px rgba(138, 211, 41, 0.22),
     inset 0 2px 0 rgba(255, 255, 255, 1);
 }
 
@@ -248,7 +262,7 @@ body {
   width: 36px;
   height: 36px;
   border-radius: 12px;
-  border: 1px dashed rgba(74, 158, 224, 0.35);
+  border: 1px dashed rgba(84, 185, 249, 0.35);
   background: transparent;
   color: oklch(0.5 0.04 220);
   transition: border-color 0.15s, color 0.15s;
@@ -318,7 +332,7 @@ body {
 }
 
 .source-clickable:hover {
-  border-color: rgba(74, 158, 224, 0.4);
+  border-color: rgba(84, 185, 249, 0.4);
   background: rgba(255, 255, 255, 0.8);
   box-shadow: var(--shadow-soft);
 }
@@ -327,14 +341,14 @@ body {
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  background: linear-gradient(135deg, #4a9ee0, #3b7fbf);
+  background: linear-gradient(135deg, #54B9F9, #3BA6E8);
   color: #fff;
   font-size: 11px;
   font-weight: 700;
 }
 
 .src-icon-cms {
-  background: linear-gradient(135deg, #d8466a, #7762b8);
+  background: linear-gradient(135deg, #8AD329, #6FBD1F);
 }
 
 .add-small {
@@ -346,7 +360,7 @@ body {
 }
 
 .add-small:hover {
-  background: rgba(74, 158, 224, 0.1);
+  background: rgba(84, 185, 249, 0.1);
 }
 
 /* —— Right panel —— */
@@ -373,9 +387,9 @@ body {
 }
 
 .right-head .tab.active {
-  background: linear-gradient(to bottom, rgba(74, 158, 224, 0.2), rgba(216, 70, 106, 0.12));
+  background: linear-gradient(to bottom, rgba(84, 185, 249, 0.2), rgba(138, 211, 41, 0.12));
   color: #2d5a8a;
-  box-shadow: inset 0 0 0 1px rgba(74, 158, 224, 0.3);
+  box-shadow: inset 0 0 0 1px rgba(84, 185, 249, 0.3);
 }
 
 .detail {
@@ -391,11 +405,11 @@ body {
   padding: 14px;
   margin-bottom: 12px;
   box-shadow:
-    0 30px 60px -24px rgba(74, 98, 180, 0.35),
-    0 14px 30px -14px rgba(216, 70, 106, 0.22),
-    0 4px 10px -4px rgba(74, 98, 180, 0.12),
+    0 30px 60px -24px rgba(84, 185, 249, 0.35),
+    0 14px 30px -14px rgba(138, 211, 41, 0.22),
+    0 4px 10px -4px rgba(84, 185, 249, 0.12),
     inset 0 1.5px 0 rgba(255, 255, 255, 1),
-    inset 0 -1.5px 0 rgba(120, 90, 180, 0.12) !important;
+    inset 0 -1.5px 0 rgba(100, 170, 40, 0.12) !important;
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
@@ -423,7 +437,7 @@ body {
 
 /* —— Modals & drawers —— */
 .modal-bg {
-  background: rgba(74, 98, 180, 0.18) !important;
+  background: rgba(84, 185, 249, 0.18) !important;
   backdrop-filter: blur(12px) saturate(140%);
 }
 
@@ -433,8 +447,8 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.7) !important;
   border-radius: 24px !important;
   box-shadow:
-    0 40px 80px -32px rgba(74, 98, 180, 0.45),
-    0 18px 40px -20px rgba(216, 70, 106, 0.28),
+    0 40px 80px -32px rgba(84, 185, 249, 0.45),
+    0 18px 40px -20px rgba(138, 211, 41, 0.28),
     inset 0 1.5px 0 rgba(255, 255, 255, 0.95) !important;
 }
 
@@ -444,16 +458,16 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.6) !important;
   border-radius: 28px !important;
   box-shadow:
-    0 40px 80px -32px rgba(74, 98, 180, 0.45),
-    0 18px 40px -20px rgba(216, 70, 106, 0.28) !important;
+    0 40px 80px -32px rgba(84, 185, 249, 0.45),
+    0 18px 40px -20px rgba(138, 211, 41, 0.28) !important;
 }
 
 .toast {
-  background: linear-gradient(90deg, #3b7fbf, #7762b8, #d8466a) !important;
+  background: linear-gradient(90deg, #3BA6E8, #6FBD1F, #8AD329) !important;
   border: 1px solid rgba(255, 255, 255, 0.35);
   box-shadow:
-    0 16px 32px -10px rgba(74, 98, 180, 0.55),
-    0 8px 18px -6px rgba(216, 70, 106, 0.45) !important;
+    0 16px 32px -10px rgba(84, 185, 249, 0.55),
+    0 8px 18px -6px rgba(138, 211, 41, 0.45) !important;
   border-radius: 999px;
 }
 
@@ -472,16 +486,16 @@ body {
 }
 
 .review-task-card:hover {
-  border-color: rgba(74, 158, 224, 0.5) !important;
+  border-color: rgba(84, 185, 249, 0.5) !important;
   transform: translateY(-2px);
   box-shadow:
-    0 14px 32px -10px rgba(59, 127, 191, 0.2),
+    0 14px 32px -10px rgba(59, 150, 210, 0.2),
     inset 0 1.5px 0 rgba(255, 255, 255, 1);
 }
 
 .review-task-banner {
   background: linear-gradient(90deg, rgba(255, 249, 240, 0.9), rgba(248, 252, 255, 0.9)) !important;
-  border: 1px solid rgba(74, 158, 224, 0.25) !important;
+  border: 1px solid rgba(84, 185, 249, 0.25) !important;
   border-radius: 16px;
   backdrop-filter: blur(12px);
 }
@@ -504,7 +518,7 @@ body {
 }
 
 .tab.active {
-  background: linear-gradient(to bottom, rgba(74, 158, 224, 0.18), rgba(216, 70, 106, 0.1)) !important;
+  background: linear-gradient(to bottom, rgba(84, 185, 249, 0.18), rgba(138, 211, 41, 0.1)) !important;
   color: #2d5a8a !important;
 }
 
@@ -537,7 +551,7 @@ body {
 /* —— Home history legacy hooks —— */
 .home-history-item.is-active {
   background: rgba(255, 255, 255, 0.55) !important;
-  border-color: rgba(74, 158, 224, 0.35) !important;
+  border-color: rgba(84, 185, 249, 0.35) !important;
 }
 
 .home-history-item.is-active::before {
@@ -553,13 +567,13 @@ body {
 }
 
 .home-new-project-btn {
-  background: linear-gradient(90deg, #5bb0e8 0%, #4a9ee0 35%, #8e5bb8 65%, #d8466a 100%) !important;
+  background: linear-gradient(118deg, #54B9F9 0%, #6BCDE8 48%, #8AD329 100%) !important;
   border-radius: 16px !important;
   box-shadow: var(--shadow-glow) !important;
 }
 
 .home-project-count {
-  background: rgba(74, 158, 224, 0.12) !important;
+  background: rgba(84, 185, 249, 0.12) !important;
   color: #2d5a8a !important;
 }
 
@@ -603,15 +617,15 @@ body {
 }
 
 .user .bubble {
-  background: linear-gradient(90deg, #5bb0e8 0%, #4a9ee0 35%, #8e5bb8 65%, #d8466a 100%) !important;
+  background: linear-gradient(118deg, #54B9F9 0%, #6BCDE8 48%, #8AD329 100%) !important;
 }
 
 .right-head .tab.active,
 .tab.active,
 .cat-tab.active {
-  background: linear-gradient(to bottom, rgba(74, 158, 224, 0.2), rgba(216, 70, 106, 0.12)) !important;
+  background: linear-gradient(to bottom, rgba(84, 185, 249, 0.2), rgba(138, 211, 41, 0.12)) !important;
   color: #2d5a8a !important;
-  box-shadow: inset 0 0 0 1px rgba(74, 158, 224, 0.3) !important;
+  box-shadow: inset 0 0 0 1px rgba(84, 185, 249, 0.3) !important;
 }
 
 /* —— Right panel cards: glass + 3D depth —— */
@@ -637,11 +651,11 @@ body {
   backdrop-filter: blur(32px) saturate(200%);
   -webkit-backdrop-filter: blur(32px) saturate(200%);
   box-shadow:
-    0 30px 60px -24px rgba(74, 98, 180, 0.35),
-    0 14px 30px -14px rgba(216, 70, 106, 0.22),
-    0 4px 10px -4px rgba(74, 98, 180, 0.12),
+    0 30px 60px -24px rgba(84, 185, 249, 0.35),
+    0 14px 30px -14px rgba(138, 211, 41, 0.22),
+    0 4px 10px -4px rgba(84, 185, 249, 0.12),
     inset 0 1.5px 0 rgba(255, 255, 255, 1),
-    inset 0 -1.5px 0 rgba(120, 90, 180, 0.12) !important;
+    inset 0 -1.5px 0 rgba(100, 170, 40, 0.12) !important;
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
@@ -650,7 +664,7 @@ body {
 .option:hover,
 .ppt-page-card:hover,
 .ppt-chapter:hover .ppt-chapter-head {
-  border-color: rgba(74, 158, 224, 0.45) !important;
+  border-color: rgba(84, 185, 249, 0.45) !important;
 }
 
 .ppt-chapter.is-collapsed .ppt-chapter-head {
@@ -661,18 +675,18 @@ body {
 .ppt-chapter-num,
 .ppt-outline-ch-num,
 .ppt-outline-inline .ppt-chapter-num {
-  background: linear-gradient(135deg, #4a9ee0, #3b7fbf) !important;
+  background: linear-gradient(135deg, #54B9F9, #3BA6E8) !important;
   color: #fff !important;
 }
 
 .ppt-chapter-page-count {
-  background: rgba(216, 70, 106, 0.1) !important;
-  color: #a02d52 !important;
+  background: rgba(138, 211, 41, 0.1) !important;
+  color: #4f8f14 !important;
 }
 
 .ppt-page-num,
 .ppt-outline-inline .ppt-page-num {
-  background: rgba(74, 158, 224, 0.12) !important;
+  background: rgba(84, 185, 249, 0.12) !important;
   color: #2d5a8a !important;
 }
 
@@ -695,14 +709,14 @@ body {
 .ppt-outline-inline .ppt-add-page,
 .ppt-outline-inline .ppt-add-chapter {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(236, 246, 255, 0.72)) !important;
-  border: 1px dashed rgba(74, 158, 224, 0.55) !important;
+  border: 1px dashed rgba(84, 185, 249, 0.55) !important;
   color: #2d5a8a !important;
   font-weight: 600 !important;
   box-shadow:
-    0 8px 18px -6px rgba(74, 98, 180, 0.32),
-    0 3px 8px -3px rgba(216, 70, 106, 0.18),
+    0 8px 18px -6px rgba(84, 185, 249, 0.32),
+    0 3px 8px -3px rgba(138, 211, 41, 0.18),
     inset 0 1.5px 0 rgba(255, 255, 255, 1),
-    inset 0 -1.5px 0 rgba(120, 90, 180, 0.12) !important;
+    inset 0 -1.5px 0 rgba(100, 170, 40, 0.12) !important;
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease !important;
 }
 
@@ -711,13 +725,13 @@ body {
 .ppt-outline-inline .ppt-add-page:hover,
 .ppt-outline-inline .ppt-add-chapter:hover {
   transform: translateY(-1px);
-  border-color: rgba(74, 158, 224, 0.75) !important;
+  border-color: rgba(84, 185, 249, 0.75) !important;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(228, 242, 255, 0.82)) !important;
   box-shadow:
-    0 14px 28px -8px rgba(74, 158, 224, 0.42),
-    0 6px 14px -4px rgba(216, 70, 106, 0.24),
+    0 14px 28px -8px rgba(84, 185, 249, 0.42),
+    0 6px 14px -4px rgba(138, 211, 41, 0.24),
     inset 0 1.5px 0 rgba(255, 255, 255, 1),
-    inset 0 -1.5px 0 rgba(120, 90, 180, 0.14) !important;
+    inset 0 -1.5px 0 rgba(100, 170, 40, 0.14) !important;
 }
 
 .ppt-add-page:active,
@@ -735,11 +749,11 @@ body {
   backdrop-filter: blur(32px) saturate(200%);
   -webkit-backdrop-filter: blur(32px) saturate(200%);
   box-shadow:
-    0 30px 60px -24px rgba(74, 98, 180, 0.35),
-    0 14px 30px -14px rgba(216, 70, 106, 0.22),
-    0 4px 10px -4px rgba(74, 98, 180, 0.12),
+    0 30px 60px -24px rgba(84, 185, 249, 0.35),
+    0 14px 30px -14px rgba(138, 211, 41, 0.22),
+    0 4px 10px -4px rgba(84, 185, 249, 0.12),
     inset 0 1.5px 0 rgba(255, 255, 255, 1),
-    inset 0 -1.5px 0 rgba(120, 90, 180, 0.12) !important;
+    inset 0 -1.5px 0 rgba(100, 170, 40, 0.12) !important;
   border-radius: 16px;
 }
 
@@ -803,9 +817,9 @@ body {
 }
 
 .home-history-sidebar .context-sidebar-head-icon {
-  background: linear-gradient(135deg, #4a9ee0, #3b7fbf) !important;
+  background: linear-gradient(135deg, #54B9F9, #3BA6E8) !important;
   color: #fff !important;
-  box-shadow: 0 4px 10px -2px rgba(59, 127, 191, 0.45);
+  box-shadow: 0 4px 10px -2px rgba(59, 150, 210, 0.45);
 }
 
 .home-history-context-head {
@@ -820,8 +834,8 @@ body {
   width: 6px;
   height: 6px;
   border-radius: 999px;
-  background: #d8466a;
-  box-shadow: 0 0 0 2px rgba(216, 70, 106, 0.25);
+  background: #8AD329;
+  box-shadow: 0 0 0 2px rgba(138, 211, 41, 0.25);
 }
 
 .home-history-sidebar .glass-card-subtle {
@@ -862,7 +876,7 @@ body {
 .copy-per-topic-select {
   min-width: 52px;
   border-radius: 8px;
-  border: 1px solid rgba(74, 158, 224, 0.35);
+  border: 1px solid rgba(84, 185, 249, 0.35);
   background: rgba(255, 255, 255, 0.85);
   padding: 4px 8px;
   font-size: 12px;
@@ -949,9 +963,9 @@ body {
 }
 
 .visual-editor-mode-tab.active {
-  background: linear-gradient(to bottom, rgba(74, 158, 224, 0.22), rgba(216, 70, 106, 0.12));
+  background: linear-gradient(to bottom, rgba(84, 185, 249, 0.22), rgba(138, 211, 41, 0.12));
   color: #2d5a8a;
-  box-shadow: inset 0 0 0 1px rgba(74, 158, 224, 0.25);
+  box-shadow: inset 0 0 0 1px rgba(84, 185, 249, 0.25);
 }
 
 .visual-editor-tool-row {
@@ -978,10 +992,10 @@ body {
 }
 
 .visual-editor-tool-btn.active {
-  border-color: rgba(74, 158, 224, 0.45);
+  border-color: rgba(84, 185, 249, 0.45);
   background: rgba(255, 255, 255, 0.75);
   box-shadow:
-    0 8px 18px -8px rgba(74, 98, 180, 0.28),
+    0 8px 18px -8px rgba(84, 185, 249, 0.28),
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 

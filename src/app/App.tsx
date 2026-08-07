@@ -34,10 +34,14 @@ import type {
   GeneratedImageMeta,
 } from '@/types/content';
 import {
-  createMockTaskQueue,
-  QUEUE_STATUS_LABEL,
-  type TaskQueueItem,
-} from '@/lib/taskQueue';
+  applyTabForModificationTarget,
+  createMockModificationTasks,
+  formatModificationTaskTime,
+  MODIFICATION_TASK_FILTERS,
+  MODIFICATION_TASK_STATUS_LABEL,
+  type ModificationTask,
+  type ModificationTaskFilter,
+} from '@/lib/modificationTasks';
 import { applyElementAiToSvg } from '@/lib/elementAiEdit';
 import { SelectableSvgPreview, type SelectableSvgSelection } from '@/app/components/SelectableSvgPreview';
 import {
@@ -79,11 +83,7 @@ import { OpsImageReviewPanel } from '@/app/components/OpsImageReviewPanel';
 import { alignImageReviewArrays } from '@/lib/imageReviewUtils';
 import { parseFigmaCaptureId } from '@/lib/figmaCapture';
 import { ReviewerVisualPanel } from '@/app/components/ReviewerVisualPanel';
-import {
-  RichTextEditor,
-  buildRichTextHtmlDocument,
-} from '@/app/components/RichTextEditor';
-import { PptCommentThread } from '@/app/components/PptCommentThread';
+import { RichTextEditor } from '@/app/components/RichTextEditor';
 import { loadUserRole, saveUserRole, isReviewerRole } from '@/lib/userRole';
 import {
   loadReviewTasks,
@@ -96,15 +96,11 @@ import {
   mergeSessionCopyRevisions,
   sessionCopyRevisionBase,
   propagateCopyRevisionsToSession,
-  findReviewTask,
-  addPptComment,
-  addPptCommentReply,
-  reopenReviewTask,
-  createReviewTask,
 } from '@/lib/reviewTasks';
 import { createCopyRevision, downloadDataUrl, latestCopyText, saveCopyRevisionMerged, normalizeCopyRevisions } from '@/lib/copyRevisionUtils';
 import {
   HOT_INSIGHT_CATEGORY,
+  WORKSPACE_QUICK_PROMPTS,
   TOPIC_INSIGHT_BRANCH_CHIPS,
   buildHotInsightReport,
   buildTopicRecommendations,
@@ -152,11 +148,12 @@ import { SparkleField } from '@/app/components/shell/SparkleField';
 import { cn } from '@/app/components/ui/utils';
 import {
   ArrowRight,
+  ArrowUpRight,
   Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  ChevronUp,
+  BookMarked,
   Database,
   FileText,
   Filter,
@@ -166,8 +163,6 @@ import {
   Library as LibraryIcon,
   Eraser,
   Paintbrush,
-  ListTodo,
-  Plus,
   Presentation,
   Search,
   Sparkles,
@@ -178,6 +173,7 @@ import {
 } from 'lucide-react';
 import { LibraryMaterialCard } from '@/app/components/LibraryMaterialCard';
 import { AssetLibraryPage } from '@/app/components/AssetLibraryPage';
+import { TerminologyLibraryPage } from '@/app/components/TerminologyLibraryPage';
 import { loadAllProjects } from '@/lib/chatProjects';
 import {
   WORKSPACE_MOCK_IMAGE,
@@ -213,6 +209,48 @@ import type {
 
 const cats = ['热点洞察', '合规手册', '参考知识', '品牌briefing', '渠道特色'];
 const HOME_TASK_PAGE_SIZE = 6;
+
+const HOME_WORKFLOW_ACTIONS: {
+  title: string;
+  description: string;
+  intent: HomeEntryIntent;
+  prompt: string;
+  Icon: typeof Presentation;
+  tone: 'blue' | 'green';
+}[] = [
+  {
+    title: '优化已有 PPT',
+    description: '上传已有演示文稿，AI 帮你改结构、配色与表达',
+    intent: 'ppt',
+    prompt: '优化已有 PPT',
+    Icon: Presentation,
+    tone: 'blue',
+  },
+  {
+    title: '翻译 PPT',
+    description: '结合专业术语库，按标准译法翻译并校对演示文稿',
+    intent: 'ppt',
+    prompt: '翻译 PPT',
+    Icon: BookMarked,
+    tone: 'green',
+  },
+  {
+    title: '生成图片',
+    description: '根据主题与品牌规范生成配图、海报与图卡',
+    intent: 'visual',
+    prompt: '',
+    Icon: ImageIcon,
+    tone: 'blue',
+  },
+  {
+    title: '生成文案',
+    description: '面向公众或 HCP 渠道，快速产出合规文案',
+    intent: 'copy',
+    prompt: '',
+    Icon: FileText,
+    tone: 'green',
+  },
+];
 
 const initialLibrary: LibraryItem[] = [
   { id: 1, cat: '热点洞察', title: '小红书肾脏健康热点观察 2026-05', meta: 'CMS洞察 · 热点词/互动趋势', cms: true, def: true, addedAt: Date.now() - 9 * 86400000, validUntil: '2026-11-30' },
@@ -263,7 +301,7 @@ function findCopyIndexForRevision(
 
 const posterData = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 900 560'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' x2='1' y1='0' y2='1'%3E%3Cstop stop-color='%23eaf7ff'/%3E%3Cstop offset='1' stop-color='%23f4fff0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='900' height='560' fill='url(%23g)'/%3E%3Ccircle cx='720' cy='110' r='100' fill='%2369BE28' opacity='.22'/%3E%3Ccircle cx='145' cy='115' r='82' fill='%231d6bff' opacity='.16'/%3E%3Cpath d='M560 360c90-100 190-85 260-28v228H520c-35-68-27-137 40-200z' fill='%2369BE28' opacity='.24'/%3E%3Crect x='54' y='46' width='118' height='42' rx='21' fill='%23103C8F'/%3E%3Ctext x='83' y='73' font-size='24' font-weight='700' fill='white'%3EBayer%3C/text%3E%3Ctext x='70' y='175' font-size='58' font-weight='900' fill='%23103C8F'%3E%E8%82%BE%E8%84%8F%E5%81%A5%E5%BA%B7%3C/text%3E%3Ctext x='70' y='248' font-size='58' font-weight='900' fill='%23103C8F'%3E%E4%B8%8D%E6%AD%A2%E7%9C%8B%E7%97%87%E7%8A%B6%3C/text%3E%3Ctext x='74' y='316' font-size='28' fill='%2340536a'%3E%E4%BA%86%E8%A7%A3%E9%A3%8E%E9%99%A9%E5%9B%A0%E7%B4%A0%EF%BC%8C%E5%87%BA%E7%8E%B0%E7%96%91%E9%97%AE%E6%97%B6%E8%AF%B7%E5%92%A8%E8%AF%A2%E4%B8%93%E4%B8%9A%E5%8C%BB%E7%94%9F%3C/text%3E%3Crect x='70' y='410' width='420' height='64' rx='32' fill='%23fff' stroke='%23cfe0f1'/%3E%3Ctext x='100' y='452' font-size='24' fill='%231d5aa7'%3E%E7%96%BE%E7%97%85%E6%95%99%E8%82%B2%E5%86%85%E5%AE%B9%EF%BD%9C%E4%BB%85%E4%BE%9B%E7%A7%91%E6%99%AE%E5%8F%82%E8%80%83%3C/text%3E%3C/svg%3E";
 
-type Screen = 'home' | 'library' | 'assets' | 'workspace';
+type Screen = 'home' | 'library' | 'assets' | 'terminology' | 'workspace';
 
 type EditorTarget =
   | { kind: 'image'; index: number }
@@ -296,7 +334,8 @@ export default function App() {
   const [inputValue, setInputValue] = useState('');
   const [homeAgentIntent, setHomeAgentIntent] = useState<HomeEntryIntent | null>(null);
   const [selectedModel, setSelectedModel] = useState('GPT-5.5');
-  const [composerMode, setComposerMode] = useState<'agent' | 'plan'>('agent');
+  /** 本次输入作用于当前页，还是全局（全部页面/内容） */
+  const [promptEditScope, setPromptEditScope] = useState<'page' | 'global'>('page');
   const [topics, setTopics] = useState<TopicItem[]>([]);
   const [insightSummary, setInsightSummary] = useState('');
   const [hotInsightReport, setHotInsightReport] = useState<HotInsightReport | null>(null);
@@ -358,9 +397,12 @@ export default function App() {
   const [reviewPptNotes, setReviewPptNotes] = useState<Record<number, PptReviewComment[]>>({});
   const [reviewPptNoteDraft, setReviewPptNoteDraft] = useState('');
   const [reviewerReplyDrafts, setReviewerReplyDrafts] = useState<Record<string, string>>({});
-  const [creatorRightTab, setCreatorRightTab] = useState<'ai' | 'comments'>('ai');
-  const [taskQueue, setTaskQueue] = useState<TaskQueueItem[]>(() => createMockTaskQueue());
-  const [taskQueueOpen, setTaskQueueOpen] = useState(true);
+  const [creatorRightTab, setCreatorRightTab] = useState<'ai' | 'tasks' | 'comments'>('ai');
+  const [modificationTasks, setModificationTasks] = useState<ModificationTask[]>(() =>
+    createMockModificationTasks()
+  );
+  const [modificationTaskFilter, setModificationTaskFilter] =
+    useState<ModificationTaskFilter>('all');
   const [workspaceElementSel, setWorkspaceElementSel] = useState<{
     slideIndex: number;
     elementId: string;
@@ -404,6 +446,7 @@ export default function App() {
   const [contextPanelOpen, setContextPanelOpen] = useState(true);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; title: string } | null>(null);
+  const [rollbackConfirm, setRollbackConfirm] = useState<ModificationTask | null>(null);
   const isHydratingRef = useRef(false);
   const autoTitleSessionRef = useRef<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -530,7 +573,7 @@ export default function App() {
     isHydratingRef.current = true;
     setCreatorPptPageIndex(0);
     setCreatorRightTab('ai');
-    setComposerMode('agent');
+    setPromptEditScope('page');
     setWorkspaceElementSel(null);
     setCurrentSessionId(session.id);
     setTaskTitle(session.title);
@@ -1210,16 +1253,17 @@ export default function App() {
   };
 
   const getComposerPlaceholder = () => {
-    if (composerMode === 'plan') {
-      return '描述目标，AI 先给出实施计划（不会直接改产出物）…';
-    }
     if (workspaceElementSel) {
+      const scopeHint = promptEditScope === 'page' ? '仅当前页' : '全部页面同款元素';
       return workspaceElementSel.isText
-        ? `修改「${workspaceElementSel.label}」：例如改成「核心信息」、字号加大、换成拜耳蓝…`
-        : `修改「${workspaceElementSel.label}」：例如换成绿色、缩小一点、半透明…`;
+        ? `修改「${workspaceElementSel.label}」（${scopeHint}）：例如改成「核心信息」、字号加大…`
+        : `修改「${workspaceElementSel.label}」（${scopeHint}）：例如换成绿色、缩小一点…`;
+    }
+    if (promptEditScope === 'page') {
+      return `针对第 ${creatorPptPageIndex + 1} 页说明要改什么…`;
     }
     const ctx = entryContext;
-    if (!ctx) return '直接说你想做什么：生成图片、PPT、视频、文案或话题洞察…';
+    if (!ctx) return '全局修改：说明要对全部内容做的调整…';
     switch (ctx.intent) {
       case 'insight':
         return '描述你想洞察的主题，如渠道、疾病领域、受众…';
@@ -1238,46 +1282,16 @@ export default function App() {
     }
   };
 
-  const toggleComposerMode = useCallback(() => {
-    setComposerMode((prev) => (prev === 'agent' ? 'plan' : 'agent'));
-  }, []);
-
-  const buildPlanReplyHtml = useCallback((goal: string) => {
-    const shortGoal = goal.length > 48 ? `${goal.slice(0, 48)}…` : goal;
-    const focus = workspaceElementSel
-      ? `围绕已选中元素「${workspaceElementSel.label}」`
-      : state.active
-        ? `围绕当前预览「${tabNames[state.active] || state.active}」`
-        : '结合当前任务上下文';
-    return `
-      <div class="proposed-plan">
-        <div class="proposed-plan-eyebrow">Proposed Plan</div>
-        <strong class="proposed-plan-title">针对「${shortGoal}」的实施计划</strong>
-        <p class="proposed-plan-desc">${focus}，先规划再执行；确认后可切换到 Agent 模式落地。</p>
-        <ol class="proposed-plan-steps">
-          <li>澄清目标与约束，确认受众、合规口径与交付物范围</li>
-          <li>盘点现有素材 / 大纲 / 页面，标出需改动的关键元素</li>
-          <li>给出分步修改方案（文案 → 视觉 → 结构），每步可单独验收</li>
-          <li>按步骤执行并在预览区核对，必要时回滚到上一版本</li>
-        </ol>
-      </div>
-    `;
-  }, [workspaceElementSel, state.active]);
-
-  const runPlanModeTurn = useCallback(
-    (goal: string) => {
-      addMsg('user', goal, selectedModel);
-      setInputValue('');
-      setSelectedPrompt('');
-      setTimeout(() => {
-        addMsg('ai', buildPlanReplyHtml(goal), selectedModel, [
-          '按此计划执行',
-          '继续完善计划',
-          '切换到 Agent 模式',
-        ]);
-      }, 420);
+  const formatScopedUserPrompt = useCallback(
+    (text: string) => {
+      if (promptEditScope === 'global') {
+        return `【全局】${text}`;
+      }
+      const pageNo =
+        (workspaceElementSel?.slideIndex ?? creatorPptPageIndex) + 1;
+      return `【单页 · 第 ${pageNo} 页】${text}`;
     },
-    [selectedModel, buildPlanReplyHtml]
+    [promptEditScope, workspaceElementSel, creatorPptPageIndex]
   );
 
   const reset = (
@@ -1318,7 +1332,7 @@ export default function App() {
     setSelectedPptVersionId(null);
     setCreatorPptPageIndex(0);
     setCreatorRightTab('ai');
-    setComposerMode('agent');
+    setPromptEditScope('page');
     setWorkspaceElementSel(null);
     setRichTextContent('');
     setSelectedPptTemplateId(
@@ -1564,15 +1578,12 @@ export default function App() {
   const send = () => {
     const text = inputValue.trim();
     if (!text || workspaceElementBusy) return;
-    if (composerMode === 'plan') {
-      runPlanModeTurn(text);
-      return;
-    }
     if (workspaceElementSel) {
-      void applyWorkspaceElementAi(text);
+      void applyWorkspaceElementAi(text, promptEditScope);
       return;
     }
-    addMsg('user', text, selectedModel);
+    const scopedText = formatScopedUserPrompt(text);
+    addMsg('user', scopedText, selectedModel);
     setInputValue('');
     setSelectedPrompt('');
     if (runWorkspaceMockCommand(text)) return;
@@ -1657,6 +1668,11 @@ export default function App() {
       return;
     }
     retry();
+  };
+
+  const insertWorkspaceGuide = (prefix: string) => {
+    setInputValue(prefix);
+    setSelectedPrompt(prefix.replace(/[：:]\s*$/, ''));
   };
 
   const executeHotInsightReportSkill = (userNote = '') => {
@@ -2871,22 +2887,19 @@ export default function App() {
       return;
     }
     if (text === '切换到 Agent 模式') {
-      setComposerMode('agent');
-      toast('已切换到 Agent 模式');
+      toast('已在执行模式，可直接下达修改或生成指令');
       return;
     }
     if (text === '继续完善计划') {
-      setComposerMode('plan');
       setInputValue('请补充验收标准、风险点与优先级：');
-      toast('仍在计划模式，可继续完善');
+      toast('可继续补充计划细节');
       return;
     }
     if (text === '按此计划执行') {
-      setComposerMode('agent');
       addMsg('user', text, selectedModel);
       addMsg(
         'ai',
-        '已退出计划模式，开始按计划执行。你可以指定从哪一步开始，或直接下达生成指令。',
+        '开始按计划执行。你可以指定从哪一步开始，或直接下达生成指令。',
         selectedModel,
         ['生成PPT', '生成图片', '生成图文']
       );
@@ -3622,15 +3635,32 @@ export default function App() {
   const replyToPptComment = (taskId: string, commentId: string) => {
     const content = creatorReplyDrafts[commentId]?.trim();
     if (!content) return;
-    const reply = addPptCommentReply(taskId, commentId, {
-      authorRole: 'ops',
-      authorName: ROLE_PROFILES.ops.name,
-      content,
-    });
-    if (!reply) {
+    const task = getReviewTask(taskId);
+    if (!task) {
       toast('批注所属审阅任务不存在');
       return;
     }
+    const now = Date.now();
+    upsertReviewTask({
+      ...task,
+      pptComments: (task.pptComments || []).map((comment) =>
+        comment.id === commentId
+          ? {
+              ...comment,
+              replies: [
+                ...(comment.replies || []),
+                {
+                  id: `reply_${now}_${Math.random().toString(36).slice(2, 8)}`,
+                  authorRole: 'ops',
+                  authorName: ROLE_PROFILES.ops.name,
+                  content,
+                  createdAt: now,
+                },
+              ],
+            }
+          : comment
+      ),
+    });
     setCreatorReplyDrafts((prev) => ({ ...prev, [commentId]: '' }));
     refreshReviewTasks();
     toast('回复已同步给审阅者');
@@ -3639,12 +3669,30 @@ export default function App() {
   const replyToCreatorAsReviewer = (commentId: string) => {
     const content = reviewerReplyDrafts[commentId]?.trim();
     if (!content || !activeReviewTaskId) return;
-    const reply = addPptCommentReply(activeReviewTaskId, commentId, {
-      authorRole: userRole,
-      authorName: ROLE_PROFILES[userRole].name,
-      content,
+    const task = getReviewTask(activeReviewTaskId);
+    if (!task) return;
+    const now = Date.now();
+    upsertReviewTask({
+      ...task,
+      status: 'in_progress',
+      pptComments: (task.pptComments || []).map((comment) =>
+        comment.id === commentId
+          ? {
+              ...comment,
+              replies: [
+                ...(comment.replies || []),
+                {
+                  id: `reply_${now}_${Math.random().toString(36).slice(2, 8)}`,
+                  authorRole: userRole,
+                  authorName: ROLE_PROFILES[userRole].name,
+                  content,
+                  createdAt: now,
+                },
+              ],
+            }
+          : comment
+      ),
     });
-    if (!reply) return;
     setReviewerReplyDrafts((prev) => ({ ...prev, [commentId]: '' }));
     refreshReviewTasks();
     toast('回复已同步给内容创作者');
@@ -4311,6 +4359,9 @@ export default function App() {
   const creatorPptReviewTasks = reviewTasks.filter(
     (task) => task.sessionId === currentSessionId && task.contentType === 'ppt'
   );
+  const hasCompletedPptReview = creatorPptReviewTasks.some(
+    (task) => task.status === 'completed' || (task.completedReviewCount || 0) > 0
+  );
   const creatorPptComments = creatorPptReviewTasks
     .flatMap((task) =>
       (task.pptComments || []).map((comment) => ({
@@ -4321,54 +4372,114 @@ export default function App() {
       }))
     )
     .sort((a, b) => a.comment.createdAt - b.comment.createdAt);
-  /** 仅当当前会话存在审阅批注时展示「AI 对话 / 查看批注」切换 */
-  const showCreatorCommentTabs = creatorPptComments.length > 0;
   const creatorCurrentPageComments = creatorPptComments.filter(
     ({ comment }) => comment.pageIndex === creatorPptPageIndex
   );
+  const filteredModificationTasks = useMemo(() => {
+    const list =
+      modificationTaskFilter === 'all'
+        ? modificationTasks
+        : modificationTasks.filter((task) => task.status === modificationTaskFilter);
+    return [...list].sort((a, b) => b.updatedAt - a.updatedAt);
+  }, [modificationTasks, modificationTaskFilter]);
+  const runningModificationTaskCount = modificationTasks.filter(
+    (task) => task.status === 'running'
+  ).length;
 
-  useEffect(() => {
-    if (!showCreatorCommentTabs && creatorRightTab === 'comments') {
-      setCreatorRightTab('ai');
-    }
-  }, [showCreatorCommentTabs, creatorRightTab]);
-  const queuedItems = taskQueue.filter((item) => item.status === 'queued');
-  const visibleQueueItems = taskQueue.filter((item) => item.status !== 'done');
+  const openModificationTaskDetail = useCallback(
+    (task: ModificationTask) => {
+      setWorkspacePreviewMaterial(null);
+      setWorkspaceElementSel(null);
+      setState((prev) => applyTabForModificationTarget(prev, task.targetTab));
+      if (task.pageIndex != null) {
+        setCreatorPptPageIndex(task.pageIndex);
+      }
+      setCreatorRightTab('tasks');
+      toast(`已定位到「${task.targetLabel}」`);
+    },
+    [toast]
+  );
 
-  const removeQueueItem = useCallback((id: string) => {
-    setTaskQueue((prev) => prev.filter((item) => item.id !== id));
-  }, []);
-
-  const moveQueueItem = useCallback((id: string, direction: -1 | 1) => {
-    setTaskQueue((prev) => {
-      const queued = prev.filter((item) => item.status === 'queued');
-      const index = queued.findIndex((item) => item.id === id);
-      if (index < 0) return prev;
-      const nextIndex = index + direction;
-      if (nextIndex < 0 || nextIndex >= queued.length) return prev;
-      const reordered = [...queued];
-      const [picked] = reordered.splice(index, 1);
-      reordered.splice(nextIndex, 0, picked);
-      let qi = 0;
-      return prev.map((item) => {
-        if (item.status !== 'queued') return item;
-        return reordered[qi++];
-      });
-    });
-  }, []);
-
-  const promoteQueueItem = useCallback((id: string) => {
-    setTaskQueue((prev) => {
-      const target = prev.find((item) => item.id === id);
-      if (!target || target.status !== 'queued') return prev;
-      return prev.map((item) => {
-        if (item.id === id) return { ...item, status: 'running' as const };
-        if (item.status === 'running') return { ...item, status: 'queued' as const };
-        return item;
-      });
-    });
-    toast('已提升为当前执行任务');
+  const cancelModificationTask = useCallback((taskId: string) => {
+    setModificationTasks((prev) =>
+      prev.map((task) =>
+        task.id === taskId && task.status === 'running'
+          ? {
+              ...task,
+              status: 'cancelled',
+              resultSummary: '任务已取消，未继续写入产出物。',
+              updatedAt: Date.now(),
+            }
+          : task
+      )
+    );
+    toast('任务已取消');
   }, [toast]);
+
+  const restartModificationTask = useCallback((taskId: string) => {
+    setModificationTasks((prev) =>
+      prev.map((task) =>
+        task.id === taskId && task.status === 'cancelled'
+          ? {
+              ...task,
+              status: 'running',
+              resultSummary: '任务已重新启动，AI 正在按原 prompt 继续修改…',
+              updatedAt: Date.now(),
+            }
+          : task
+      )
+    );
+    toast('任务已重新运转');
+  }, [toast]);
+
+  const confirmRollbackModificationTask = useCallback(() => {
+    const target = rollbackConfirm;
+    if (!target || target.status !== 'completed') {
+      setRollbackConfirm(null);
+      return;
+    }
+    const now = Date.now();
+    setModificationTasks((prev) =>
+      prev.map((task) => {
+        if (task.id === target.id) {
+          return {
+            ...task,
+            resultSummary: `${task.resultSummary || '已完成修改'}（已回退至此版本）`,
+            updatedAt: now,
+          };
+        }
+        if (
+          task.status === 'completed' &&
+          task.updatedAt > target.updatedAt
+        ) {
+          return {
+            ...task,
+            status: 'cancelled',
+            resultSummary: `已因回退至「${target.targetLabel}」更早任务而失效。`,
+            updatedAt: now,
+          };
+        }
+        if (task.status === 'running') {
+          return {
+            ...task,
+            status: 'cancelled',
+            resultSummary: '回退时已中止进行中的任务。',
+            updatedAt: now,
+          };
+        }
+        return task;
+      })
+    );
+    setWorkspacePreviewMaterial(null);
+    setWorkspaceElementSel(null);
+    setState((prev) => applyTabForModificationTarget(prev, target.targetTab));
+    if (target.pageIndex != null) {
+      setCreatorPptPageIndex(target.pageIndex);
+    }
+    setCreatorRightTab('tasks');
+    setRollbackConfirm(null);
+    toast(`已回退至「${target.targetLabel}」`);
+  }, [rollbackConfirm, toast]);
 
   const handleCreatorPptPageChange = useCallback((index: number) => {
     setCreatorPptPageIndex(index);
@@ -4396,7 +4507,7 @@ export default function App() {
   }, []);
 
   const applyWorkspaceElementAi = useCallback(
-    async (promptText: string) => {
+    async (promptText: string, scope: 'page' | 'global' = 'page') => {
       if (!workspaceElementSel || !promptText.trim() || !pptResult) return;
       const prompt = promptText.trim();
       const target = workspaceElementSel;
@@ -4405,27 +4516,41 @@ export default function App() {
         toast('当前页面无法解析为可编辑 SVG');
         return;
       }
-      addMsg('user', prompt, selectedModel);
+      addMsg('user', formatScopedUserPrompt(prompt), selectedModel);
       setInputValue('');
       setSelectedPrompt('');
       setWorkspaceElementBusy(true);
       try {
         await new Promise((r) => setTimeout(r, 480));
-        const result = applyElementAiToSvg(markup, target.elementId, prompt);
-        if (!result) {
+        const primary = applyElementAiToSvg(markup, target.elementId, prompt);
+        if (!primary) {
           addMsg('ai', '未能修改选中元素，请重新点选后再试。', selectedModel);
           toast('未能修改选中元素，请重新选择后再试');
           return;
         }
-        const slides = pptResult.slides.map((item, index) =>
-          index === target.slideIndex
-            ? {
-                ...item,
-                svg: result.svg,
-                imageUrl: undefined,
-              }
-            : item
-        );
+
+        let changedPages = 1;
+        const slides = pptResult.slides.map((item, index) => {
+          if (index === target.slideIndex) {
+            return {
+              ...item,
+              svg: primary.svg,
+              imageUrl: undefined,
+            };
+          }
+          if (scope !== 'global') return item;
+          const slideSvg = (item.svg || item.imageUrl || '').trim();
+          if (!slideSvg || slideSvg.startsWith('data:')) return item;
+          const updated = applyElementAiToSvg(slideSvg, target.elementId, prompt);
+          if (!updated) return item;
+          changedPages += 1;
+          return {
+            ...item,
+            svg: updated.svg,
+            imageUrl: undefined,
+          };
+        });
+
         setPptResult({ ...pptResult, slides });
         if (selectedPptVersionId) {
           setPptVersions((prev) =>
@@ -4434,26 +4559,54 @@ export default function App() {
             )
           );
         }
+        const now = Date.now();
+        const scopeSummary =
+          scope === 'global'
+            ? `全局 · 共 ${changedPages} 页`
+            : `单页 · 第 ${target.slideIndex + 1} 页`;
+        setModificationTasks((prev) => [
+          {
+            id: `mod-task-live-${now}`,
+            prompt,
+            status: 'completed',
+            targetTab: 'ppt-design',
+            pageIndex: target.slideIndex,
+            targetLabel: `PPT 设计 · ${scopeSummary} · ${target.label}`,
+            resultSummary: primary.summary,
+            createdAt: now,
+            updatedAt: now,
+          },
+          ...prev,
+        ]);
         setWorkspaceElementSel((prev) =>
           prev
             ? {
                 ...prev,
-                label: result.elementLabel,
-                svgMarkup: result.svg,
+                label: primary.elementLabel,
+                svgMarkup: primary.svg,
               }
             : prev
         );
         addMsg(
           'ai',
-          `已按你的指令修改「${result.elementLabel}」。<br>${result.summary}`,
+          scope === 'global'
+            ? `已按【全局】指令修改「${primary.elementLabel}」，覆盖 ${changedPages} 页。<br>${primary.summary}`
+            : `已按【单页】指令修改「${primary.elementLabel}」。<br>${primary.summary}`,
           selectedModel
         );
-        toast(result.summary);
+        toast(primary.summary);
       } finally {
         setWorkspaceElementBusy(false);
       }
     },
-    [workspaceElementSel, pptResult, selectedPptVersionId, selectedModel, toast]
+    [
+      workspaceElementSel,
+      pptResult,
+      selectedPptVersionId,
+      selectedModel,
+      toast,
+      formatScopedUserPrompt,
+    ]
   );
 
   const activeProjectName = useMemo(() => {
@@ -4477,6 +4630,26 @@ export default function App() {
     (visibleHomeTaskPage - 1) * HOME_TASK_PAGE_SIZE,
     visibleHomeTaskPage * HOME_TASK_PAGE_SIZE
   );
+  const homeTaskPageItems = useMemo(() => {
+    const total = homeTaskPageCount;
+    const current = visibleHomeTaskPage;
+    if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+    const set = new Set<number>([1, total, current]);
+    for (let i = current - 1; i <= current + 1; i += 1) {
+      if (i > 1 && i < total) set.add(i);
+    }
+    if (current <= 3) {
+      set.add(2);
+      set.add(3);
+      set.add(4);
+    }
+    if (current >= total - 2) {
+      set.add(total - 1);
+      set.add(total - 2);
+      set.add(total - 3);
+    }
+    return [...set].filter((page) => page >= 1 && page <= total).sort((a, b) => a - b);
+  }, [homeTaskPageCount, visibleHomeTaskPage]);
 
   useEffect(() => {
     setHomeTaskPage(1);
@@ -4544,7 +4717,7 @@ export default function App() {
                   className="glass-button flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium text-foreground hover:text-primary"
                   onClick={() => setCurrentScreen('library')}
                 >
-                  <span className="grid h-5 w-5 place-items-center rounded-md bg-gradient-to-br from-[#4A9EE0] to-[#3B7FBF] shadow-[0_3px_8px_-2px_rgba(59,127,191,0.5)] ring-1 ring-white/40">
+                  <span className="grid h-5 w-5 place-items-center rounded-md bg-gradient-to-br from-[#54B9F9] to-[#3BA6E8] shadow-[0_3px_8px_-2px_rgba(59,150,210,0.5)] ring-1 ring-white/40">
                     <Database className="h-3 w-3 text-white" strokeWidth={2.5} />
                   </span>
                   知识库
@@ -4554,10 +4727,20 @@ export default function App() {
                   className="glass-button flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium text-foreground hover:text-primary"
                   onClick={() => setCurrentScreen('assets')}
                 >
-                  <span className="grid h-5 w-5 place-items-center rounded-md bg-gradient-to-br from-[#D8466A] to-[#7762B8] shadow-[0_3px_8px_-2px_rgba(119,98,184,0.55)] ring-1 ring-white/40">
+                  <span className="grid h-5 w-5 place-items-center rounded-md bg-gradient-to-br from-[#8AD329] to-[#54B9F9] shadow-[0_3px_8px_-2px_rgba(120,180,40,0.45)] ring-1 ring-white/40">
                     <LibraryIcon className="h-3 w-3 text-white" strokeWidth={2.5} />
                   </span>
                   素材库
+                </button>
+                <button
+                  type="button"
+                  className="glass-button flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium text-foreground hover:text-primary"
+                  onClick={() => setCurrentScreen('terminology')}
+                >
+                  <span className="grid h-5 w-5 place-items-center rounded-md bg-gradient-to-br from-[#8AD329] to-[#6FBD1F] shadow-[0_3px_8px_-2px_rgba(120,180,40,0.5)] ring-1 ring-white/40">
+                    <BookMarked className="h-3 w-3 text-white" strokeWidth={2.5} />
+                  </span>
+                  专业术语库
                 </button>
               </div>
 
@@ -4570,9 +4753,9 @@ export default function App() {
                   />
                 </div>
               ) : (
-                <div className="home-task-dashboard relative mx-auto h-full max-w-6xl overflow-y-auto px-2 pb-10 pt-14 lg:pt-16">
+                <div className="home-task-dashboard home-inspire-layout relative mx-auto h-full max-w-6xl overflow-y-auto px-2 pb-8 pt-12 lg:pt-14">
                   {activeProjectName && (
-                    <div className="relative z-10 mb-5 text-center animate-fade-up">
+                    <div className="relative z-10 mb-4 animate-fade-up">
                       <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-glass px-3 py-1.5 text-xs text-muted-foreground shadow-soft">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                           <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
@@ -4587,123 +4770,192 @@ export default function App() {
 
                   <SparkleField />
 
-                  <h2 className="relative z-10 text-center text-[40px] font-bold leading-[1.1] tracking-tight md:text-[52px] animate-fade-up [animation-delay:80ms]">
-                    <span className="text-gradient animate-gradient-pan">今天你有什么灵感？</span>
-                  </h2>
-                  <p className="relative z-10 mx-auto mt-4 max-w-lg text-center text-[13.5px] leading-relaxed text-muted-foreground animate-fade-up [animation-delay:160ms]">
-                    新建任务后，可在工作台中调用知识与素材，完成内容创作、预览与团队审阅。
-                  </p>
+                  <header className="home-inspire-head relative z-10 animate-fade-up">
+                    <h2 className="text-gradient animate-gradient-pan">今天你有什么灵感？</h2>
+                    <p>
+                      无论是话题洞察、生成图片，还是生成 PPT，一切需求，新建任务即可开始。
+                    </p>
+                  </header>
 
-                  <div className="relative z-10 mt-7 flex justify-center animate-fade-up [animation-delay:240ms]">
-                    <button
-                      type="button"
-                      className="home-new-task-button btn-hero-3d group inline-flex items-center gap-2"
-                      onClick={createNewContentFromHome}
-                    >
-                      <Plus className="h-4 w-4" strokeWidth={2.6} />
-                      新建任务
-                    </button>
-                  </div>
+                  <div className="home-inspire-grid relative z-10 mt-6 animate-fade-up [animation-delay:120ms]">
+                    <div className="home-inspire-left">
+                      <button
+                        type="button"
+                        className="home-inspire-hero bg-hero-gradient"
+                        onClick={() => newTask('从资料生成演示文稿', 'ppt')}
+                      >
+                        <div className="home-inspire-hero-copy">
+                          <strong>从资料生成演示文稿</strong>
+                          <p>上传资料后，AI 自动梳理结构并生成可编辑 PPT，支持继续优化与团队审阅。</p>
+                          <span className="home-inspire-hero-cta">
+                            新建任务
+                            <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={2.4} />
+                          </span>
+                        </div>
+                        <div className="home-inspire-hero-art" aria-hidden="true">
+                          <div className="home-inspire-ppt-stack">
+                            <div className="home-inspire-ppt-page is-back">
+                              <span />
+                              <span />
+                              <span />
+                            </div>
+                            <div className="home-inspire-ppt-page is-front">
+                              <span className="home-inspire-ppt-title" />
+                              <span className="home-inspire-ppt-rule" />
+                              <div className="home-inspire-ppt-bars">
+                                <i style={{ height: '42%' }} />
+                                <i style={{ height: '68%' }} />
+                                <i style={{ height: '54%' }} />
+                                <i style={{ height: '86%' }} />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </button>
 
-                  <section className="home-task-section relative z-10 mt-10 animate-fade-up [animation-delay:320ms]">
-                    <div className="home-task-section-head">
-                      <div>
-                        <h3>历史任务</h3>
-                        <p>{activeProjectName ? `项目「${activeProjectName}」中的任务` : '继续处理最近的内容创作任务'}</p>
-                      </div>
-                      <div className="home-task-search">
-                        <Search className="h-3.5 w-3.5" />
-                        <input
-                          value={sessionSearch}
-                          onChange={(event) => setSessionSearch(event.target.value)}
-                          placeholder="搜索历史任务"
-                        />
+                      <div className="home-inspire-actions">
+                        {HOME_WORKFLOW_ACTIONS.map(({ title, description, intent, prompt, Icon, tone }) => (
+                          <button
+                            key={title}
+                            type="button"
+                            className={`home-inspire-action home-task-card tone-${tone}`}
+                            onClick={() => newTask(prompt, intent)}
+                          >
+                            <span className={`home-inspire-action-icon tone-${tone}`}>
+                              <Icon className="h-4 w-4 text-white" strokeWidth={2.4} />
+                            </span>
+                            <ArrowUpRight className="home-inspire-action-arrow h-4 w-4" />
+                            <strong>{title}</strong>
+                            <span>{description}</span>
+                          </button>
+                        ))}
                       </div>
                     </div>
 
-                    {homeTaskSessions.length > 0 ? (
-                      <>
-                      <div className="home-task-grid">
-                        {pagedHomeTaskSessions.map((session) => (
-                          <article
-                            key={session.id}
-                            className={`home-task-card group ${currentSessionId === session.id ? 'active' : ''}`}
-                          >
-                            <button
-                              type="button"
-                              className="home-task-card-main"
-                              onClick={() => openSession(session.id)}
-                            >
-                              <span className="home-task-card-icon">
-                                <Presentation className="h-4 w-4 text-white" strokeWidth={2.4} />
-                              </span>
-                              <span className="home-task-card-copy">
-                                <strong>{session.title}</strong>
-                                <span>{deriveSessionSubtitle(session)}</span>
-                                <time>{formatSessionTime(session.updatedAt)}</time>
-                              </span>
-                              <ArrowRight className="home-task-card-arrow h-4 w-4" />
-                            </button>
-                            <button
-                              type="button"
-                              className="home-task-card-delete"
-                              aria-label={`删除任务：${session.title}`}
-                              title="删除任务"
-                              onClick={() => setDeleteConfirm({ id: session.id, title: session.title })}
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </button>
-                          </article>
-                        ))}
+                    <aside className="home-task-section home-inspire-history">
+                      <div className="home-task-section-head">
+                        <div>
+                          <h3>历史任务</h3>
+                          <p>
+                            {activeProjectName
+                              ? `项目「${activeProjectName}」中的任务`
+                              : '继续处理最近的内容创作任务'}
+                          </p>
+                        </div>
+                        <div className="home-task-search">
+                          <Search className="h-3.5 w-3.5" />
+                          <input
+                            value={sessionSearch}
+                            onChange={(event) => setSessionSearch(event.target.value)}
+                            placeholder="搜索历史任务"
+                          />
+                        </div>
                       </div>
-                      {homeTaskPageCount > 1 && (
-                        <nav className="home-task-pagination" aria-label="历史任务分页">
-                          <button
-                            type="button"
-                            className="home-task-page-arrow"
-                            disabled={visibleHomeTaskPage === 1}
-                            onClick={() => setHomeTaskPage((page) => Math.max(1, page - 1))}
-                            aria-label="上一页"
-                          >
-                            <ChevronLeft className="h-3.5 w-3.5" />
-                          </button>
-                          {Array.from({ length: homeTaskPageCount }, (_, index) => index + 1).map(
-                            (page) => (
+
+                      {homeTaskSessions.length > 0 ? (
+                        <>
+                          <div className="home-task-grid home-inspire-history-list">
+                            {pagedHomeTaskSessions.map((session) => {
+                              const status = deriveSessionStatus(session);
+                              return (
+                                <article
+                                  key={session.id}
+                                  className={`home-task-card group ${currentSessionId === session.id ? 'active' : ''}`}
+                                >
+                                  <button
+                                    type="button"
+                                    className="home-task-card-main"
+                                    onClick={() => openSession(session.id)}
+                                  >
+                                    <span className="home-task-card-icon">
+                                      <Presentation className="h-4 w-4 text-white" strokeWidth={2.4} />
+                                    </span>
+                                    <span className="home-task-card-copy">
+                                      <strong>
+                                        {session.title}
+                                        <span
+                                          className={`home-inspire-status ${sessionStatusBadgeClass(status)}`}
+                                        >
+                                          {sessionStatusLabel(status)}
+                                        </span>
+                                      </strong>
+                                      <span>
+                                        {session.id.slice(0, 10)} · {deriveSessionSubtitle(session)} ·{' '}
+                                        {formatSessionTime(session.updatedAt)}
+                                      </span>
+                                    </span>
+                                    <ArrowRight className="home-task-card-arrow h-4 w-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="home-task-card-delete"
+                                    aria-label={`删除任务：${session.title}`}
+                                    title="删除任务"
+                                    onClick={() => setDeleteConfirm({ id: session.id, title: session.title })}
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
+                                </article>
+                              );
+                            })}
+                          </div>
+                          {homeTaskPageCount > 1 && (
+                            <nav className="home-task-pagination" aria-label="历史任务分页">
                               <button
-                                key={page}
                                 type="button"
-                                className={`home-task-page-number ${
-                                  visibleHomeTaskPage === page ? 'active' : ''
-                                }`}
-                                onClick={() => setHomeTaskPage(page)}
-                                aria-current={visibleHomeTaskPage === page ? 'page' : undefined}
+                                className="home-task-page-arrow"
+                                disabled={visibleHomeTaskPage === 1}
+                                onClick={() => setHomeTaskPage((page) => Math.max(1, page - 1))}
+                                aria-label="上一页"
                               >
-                                {page}
+                                <ChevronLeft className="h-3.5 w-3.5" />
                               </button>
-                            )
+                              {homeTaskPageItems.map((page, index) => {
+                                const prev = homeTaskPageItems[index - 1];
+                                const showEllipsis = index > 0 && page - (prev || 0) > 1;
+                                return (
+                                  <span key={page} className="home-task-page-cluster">
+                                    {showEllipsis && (
+                                      <span className="home-task-page-ellipsis" aria-hidden>
+                                        …
+                                      </span>
+                                    )}
+                                    <button
+                                      type="button"
+                                      className={`home-task-page-number ${
+                                        visibleHomeTaskPage === page ? 'active' : ''
+                                      }`}
+                                      onClick={() => setHomeTaskPage(page)}
+                                      aria-current={visibleHomeTaskPage === page ? 'page' : undefined}
+                                    >
+                                      {page}
+                                    </button>
+                                  </span>
+                                );
+                              })}
+                              <button
+                                type="button"
+                                className="home-task-page-arrow"
+                                disabled={visibleHomeTaskPage === homeTaskPageCount}
+                                onClick={() =>
+                                  setHomeTaskPage((page) => Math.min(homeTaskPageCount, page + 1))
+                                }
+                                aria-label="下一页"
+                              >
+                                <ChevronRight className="h-3.5 w-3.5" />
+                              </button>
+                            </nav>
                           )}
-                          <button
-                            type="button"
-                            className="home-task-page-arrow"
-                            disabled={visibleHomeTaskPage === homeTaskPageCount}
-                            onClick={() =>
-                              setHomeTaskPage((page) => Math.min(homeTaskPageCount, page + 1))
-                            }
-                            aria-label="下一页"
-                          >
-                            <ChevronRight className="h-3.5 w-3.5" />
-                          </button>
-                        </nav>
+                        </>
+                      ) : (
+                        <div className="home-task-empty">
+                          <Presentation className="h-6 w-6" />
+                          <strong>暂无历史任务</strong>
+                          <span>从左侧工作流开始第一项内容创作</span>
+                        </div>
                       )}
-                      </>
-                    ) : (
-                      <div className="home-task-empty">
-                        <Presentation className="h-6 w-6" />
-                        <strong>暂无历史任务</strong>
-                        <span>点击“新建任务”开始第一项内容创作</span>
-                      </div>
-                    )}
-                  </section>
+                    </aside>
+                  </div>
                 </div>
               )}
             </main>
@@ -4784,12 +5036,12 @@ export default function App() {
                         className={cn(
                           'group flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left transition',
                           isActive
-                            ? 'bg-gradient-to-r from-[#4A9EE0]/15 to-[#D8466A]/10 shadow-[inset_0_0_0_1px_rgba(74,158,224,0.3)]'
+                            ? 'bg-gradient-to-r from-[#54B9F9]/15 to-[#8AD329]/10 shadow-[inset_0_0_0_1px_rgba(84, 185, 249,0.3)]'
                             : 'hover:bg-background/70'
                         )}
                         onClick={() => setActiveCat(c)}
                       >
-                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-[#4A9EE0] to-[#3B7FBF] shadow-[0_3px_8px_-2px_rgba(59,127,191,0.4)] ring-1 ring-white/40">
+                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-[#54B9F9] to-[#3BA6E8] shadow-[0_3px_8px_-2px_rgba(59, 150, 210,0.4)] ring-1 ring-white/40">
                           <FileText className="h-3.5 w-3.5 text-white" strokeWidth={2.4} />
                         </span>
                         <span className={cn('flex-1 text-[12.5px]', isActive ? 'font-semibold text-foreground' : 'font-medium text-foreground/85')}>
@@ -4797,14 +5049,14 @@ export default function App() {
                         </span>
                         <span className="flex items-center gap-1">
                           {librarySelectedByCategory[c] > 0 && (
-                            <span className="rounded-full bg-[#D8466A]/15 px-1.5 text-[10px] font-semibold text-[#a02d52]">
+                            <span className="rounded-full bg-[#8AD329]/15 px-1.5 text-[10px] font-semibold text-[#4f8f14]">
                               {librarySelectedByCategory[c]}
                             </span>
                           )}
                           <span
                             className={cn(
                               'grid h-5 min-w-[20px] place-items-center rounded-full px-1.5 text-[10.5px] font-bold',
-                              isActive ? 'bg-gradient-to-br from-[#4A9EE0] to-[#D8466A] text-white shadow-[0_2px_6px_-1px_rgba(59,127,191,0.5)]' : 'bg-secondary text-muted-foreground'
+                              isActive ? 'bg-gradient-to-br from-[#54B9F9] to-[#8AD329] text-white shadow-[0_2px_6px_-1px_rgba(59, 150, 210,0.5)]' : 'bg-secondary text-muted-foreground'
                             )}
                           >
                             {libraryCategoryCounts[c]}
@@ -4821,7 +5073,7 @@ export default function App() {
                       <Star className="h-3 w-3 text-[#FFB547]" fill="#FFB547" />
                       默认知识
                     </div>
-                    <span className="grid h-4 min-w-[16px] place-items-center rounded-full bg-gradient-to-br from-[#4A9EE0] to-[#D8466A] px-1 text-[10px] font-bold text-white">
+                    <span className="grid h-4 min-w-[16px] place-items-center rounded-full bg-gradient-to-br from-[#54B9F9] to-[#8AD329] px-1 text-[10px] font-bold text-white">
                       {defaultCount}
                     </span>
                   </div>
@@ -4845,7 +5097,7 @@ export default function App() {
                                 setPreviewMaterial(i);
                               }}
                             >
-                              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gradient-to-br from-[#4A9EE0] to-[#D8466A]" />
+                              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gradient-to-br from-[#54B9F9] to-[#8AD329]" />
                               <span className="truncate">{i.title}</span>
                             </button>
                           ))}
@@ -4868,7 +5120,7 @@ export default function App() {
                   <div className="relative flex-1">
                     <Search className="absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
                     <input
-                      className="w-full rounded-xl glass-input py-2.5 pl-9 pr-3 text-[12.5px] placeholder:text-muted-foreground/70 focus:border-[#4A9EE0]/50 focus:outline-none focus:ring-2 focus:ring-[#4A9EE0]/15"
+                      className="w-full rounded-xl glass-input py-2.5 pl-9 pr-3 text-[12.5px] placeholder:text-muted-foreground/70 focus:border-[#54B9F9]/50 focus:outline-none focus:ring-2 focus:ring-[#54B9F9]/15"
                       placeholder="搜索知识名称、来源、标签…"
                       value={libSearch}
                       onChange={(e) => setLibSearch(e.target.value)}
@@ -4895,7 +5147,7 @@ export default function App() {
                     className={cn(
                       'inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[12px] font-medium transition',
                       onlyDefault
-                        ? 'border-[#4A9EE0]/40 bg-gradient-to-r from-[#4A9EE0]/15 to-[#D8466A]/10 text-[#2d5a8a] shadow-[0_3px_10px_-3px_rgba(59,127,191,0.4)]'
+                        ? 'border-[#54B9F9]/40 bg-gradient-to-r from-[#54B9F9]/15 to-[#8AD329]/10 text-[#2d5a8a] shadow-[0_3px_10px_-3px_rgba(59, 150, 210,0.4)]'
                         : 'border-border/60 bg-background/60 text-foreground hover:border-primary/40'
                     )}
                     onClick={() => setOnlyDefault(!onlyDefault)}
@@ -4907,7 +5159,7 @@ export default function App() {
 
                 <div className="relative z-10 flex items-center justify-between px-5 pb-2.5 pt-4">
                   <div className="flex items-center gap-2">
-                    <span className="grid h-7 w-7 place-items-center rounded-xl bg-gradient-to-br from-[#4A9EE0] to-[#3B7FBF] shadow-[0_4px_10px_-2px_rgba(59,127,191,0.5)] ring-1 ring-white/40">
+                    <span className="grid h-7 w-7 place-items-center rounded-xl bg-gradient-to-br from-[#54B9F9] to-[#3BA6E8] shadow-[0_4px_10px_-2px_rgba(59, 150, 210,0.5)] ring-1 ring-white/40">
                       <FileText className="h-3.5 w-3.5 text-white" strokeWidth={2.4} />
                     </span>
                     <h3 className="text-[14.5px] font-semibold text-foreground">全部知识</h3>
@@ -4917,7 +5169,7 @@ export default function App() {
                   </div>
                   <div className="flex items-center gap-2">
                     {libSelectedCount > 0 && (
-                      <span className="rounded-full border border-[#D8466A]/30 bg-[#D8466A]/10 px-2.5 py-0.5 text-[11px] font-semibold text-[#a02d52]">
+                      <span className="rounded-full border border-[#8AD329]/30 bg-[#8AD329]/10 px-2.5 py-0.5 text-[11px] font-semibold text-[#4f8f14]">
                         已选 {libSelectedCount}
                       </span>
                     )}
@@ -5013,6 +5265,11 @@ export default function App() {
       {/* Asset Library Screen */}
       <section className={`screen ${currentScreen === 'assets' ? 'active' : ''}`}>
         <AssetLibraryPage onNotify={toast} />
+      </section>
+
+      {/* Terminology Glossary Screen */}
+      <section className={`screen ${currentScreen === 'terminology' ? 'active' : ''}`}>
+        <TerminologyLibraryPage onNotify={toast} />
       </section>
 
       {/* Workspace Screen */}
@@ -5128,11 +5385,10 @@ export default function App() {
               </div>
             </div>
 
-            {showCreatorCommentTabs && (
             <div
-              className="creator-right-tabs has-comments"
+              className={`creator-right-tabs ${hasCompletedPptReview ? 'has-comments' : ''}`}
               role="tablist"
-              aria-label="AI 对话与查看批注"
+              aria-label="对话、任务与批注"
             >
               <button
                 type="button"
@@ -5141,25 +5397,39 @@ export default function App() {
                 className={creatorRightTab === 'ai' ? 'active' : ''}
                 onClick={() => setCreatorRightTab('ai')}
               >
-                AI 对话
+                对话
               </button>
               <button
                 type="button"
                 role="tab"
-                aria-selected={creatorRightTab === 'comments'}
-                className={creatorRightTab === 'comments' ? 'active' : ''}
-                onClick={() => {
-                  refreshReviewTasks();
-                  setCreatorRightTab('comments');
-                }}
+                aria-selected={creatorRightTab === 'tasks'}
+                className={creatorRightTab === 'tasks' ? 'active' : ''}
+                onClick={() => setCreatorRightTab('tasks')}
               >
-                查看批注
-                {creatorPptComments.length > 0 && <span>{creatorPptComments.length}</span>}
+                全部任务
+                {runningModificationTaskCount > 0 && (
+                  <span>{runningModificationTaskCount}</span>
+                )}
               </button>
+              {hasCompletedPptReview && (
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={creatorRightTab === 'comments'}
+                  className={creatorRightTab === 'comments' ? 'active' : ''}
+                  onClick={() => {
+                    refreshReviewTasks();
+                    setCreatorRightTab('comments');
+                  }}
+                >
+                  批注
+                  {creatorPptComments.length > 0 && <span>{creatorPptComments.length}</span>}
+                </button>
+              )}
             </div>
-            )}
 
-            {!showCreatorCommentTabs || creatorRightTab === 'ai' ? (
+            {creatorRightTab === 'ai' ||
+            (creatorRightTab === 'comments' && !hasCompletedPptReview) ? (
             <>
             {activeReviewTaskId && activeReviewTask && (
                 <div className="review-task-banner">
@@ -5230,90 +5500,6 @@ export default function App() {
             </div>
 
             <div className="composer">
-              {visibleQueueItems.length > 0 && (
-                <div className={`task-queue-panel ${taskQueueOpen ? 'is-open' : ''}`}>
-                  <button
-                    type="button"
-                    className="task-queue-toggle"
-                    onClick={() => setTaskQueueOpen((open) => !open)}
-                    aria-expanded={taskQueueOpen}
-                  >
-                    <span className="task-queue-toggle-left">
-                      <ListTodo className="h-3.5 w-3.5" strokeWidth={2.2} />
-                      Task Queue
-                      <span className="task-queue-count">{visibleQueueItems.length}</span>
-                    </span>
-                    <ChevronDown
-                      className={`h-3.5 w-3.5 task-queue-chevron ${taskQueueOpen ? 'is-open' : ''}`}
-                    />
-                  </button>
-                  {taskQueueOpen && (
-                    <div className="task-queue-list">
-                      {visibleQueueItems.map((item) => {
-                        const queuedIndex = queuedItems.findIndex((q) => q.id === item.id);
-                        return (
-                          <div
-                            key={item.id}
-                            className={`task-queue-item status-${item.status}`}
-                          >
-                            <div className="task-queue-item-main">
-                              <span className={`task-queue-status status-${item.status}`}>
-                                {item.status === 'running' && (
-                                  <span className="task-queue-spinner" aria-hidden />
-                                )}
-                                {QUEUE_STATUS_LABEL[item.status]}
-                              </span>
-                              <div className="task-queue-item-body">
-                                <p>{item.prompt}</p>
-                                {item.context && <small>{item.context}</small>}
-                              </div>
-                            </div>
-                            <div className="task-queue-item-actions">
-                              {item.status === 'queued' && (
-                                <>
-                                  <button
-                                    type="button"
-                                    className="task-queue-icon-btn"
-                                    title="上移"
-                                    disabled={queuedIndex <= 0}
-                                    onClick={() => moveQueueItem(item.id, -1)}
-                                  >
-                                    <ChevronUp className="h-3.5 w-3.5" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="task-queue-icon-btn"
-                                    title="下移"
-                                    disabled={queuedIndex < 0 || queuedIndex >= queuedItems.length - 1}
-                                    onClick={() => moveQueueItem(item.id, 1)}
-                                  >
-                                    <ChevronDown className="h-3.5 w-3.5" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="task-queue-text-btn"
-                                    onClick={() => promoteQueueItem(item.id)}
-                                  >
-                                    立即执行
-                                  </button>
-                                </>
-                              )}
-                              <button
-                                type="button"
-                                className="task-queue-icon-btn"
-                                title="移除"
-                                onClick={() => removeQueueItem(item.id)}
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
               {attachments.length > 0 && (
                 <div className="attach-row">
                   {attachments.map((pill, i) => (
@@ -5341,7 +5527,22 @@ export default function App() {
                 </div>
               )}
 
-              <div className={`compose-shell ${composerMode === 'plan' ? 'is-plan-mode' : ''}`}>
+              {!reviewFocusMode && (
+                <div className="composer-guides quick-row">
+                  {WORKSPACE_QUICK_PROMPTS.map(({ label, prefix }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      className="chip"
+                      onClick={() => insertWorkspaceGuide(prefix)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className={`compose-shell ${promptEditScope === 'global' ? 'is-global-scope' : 'is-page-scope'}`}>
                 <div className="compose-main">
                   <button
                     className="icon-btn"
@@ -5356,11 +5557,6 @@ export default function App() {
                     onChange={(e) => setInputValue(e.target.value)}
                     disabled={workspaceElementBusy}
                     onKeyDown={(e) => {
-                      if (e.key === 'Tab' && e.shiftKey) {
-                        e.preventDefault();
-                        toggleComposerMode();
-                        return;
-                      }
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
                         send();
@@ -5370,25 +5566,22 @@ export default function App() {
                 </div>
                 <div className="compose-footer">
                   <div className="compose-footer-left">
-                    <div className="composer-mode-switch" role="group" aria-label="协作模式">
-                      <button
-                        type="button"
-                        className={composerMode === 'agent' ? 'active' : ''}
-                        onClick={() => setComposerMode('agent')}
-                        title="Agent 模式：直接执行"
-                      >
-                        Agent
-                      </button>
-                      <button
-                        type="button"
-                        className={composerMode === 'plan' ? 'active plan' : ''}
-                        onClick={() => setComposerMode('plan')}
-                        title="Plan 模式：先出计划再执行（Shift+Tab）"
-                      >
-                        <ListTodo className="h-3.5 w-3.5" strokeWidth={2.2} />
-                        Plan
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      className="prompt-scope-switch"
+                      data-scope={promptEditScope}
+                      role="switch"
+                      aria-checked={promptEditScope === 'global'}
+                      aria-label="切换单页或全局修改"
+                      title="左右切换：本次输入作用于单页或全局"
+                      onClick={() =>
+                        setPromptEditScope((prev) => (prev === 'page' ? 'global' : 'page'))
+                      }
+                    >
+                      <span className="prompt-scope-thumb" aria-hidden />
+                      <span className="prompt-scope-option">单页</span>
+                      <span className="prompt-scope-option">全局</span>
+                    </button>
                     <select
                       className="model-select"
                       value={selectedModel}
@@ -5396,25 +5589,107 @@ export default function App() {
                     >
                       <option>GPT-5.5</option>
                     </select>
-                    {composerMode === 'plan' && (
-                      <span className="composer-mode-hint">只规划，不直接改产出物</span>
-                    )}
+                    <span className="composer-mode-hint">
+                      {promptEditScope === 'page' ? '仅改当前页' : '作用于全部页面'}
+                    </span>
                   </div>
                   <button
                     className="btn primary compose-send"
                     onClick={send}
                     disabled={workspaceElementBusy}
                   >
-                    {workspaceElementBusy
-                      ? '修改中…'
-                      : composerMode === 'plan'
-                        ? '生成计划'
-                        : '发送'}
+                    {workspaceElementBusy ? '修改中…' : '发送'}
                   </button>
                 </div>
               </div>
             </div>
             </>
+            ) : creatorRightTab === 'tasks' ? (
+              <div className="creator-tasks-view">
+                <div className="creator-tasks-filters" role="tablist" aria-label="任务状态筛选">
+                  {MODIFICATION_TASK_FILTERS.map(({ key, label }) => {
+                    const count =
+                      key === 'all'
+                        ? modificationTasks.length
+                        : modificationTasks.filter((task) => task.status === key).length;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        role="tab"
+                        aria-selected={modificationTaskFilter === key}
+                        className={modificationTaskFilter === key ? 'active' : ''}
+                        onClick={() => setModificationTaskFilter(key)}
+                      >
+                        {label}
+                        <span>{count}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="creator-tasks-list">
+                  {filteredModificationTasks.length > 0 ? (
+                    filteredModificationTasks.map((task) => (
+                      <article
+                        key={task.id}
+                        className={`creator-task-card status-${task.status}`}
+                      >
+                        <div className="creator-task-card-head">
+                          <span className={`creator-task-status status-${task.status}`}>
+                            {MODIFICATION_TASK_STATUS_LABEL[task.status]}
+                          </span>
+                          <span className="creator-task-target">{task.targetLabel}</span>
+                        </div>
+                        <p className="creator-task-prompt">{task.prompt}</p>
+                        {task.resultSummary && (
+                          <p className="creator-task-summary">{task.resultSummary}</p>
+                        )}
+                        <div className="creator-task-meta">
+                          <span>更新于 {formatModificationTaskTime(task.updatedAt)}</span>
+                        </div>
+                        <div className="creator-task-actions">
+                          <button
+                            type="button"
+                            className="btn soft"
+                            onClick={() => openModificationTaskDetail(task)}
+                          >
+                            查看详情
+                          </button>
+                          {task.status === 'completed' && (
+                            <button
+                              type="button"
+                              className="btn primary"
+                              onClick={() => setRollbackConfirm(task)}
+                            >
+                              回退至此
+                            </button>
+                          )}
+                          {task.status === 'running' && (
+                            <button
+                              type="button"
+                              className="btn warn"
+                              onClick={() => cancelModificationTask(task.id)}
+                            >
+                              取消任务
+                            </button>
+                          )}
+                          {task.status === 'cancelled' && (
+                            <button
+                              type="button"
+                              className="btn primary"
+                              onClick={() => restartModificationTask(task.id)}
+                            >
+                              重新运转
+                            </button>
+                          )}
+                        </div>
+                      </article>
+                    ))
+                  ) : (
+                    <div className="creator-tasks-empty">当前筛选下暂无修改任务</div>
+                  )}
+                </div>
+              </div>
             ) : (
               <div className="creator-comments-view">
                 <div className="creator-comments-summary">
@@ -5424,23 +5699,44 @@ export default function App() {
                 <div className="creator-comments-list">
                   {creatorCurrentPageComments.length > 0 ? (
                     creatorCurrentPageComments.map(({ taskId, reviewerName, reviewerDept, comment }) => (
-                      <PptCommentThread
-                        key={comment.id}
-                        variant="creator"
-                        comment={comment}
-                        metaTitle={`第 ${comment.pageNumber} 页 · ${reviewerName}`}
-                        metaSubtitle={reviewerDept}
-                        replyDraft={creatorReplyDrafts[comment.id] || ''}
-                        onReplyDraftChange={(value) =>
-                          setCreatorReplyDrafts((prev) => ({
-                            ...prev,
-                            [comment.id]: value,
-                          }))
-                        }
-                        onReply={() => replyToPptComment(taskId, comment.id)}
-                        replyPlaceholder="回复这条批注…"
-                        showReplyComposer
-                      />
+                      <article key={comment.id} className="creator-comment-thread">
+                        <div className="creator-comment-meta">
+                          <strong>第 {comment.pageNumber} 页 · {reviewerName}</strong>
+                          <span>{reviewerDept}</span>
+                        </div>
+                        <p>{comment.content}</p>
+                        {(comment.replies || []).map((reply) => (
+                          <div
+                            key={reply.id}
+                            className={`creator-comment-reply ${
+                              reply.authorRole === 'ops' ? 'reply-ops' : 'reply-reviewer'
+                            }`}
+                          >
+                            <strong>{reply.authorName} 回复</strong>
+                            <span>{reply.content}</span>
+                          </div>
+                        ))}
+                        <div className="creator-comment-compose">
+                          <textarea
+                            value={creatorReplyDrafts[comment.id] || ''}
+                            onChange={(event) =>
+                              setCreatorReplyDrafts((prev) => ({
+                                ...prev,
+                                [comment.id]: event.target.value,
+                              }))
+                            }
+                            placeholder="回复这条批注…"
+                          />
+                          <button
+                            type="button"
+                            className="btn primary"
+                            disabled={!creatorReplyDrafts[comment.id]?.trim()}
+                            onClick={() => replyToPptComment(taskId, comment.id)}
+                          >
+                            回复
+                          </button>
+                        </div>
+                      </article>
                     ))
                   ) : (
                     <div className="reviewer-ppt-comments-empty">
@@ -5639,24 +5935,43 @@ export default function App() {
               <div className="reviewer-ppt-comment-list reviewer-ppt-comment-list-expanded">
                 {(reviewPptNotes[reviewPptPageIndex] || []).length > 0 ? (
                   (reviewPptNotes[reviewPptPageIndex] || []).map((note) => (
-                    <PptCommentThread
-                      key={note.id}
-                      variant="reviewer"
-                      comment={note}
-                      metaTitle={note.authorName}
-                      replyDraft={reviewerReplyDrafts[note.id] || ''}
-                      onReplyDraftChange={(value) =>
-                        setReviewerReplyDrafts((prev) => ({
-                          ...prev,
-                          [note.id]: value,
-                        }))
-                      }
-                      onReply={() => replyToCreatorAsReviewer(note.id)}
-                      replyPlaceholder="回复内容创作者…"
-                      showReplyComposer={(note.replies || []).some(
-                        (reply) => reply.authorRole === 'ops'
+                    <div key={note.id} className="reviewer-ppt-comment">
+                      <strong>{note.authorName}</strong>
+                      <span>{note.content}</span>
+                      {(note.replies || []).map((reply) => (
+                        <div
+                          key={reply.id}
+                          className={`reviewer-ppt-comment-reply ${
+                            reply.authorRole === 'ops' ? 'reply-ops' : 'reply-reviewer'
+                          }`}
+                        >
+                          <strong>{reply.authorName} 回复</strong>
+                          <span>{reply.content}</span>
+                        </div>
+                      ))}
+                      {(note.replies || []).some((reply) => reply.authorRole === 'ops') && (
+                        <div className="reviewer-comment-reply-compose">
+                          <textarea
+                            value={reviewerReplyDrafts[note.id] || ''}
+                            onChange={(event) =>
+                              setReviewerReplyDrafts((prev) => ({
+                                ...prev,
+                                [note.id]: event.target.value,
+                              }))
+                            }
+                            placeholder="回复内容创作者…"
+                          />
+                          <button
+                            type="button"
+                            className="btn primary"
+                            disabled={!reviewerReplyDrafts[note.id]?.trim()}
+                            onClick={() => replyToCreatorAsReviewer(note.id)}
+                          >
+                            回复
+                          </button>
+                        </div>
                       )}
-                    />
+                    </div>
                   ))
                 ) : (
                   <div className="reviewer-ppt-comments-empty">当前页面暂无批注</div>
@@ -5676,15 +5991,25 @@ export default function App() {
                   onClick={() => {
                     const content = reviewPptNoteDraft.trim();
                     if (!content || !activeReviewTaskId) return;
-                    const note = addPptComment(activeReviewTaskId, {
+                    const task = getReviewTask(activeReviewTaskId);
+                    if (!task) return;
+                    const now = Date.now();
+                    const note: PptReviewComment = {
+                      id: `ppt_comment_${now}_${Math.random().toString(36).slice(2, 8)}`,
                       pageIndex: reviewPptPageIndex,
-                      pageNumber:
-                        reviewPptSlides[reviewPptPageIndex]?.page ?? reviewPptPageIndex + 1,
+                      pageNumber: reviewPptSlides[reviewPptPageIndex]?.page ?? reviewPptPageIndex + 1,
                       authorRole: userRole,
                       authorName: ROLE_PROFILES[userRole].name,
                       content,
-                    });
-                    if (!note) return;
+                      createdAt: now,
+                      replies: [],
+                    };
+                    const nextComments = [...(task.pptComments || []), note];
+                    upsertReviewTask({ ...task, status: 'in_progress', pptComments: nextComments });
+                    setReviewPptNotes((prev) => ({
+                      ...prev,
+                      [reviewPptPageIndex]: [...(prev[reviewPptPageIndex] || []), note],
+                    }));
                     setReviewPptNoteDraft('');
                     refreshReviewTasks();
                     toast('批注已添加');
@@ -5931,61 +6256,54 @@ export default function App() {
                 }
 
                 const assigneeLabels: string[] = [];
-                let reopenCount = 0;
-                let createCount = 0;
-                teamAssigneeRoles.forEach((role) => {
+                const existingTasks = loadReviewTasks();
+                teamAssigneeRoles.forEach((role, index) => {
                   const assignee = ROLE_PROFILES[role];
-                  const existingTask = findReviewTask(currentSessionId, target, role);
-                  if (existingTask) {
-                    reopenReviewTask(existingTask, {
-                      title: taskTitle,
-                      deadline,
-                      assignerName: ROLE_PROFILES.ops.name,
-                      baseCopyText: baseCopy || undefined,
-                      copyRevisionBase: baseCopy || undefined,
-                    });
-                    reopenCount += 1;
-                  } else {
-                    createReviewTask({
-                      sessionId: currentSessionId,
-                      title: taskTitle,
-                      contentType: target,
-                      assigneeRole: role,
-                      assigneeName: assignee.name,
-                      assignerName: ROLE_PROFILES.ops.name,
-                      deadline,
-                      baseCopyText: baseCopy || undefined,
-                      copyRevisionBase: baseCopy || undefined,
-                    });
-                    createCount += 1;
-                  }
+                  const existingTask = existingTasks.find(
+                    (task) =>
+                      task.sessionId === currentSessionId &&
+                      task.contentType === target &&
+                      task.assigneeRole === role
+                  );
+                  const now = Date.now();
+                  const task: ReviewTask = {
+                    ...existingTask,
+                    id:
+                      existingTask?.id ||
+                      `rt_${now}_${index}_${Math.random().toString(36).slice(2, 8)}`,
+                    sessionId: currentSessionId,
+                    title: taskTitle,
+                    contentType: target,
+                    assigneeRole: role,
+                    assigneeName: assignee.name,
+                    assignerName: ROLE_PROFILES.ops.name,
+                    deadline,
+                    status: 'pending',
+                    createdAt: existingTask?.createdAt || now,
+                    updatedAt: now,
+                    baseCopyText: baseCopy || undefined,
+                    copyRevisionBase: baseCopy || undefined,
+                    reviewRound: (existingTask?.reviewRound || 0) + 1,
+                    completedReviewCount:
+                      existingTask?.completedReviewCount ||
+                      (existingTask?.status === 'completed' ? 1 : 0),
+                  };
+                  upsertReviewTask(task);
                   assigneeLabels.push(`${assignee.name}（${assignee.dept}）`);
                 });
                 refreshReviewTasks();
                 const namesText = assigneeLabels.join('、');
                 setShowTeamModal(false);
                 setTeamAssigneeRoles([]);
-                const actionLabel =
-                  reopenCount > 0 && createCount === 0
-                    ? '重新发起'
-                    : createCount > 0 && reopenCount === 0
-                      ? '创建'
-                      : '分配';
-                toast(
-                  reopenCount > 0 && createCount === 0
-                    ? `已向 ${namesText} 重新发起${label}审阅（保留历史批注）`
-                    : `已向 ${namesText} 分配${label}修改任务`
-                );
+                toast(`已向 ${namesText} 分配${label}修改任务`);
                 addMsg(
                   'user',
-                  `向 ${namesText} ${actionLabel}${label}团队修改任务（截止 ${deadline}）`,
+                  `向 ${namesText} 分配${label}团队修改任务（截止 ${deadline}）`,
                   selectedModel
                 );
                 addMsg(
                   'ai',
-                  reopenCount > 0 && createCount === 0
-                    ? `已重新打开原审阅任务并通知 ${assigneeLabels.length} 位审阅人。历史批注与回复已保留，他们将在首页看到「待审阅」状态并可继续在原线程中批注。`
-                    : `已为 ${assigneeLabels.length} 位审阅人创建团队修改任务，他们将在各自首页任务列表中查看并修改。完成后你可在「团队修改」或「文案生成」标签查看修改详情。`,
+                  `已为 ${assigneeLabels.length} 位审阅人创建团队修改任务，他们将在各自首页任务列表中查看并修改。完成后你可在「团队修改」或「文案生成」标签查看修改详情。`,
                   'DeepSeek-V3.1'
                 );
               }}
@@ -6017,6 +6335,19 @@ export default function App() {
         danger
         onConfirm={handleDeleteSession}
         onCancel={() => setDeleteConfirm(null)}
+      />
+
+      <ConfirmModal
+        open={Boolean(rollbackConfirm)}
+        title="回退至此"
+        message={
+          rollbackConfirm
+            ? `确定回退到任务「${rollbackConfirm.prompt}」吗？其后完成的修改将失效，进行中的任务也会被中止。`
+            : ''
+        }
+        confirmLabel="确认回退"
+        onConfirm={confirmRollbackModificationTask}
+        onCancel={() => setRollbackConfirm(null)}
       />
 
       {showVideoScriptEditModal && (
@@ -6782,58 +7113,48 @@ function WorkspaceRightPanel({
 
       case 'rich-text':
         return (
-          <RichTextEditor
-            value={richTextContent || WORKSPACE_MOCK_RICH_TEXT}
-            onChange={onRichTextChange}
-            footerActions={
-              <>
-                <button
-                  type="button"
-                  className="btn soft"
-                  onClick={() => {
-                    const content = richTextContent || WORKSPACE_MOCK_RICH_TEXT;
-                    const html = buildRichTextHtmlDocument(content, '图文内容');
-                    downloadDataUrl(
-                      `data:text/html;charset=utf-8,${encodeURIComponent(html)}`,
-                      '图文内容.html'
-                    );
-                    toast('图文内容已下载');
-                  }}
-                >
-                  下载
-                </button>
-                {!reviewerMode && (
-                  <>
-                    <button
-                      type="button"
-                      className="btn warn"
-                      disabled={teamModificationInProgress}
-                      onClick={() => !teamModificationInProgress && onOpenTeamReview('rich-text')}
-                    >
-                      {teamModificationInProgress ? '团队审阅中...' : '提交团队审阅'}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn green"
-                      onClick={() => {
-                        const content = richTextContent || WORKSPACE_MOCK_RICH_TEXT;
-                        const plain = content
-                          .replace(/<[^>]+>/g, ' ')
-                          .replace(/\s+/g, ' ')
-                          .trim()
-                          .slice(0, 800);
-                        fillQuick(
-                          `提交当前图文内容到Veeva Vault审批:\n${plain || '（当前图文正文）'}`
-                        );
-                      }}
-                    >
-                      提交 Veeva 审批
-                    </button>
-                  </>
-                )}
-              </>
-            }
-          />
+          <>
+            <RichTextEditor
+              value={richTextContent || WORKSPACE_MOCK_RICH_TEXT}
+              onChange={onRichTextChange}
+            />
+            <div className="content-submit-actions">
+              <button
+                type="button"
+                className="btn soft"
+                onClick={() => {
+                  const content = richTextContent || WORKSPACE_MOCK_RICH_TEXT;
+                  const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>图文内容</title></head><body>${content}</body></html>`;
+                  downloadDataUrl(
+                    `data:text/html;charset=utf-8,${encodeURIComponent(html)}`,
+                    '图文内容.html'
+                  );
+                  toast('图文内容已下载');
+                }}
+              >
+                下载图文
+              </button>
+              {!reviewerMode && (
+                <>
+                  <button
+                    type="button"
+                    className="btn warn"
+                    disabled={teamModificationInProgress}
+                    onClick={() => !teamModificationInProgress && onOpenTeamReview('rich-text')}
+                  >
+                    {teamModificationInProgress ? '团队审阅中...' : '提交团队审阅'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn green"
+                    onClick={() => fillQuick('提交当前图文内容到Veeva Vault审批:')}
+                  >
+                    提交 Veeva Vault 审批
+                  </button>
+                </>
+              )}
+            </div>
+          </>
         );
 
       case 'team':

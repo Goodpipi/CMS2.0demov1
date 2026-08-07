@@ -14,21 +14,21 @@ const options = [
     title: '创建新内容',
     description: '从当前创作需求开始，进入任务详情页',
     Icon: FilePlus2,
-    tone: 'from-[#4A9EE0] to-[#3B7FBF]',
+    tone: 'from-[#54B9F9] to-[#3BA6E8]',
   },
   {
     id: 'local',
     title: '打开本地文件',
     description: '选择任意文件后，打开内置 Mock PPT 预览',
     Icon: FolderOpen,
-    tone: 'from-[#7762B8] to-[#4A9EE0]',
+    tone: 'from-[#6FBD1F] to-[#54B9F9]',
   },
   {
     id: 'cms',
     title: '打开 CMS 文件',
     description: '从已审批的 CMS 内容中选择文件',
     Icon: Cloud,
-    tone: 'from-[#D8466A] to-[#7762B8]',
+    tone: 'from-[#8AD329] to-[#6FBD1F]',
   },
 ] as const;
 
@@ -101,7 +101,7 @@ export function CreationMethodModal({
             const content = (
               <>
               <span
-                className={`mb-4 grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br ${tone} text-white shadow-[0_6px_14px_-7px_rgba(59,127,191,0.8)] ring-1 ring-white/40`}
+                className={`mb-4 grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br ${tone} text-white shadow-[0_6px_14px_-7px_rgba(59, 150, 210,0.8)] ring-1 ring-white/40`}
               >
                 <Icon className="h-5 w-5" />
               </span>

@@ -11,7 +11,7 @@ function slideSvg(title: string, subtitle: string, index: number, accent: string
     <rect width="960" height="540" fill="url(#bg${index})"/>
     <rect x="0" y="0" width="26" height="540" fill="${accent}"/>
     <circle cx="846" cy="86" r="92" fill="${accent}" opacity=".12"/>
-    <circle cx="870" cy="470" r="150" fill="#D8466A" opacity=".08"/>
+    <circle cx="870" cy="470" r="150" fill="#8AD329" opacity=".08"/>
     <text x="72" y="82" font-family="Arial,Microsoft YaHei,sans-serif" font-size="18" font-weight="700" fill="${accent}">BAYER · 医学内容</text>
     <text x="72" y="188" font-family="Arial,Microsoft YaHei,sans-serif" font-size="42" font-weight="800" fill="#18334d">${title}</text>
     <text x="72" y="244" font-family="Arial,Microsoft YaHei,sans-serif" font-size="22" fill="#536a80">${subtitle}</text>
@@ -33,7 +33,7 @@ function slideSvgEnglish(title: string, subtitle: string, index: number, accent:
     <rect width="960" height="540" fill="url(#enBg${index})"/>
     <rect x="0" y="0" width="26" height="540" fill="${accent}"/>
     <circle cx="846" cy="86" r="92" fill="${accent}" opacity=".12"/>
-    <circle cx="870" cy="470" r="150" fill="#D8466A" opacity=".08"/>
+    <circle cx="870" cy="470" r="150" fill="#8AD329" opacity=".08"/>
     <text x="72" y="82" font-family="Arial,sans-serif" font-size="18" font-weight="700" fill="${accent}">BAYER · MEDICAL CONTENT</text>
     <text x="72" y="188" font-family="Arial,sans-serif" font-size="36" font-weight="800" fill="#18334d">${title}</text>
     <text x="72" y="244" font-family="Arial,sans-serif" font-size="21" fill="#536a80">${subtitle}</text>
@@ -145,13 +145,13 @@ const MOCK_SLIDES: PptSlide[] = [
     page: 1,
     title: '慢性肾脏病患者全程管理',
     bullets: ['早期识别 · 规范管理 · 持续随访'],
-    svg: slideSvg('慢性肾脏病患者全程管理', '早期识别 · 规范管理 · 持续随访', 1, '#4A9EE0'),
+    svg: slideSvg('慢性肾脏病患者全程管理', '早期识别 · 规范管理 · 持续随访', 1, '#54B9F9'),
   },
   {
     page: 2,
     title: '疾病负担与管理挑战',
     bullets: ['患者数量持续增长', '早期认知不足', '长期管理仍有提升空间'],
-    svg: slideSvg('疾病负担与管理挑战', '从风险认知到长期管理', 2, '#7762B8'),
+    svg: slideSvg('疾病负担与管理挑战', '从风险认知到长期管理', 2, '#6FBD1F'),
   },
   {
     page: 3,
@@ -163,7 +163,7 @@ const MOCK_SLIDES: PptSlide[] = [
     page: 4,
     title: '患者全程管理路径',
     bullets: ['风险评估', '疾病教育', '规范诊疗', '持续随访'],
-    svg: slideSvg('患者全程管理路径', '连接评估、教育、诊疗与随访', 4, '#D8466A'),
+    svg: slideSvg('患者全程管理路径', '连接评估、教育、诊疗与随访', 4, '#8AD329'),
   },
 ];
 
@@ -226,7 +226,7 @@ const MOCK_SLIDES_EN: PptSlide[] = [
       'Integrated Management of Chronic Kidney Disease',
       'Early identification · Standardized management · Continuous follow-up',
       1,
-      '#4A9EE0'
+      '#54B9F9'
     ),
   },
   {
@@ -237,7 +237,7 @@ const MOCK_SLIDES_EN: PptSlide[] = [
       'Disease Burden and Management Challenges',
       'From risk awareness to long-term management',
       2,
-      '#7762B8'
+      '#6FBD1F'
     ),
   },
   {
@@ -259,7 +259,7 @@ const MOCK_SLIDES_EN: PptSlide[] = [
       'Integrated Patient Management Pathway',
       'Connecting assessment, education, care and follow-up',
       4,
-      '#D8466A'
+      '#8AD329'
     ),
   },
 ];
@@ -420,14 +420,14 @@ const MOCK_IMAGE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900
       <stop offset="1" stop-color="#fff2f6"/>
     </linearGradient>
     <linearGradient id="mockImageAccent" x1="0" x2="1">
-      <stop stop-color="#4A9EE0"/>
-      <stop offset=".52" stop-color="#7762B8"/>
-      <stop offset="1" stop-color="#D8466A"/>
+      <stop stop-color="#54B9F9"/>
+      <stop offset=".52" stop-color="#6FBD1F"/>
+      <stop offset="1" stop-color="#8AD329"/>
     </linearGradient>
   </defs>
   <rect width="900" height="1125" fill="url(#mockImageBg)"/>
-  <circle cx="760" cy="130" r="180" fill="#4A9EE0" opacity=".12"/>
-  <circle cx="110" cy="990" r="220" fill="#D8466A" opacity=".1"/>
+  <circle cx="760" cy="130" r="180" fill="#54B9F9" opacity=".12"/>
+  <circle cx="110" cy="990" r="220" fill="#8AD329" opacity=".1"/>
   <rect x="58" y="54" width="784" height="1017" rx="54" fill="#fff" stroke="#dbe8f3" stroke-width="2"/>
   <rect x="94" y="92" width="712" height="18" rx="9" fill="url(#mockImageAccent)"/>
   <text x="112" y="188" font-family="Arial,Microsoft YaHei,sans-serif" font-size="28" font-weight="700" fill="#3B7FBF">BAYER · 患者教育</text>
@@ -435,21 +435,21 @@ const MOCK_IMAGE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900
   <text x="112" y="366" font-family="Arial,Microsoft YaHei,sans-serif" font-size="31" fill="#536a80">从了解风险开始</text>
   <g transform="translate(130 445)">
     <rect width="640" height="128" rx="32" fill="#edf7ff"/>
-    <circle cx="72" cy="64" r="34" fill="#4A9EE0"/>
+    <circle cx="72" cy="64" r="34" fill="#54B9F9"/>
     <text x="58" y="76" font-family="Arial,sans-serif" font-size="34" font-weight="800" fill="#fff">1</text>
     <text x="132" y="58" font-family="Arial,Microsoft YaHei,sans-serif" font-size="28" font-weight="800" fill="#20445f">关注高风险因素</text>
     <text x="132" y="92" font-family="Arial,Microsoft YaHei,sans-serif" font-size="19" fill="#60758a">定期了解血糖、血压与肾功能状况</text>
   </g>
   <g transform="translate(130 600)">
     <rect width="640" height="128" rx="32" fill="#f4effa"/>
-    <circle cx="72" cy="64" r="34" fill="#7762B8"/>
+    <circle cx="72" cy="64" r="34" fill="#6FBD1F"/>
     <text x="58" y="76" font-family="Arial,sans-serif" font-size="34" font-weight="800" fill="#fff">2</text>
     <text x="132" y="58" font-family="Arial,Microsoft YaHei,sans-serif" font-size="28" font-weight="800" fill="#3f3560">保持健康生活方式</text>
     <text x="132" y="92" font-family="Arial,Microsoft YaHei,sans-serif" font-size="19" fill="#60758a">均衡饮食、适量运动并遵循专业建议</text>
   </g>
   <g transform="translate(130 755)">
     <rect width="640" height="128" rx="32" fill="#fff1f4"/>
-    <circle cx="72" cy="64" r="34" fill="#D8466A"/>
+    <circle cx="72" cy="64" r="34" fill="#8AD329"/>
     <text x="58" y="76" font-family="Arial,sans-serif" font-size="34" font-weight="800" fill="#fff">3</text>
     <text x="132" y="58" font-family="Arial,Microsoft YaHei,sans-serif" font-size="28" font-weight="800" fill="#693044">主动咨询专业医生</text>
     <text x="132" y="92" font-family="Arial,Microsoft YaHei,sans-serif" font-size="19" fill="#60758a">如有疑问或不适，及时寻求专业帮助</text>
