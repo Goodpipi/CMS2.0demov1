@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Eraser, Paintbrush } from 'lucide-react';
 import {
   prepareEditableSvg,
@@ -16,6 +24,18 @@ export interface SelectableSvgSelection {
   svgMarkup: string;
 }
 
+export interface SelectableSvgToolState {
+  brushActive: boolean;
+  canClear: boolean;
+}
+
+export interface SelectableSvgPreviewHandle {
+  toggleBrush: () => void;
+  setBrushActive: (active: boolean) => void;
+  clearStrokes: () => void;
+  getToolState: () => SelectableSvgToolState;
+}
+
 interface SelectableSvgPreviewProps {
   /** 原始 SVG 字符串（优先） */
   svgMarkup?: string;
@@ -25,6 +45,9 @@ interface SelectableSvgPreviewProps {
   onSelect: (selection: SelectableSvgSelection | null) => void;
   disabled?: boolean;
   className?: string;
+  /** 隐藏内置工具条，改由外部 Toolbar 控制 */
+  hideToolbar?: boolean;
+  onToolStateChange?: (state: SelectableSvgToolState) => void;
 }
 
 function isLockedBackground(el: Element): boolean {
@@ -32,14 +55,22 @@ function isLockedBackground(el: Element): boolean {
   return el.getAttribute('data-edit-id') === 'el-bg' || tag === 'image';
 }
 
-export function SelectableSvgPreview({
-  svgMarkup,
-  imageSrc,
-  selectedId,
-  onSelect,
-  disabled = false,
-  className = '',
-}: SelectableSvgPreviewProps) {
+export const SelectableSvgPreview = forwardRef<
+  SelectableSvgPreviewHandle,
+  SelectableSvgPreviewProps
+>(function SelectableSvgPreview(
+  {
+    svgMarkup,
+    imageSrc,
+    selectedId,
+    onSelect,
+    disabled = false,
+    className = '',
+    hideToolbar = false,
+    onToolStateChange,
+  },
+  ref
+) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [brushActive, setBrushActive] = useState(false);
@@ -53,6 +84,42 @@ export function SelectableSvgPreview({
     if (!raw) return null;
     return prepareEditableSvg(raw);
   }, [imageSrc, svgMarkup]);
+
+  const canClear = strokes.length > 0 || Boolean(activeStroke);
+
+  const clearStrokes = useCallback(() => {
+    setStrokes([]);
+    activeStrokeRef.current = '';
+    setActiveStroke('');
+    drawingRef.current = false;
+  }, []);
+
+  const setBrush = useCallback(
+    (active: boolean) => {
+      setBrushActive(active);
+      if (active) onSelect(null);
+    },
+    [onSelect]
+  );
+
+  const toggleBrush = useCallback(() => {
+    setBrush(!brushActive);
+  }, [brushActive, setBrush]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      toggleBrush,
+      setBrushActive: setBrush,
+      clearStrokes,
+      getToolState: () => ({ brushActive, canClear }),
+    }),
+    [toggleBrush, setBrush, clearStrokes, brushActive, canClear]
+  );
+
+  useEffect(() => {
+    onToolStateChange?.({ brushActive, canClear });
+  }, [brushActive, canClear, onToolStateChange]);
 
   useEffect(() => {
     setLoadFailed(!prepared);
@@ -140,28 +207,33 @@ export function SelectableSvgPreview({
     drawingRef.current = false;
   };
 
-  const clearStrokes = useCallback(() => {
-    setStrokes([]);
-    activeStrokeRef.current = '';
-    setActiveStroke('');
-    drawingRef.current = false;
-  }, []);
+  const toolbar =
+    !disabled && !hideToolbar ? (
+      <div className="image-draw-toolbar">
+        <button
+          type="button"
+          className={`btn image-draw-tool ${brushActive ? 'primary active' : 'soft'}`}
+          onClick={toggleBrush}
+        >
+          <Paintbrush className="h-3.5 w-3.5" />
+          画笔
+        </button>
+        <button
+          type="button"
+          className="btn soft image-draw-tool"
+          disabled={!canClear}
+          onClick={clearStrokes}
+        >
+          <Eraser className="h-3.5 w-3.5" />
+          清除
+        </button>
+      </div>
+    ) : null;
 
   if (!prepared || loadFailed) {
     return (
       <div className={`image-draw-editor selectable-svg-preview is-fallback ${className}`.trim()}>
-        {!disabled && (
-          <div className="image-draw-toolbar">
-            <button type="button" className="btn soft image-draw-tool" disabled>
-              <Paintbrush className="h-3.5 w-3.5" />
-              画笔
-            </button>
-            <button type="button" className="btn soft image-draw-tool" disabled>
-              <Eraser className="h-3.5 w-3.5" />
-              清除
-            </button>
-          </div>
-        )}
+        {toolbar}
         <div className="image-draw-canvas">
           <img src={imageSrc} alt="" draggable={false} />
         </div>
@@ -173,30 +245,7 @@ export function SelectableSvgPreview({
     <div
       className={`image-draw-editor selectable-svg-preview ${disabled ? 'is-disabled' : ''} ${className}`.trim()}
     >
-      {!disabled && (
-        <div className="image-draw-toolbar">
-          <button
-            type="button"
-            className={`btn image-draw-tool ${brushActive ? 'primary active' : 'soft'}`}
-            onClick={() => {
-              setBrushActive((active) => !active);
-              onSelect(null);
-            }}
-          >
-            <Paintbrush className="h-3.5 w-3.5" />
-            画笔
-          </button>
-          <button
-            type="button"
-            className="btn soft image-draw-tool"
-            disabled={strokes.length === 0 && !activeStroke}
-            onClick={clearStrokes}
-          >
-            <Eraser className="h-3.5 w-3.5" />
-            清除
-          </button>
-        </div>
-      )}
+      {toolbar}
       <div className="image-draw-canvas">
         <div
           ref={hostRef}
@@ -231,4 +280,4 @@ export function SelectableSvgPreview({
       </div>
     </div>
   );
-}
+});

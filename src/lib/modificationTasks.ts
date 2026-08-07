@@ -22,6 +22,12 @@ export interface ModificationTask {
   updatedAt: number;
 }
 
+export interface ModificationTaskPageGroup {
+  pageIndex: number;
+  pageLabel: string;
+  tasks: ModificationTask[];
+}
+
 export const MODIFICATION_TASK_STATUS_LABEL: Record<ModificationTaskStatus, string> = {
   running: '进行中',
   completed: '已完成',
@@ -37,22 +43,11 @@ export const MODIFICATION_TASK_FILTERS: { key: ModificationTaskFilter; label: st
 
 const DAY = 24 * 60 * 60 * 1000;
 
-/** 演示用 Mock：各类产出物修改 prompt 任务 */
+/** 演示用 Mock：仅当前 PPT 设计版本相关修改任务 */
 export function createMockModificationTasks(now = Date.now()): ModificationTask[] {
   return [
     {
       id: 'mod-task-1',
-      prompt: '把第 2 页标题改得更专业，减少营销感，突出早期筛查价值',
-      status: 'completed',
-      targetTab: 'ppt-design',
-      pageIndex: 1,
-      targetLabel: 'PPT 设计 · 第 2 页',
-      resultSummary: '已更新标题与要点层级，并保持拜耳蓝绿视觉规范。',
-      createdAt: now - 2 * DAY - 3 * 60 * 60 * 1000,
-      updatedAt: now - 2 * DAY - 2.5 * 60 * 60 * 1000,
-    },
-    {
-      id: 'mod-task-2',
       prompt: '将封面页副标题改为「循证视角下的全程管理」，并加大字号',
       status: 'running',
       targetTab: 'ppt-design',
@@ -63,62 +58,51 @@ export function createMockModificationTasks(now = Date.now()): ModificationTask[
       updatedAt: now - 12 * 60 * 1000,
     },
     {
-      id: 'mod-task-3',
-      prompt: '把主视觉背景调得更清爽，减少装饰元素，保留品牌色块',
+      id: 'mod-task-2',
+      prompt: '封面主标题改为更克制的学术表达，去掉口号感',
       status: 'completed',
-      targetTab: 'visual',
-      pageIndex: null,
-      targetLabel: '图片 / 主视觉',
-      resultSummary: '已生成更简洁的主视觉版本，可在预览中对比。',
-      createdAt: now - DAY - 5 * 60 * 60 * 1000,
-      updatedAt: now - DAY - 4 * 60 * 60 * 1000,
+      targetTab: 'ppt-design',
+      pageIndex: 0,
+      targetLabel: 'PPT 设计 · 第 1 页',
+      resultSummary: '已更新封面主标题，并保持拜耳蓝绿视觉规范。',
+      createdAt: now - 2 * DAY - 4 * 60 * 60 * 1000,
+      updatedAt: now - 2 * DAY - 3.5 * 60 * 60 * 1000,
+    },
+    {
+      id: 'mod-task-3',
+      prompt: '把第 2 页标题改得更专业，减少营销感，突出早期筛查价值',
+      status: 'completed',
+      targetTab: 'ppt-design',
+      pageIndex: 1,
+      targetLabel: 'PPT 设计 · 第 2 页',
+      resultSummary: '已更新标题与要点层级。',
+      createdAt: now - 2 * DAY - 3 * 60 * 60 * 1000,
+      updatedAt: now - 2 * DAY - 2.5 * 60 * 60 * 1000,
     },
     {
       id: 'mod-task-4',
-      prompt: '图文正文第二段补充安全性提示，语气保持专业克制',
+      prompt: '第 2 页补充一条安全性提示脚注，字号略小于正文',
       status: 'cancelled',
-      targetTab: 'rich-text',
-      pageIndex: null,
-      targetLabel: '图文内容',
-      resultSummary: '任务已取消，未写入正文。',
+      targetTab: 'ppt-design',
+      pageIndex: 1,
+      targetLabel: 'PPT 设计 · 第 2 页',
+      resultSummary: '任务已取消，未写入页脚。',
       createdAt: now - 6 * 60 * 60 * 1000,
       updatedAt: now - 5.5 * 60 * 60 * 1000,
     },
     {
       id: 'mod-task-5',
-      prompt: '大纲第三章增加「随访与患者教育」页面要点，控制在 3 条以内',
+      prompt: '第 3 页要点控制在 3 条以内，并统一行距',
       status: 'completed',
-      targetTab: 'ppt-outline',
-      pageIndex: null,
-      targetLabel: 'PPT 大纲 · 第三章',
-      resultSummary: '已在大纲中追加随访教育页，并同步 speaker notes。',
-      createdAt: now - 3 * DAY,
-      updatedAt: now - 3 * DAY + 40 * 60 * 1000,
+      targetTab: 'ppt-design',
+      pageIndex: 2,
+      targetLabel: 'PPT 设计 · 第 3 页',
+      resultSummary: '已精简要点并统一行距。',
+      createdAt: now - DAY - 5 * 60 * 60 * 1000,
+      updatedAt: now - DAY - 4 * 60 * 60 * 1000,
     },
     {
       id: 'mod-task-6',
-      prompt: '把文案方案 B 的开头改成问题引入，避免疗效承诺表述',
-      status: 'running',
-      targetTab: 'copy',
-      pageIndex: null,
-      targetLabel: '文案方案',
-      resultSummary: '正在按合规口径重写文案开头…',
-      createdAt: now - 40 * 60 * 1000,
-      updatedAt: now - 35 * 60 * 1000,
-    },
-    {
-      id: 'mod-task-7',
-      prompt: '视频成片片头降低节奏，字幕改为浅色描边以提高可读性',
-      status: 'cancelled',
-      targetTab: 'video-render',
-      pageIndex: null,
-      targetLabel: '视频成片',
-      resultSummary: '任务已取消。',
-      createdAt: now - 4 * DAY,
-      updatedAt: now - 4 * DAY + 20 * 60 * 1000,
-    },
-    {
-      id: 'mod-task-8',
       prompt: '第 4 页数据图表改成更清晰的对比条形，并标注数据来源',
       status: 'completed',
       targetTab: 'ppt-design',
@@ -128,7 +112,54 @@ export function createMockModificationTasks(now = Date.now()): ModificationTask[
       createdAt: now - DAY - 2 * 60 * 60 * 1000,
       updatedAt: now - DAY - 90 * 60 * 1000,
     },
+    {
+      id: 'mod-task-7',
+      prompt: '第 4 页图注改为「数据来源：内部真实世界研究，仅供讨论」',
+      status: 'running',
+      targetTab: 'ppt-design',
+      pageIndex: 3,
+      targetLabel: 'PPT 设计 · 第 4 页',
+      resultSummary: 'AI 正在更新图注文案…',
+      createdAt: now - 40 * 60 * 1000,
+      updatedAt: now - 35 * 60 * 1000,
+    },
+    {
+      id: 'mod-task-8',
+      prompt: '第 4 页右侧说明文字缩短为两行，避免与图表重叠',
+      status: 'cancelled',
+      targetTab: 'ppt-design',
+      pageIndex: 3,
+      targetLabel: 'PPT 设计 · 第 4 页',
+      resultSummary: '任务已取消。',
+      createdAt: now - 4 * DAY,
+      updatedAt: now - 4 * DAY + 20 * 60 * 1000,
+    },
   ];
+}
+
+/** 仅保留当前 PPT 设计版本相关任务 */
+export function isPptDesignModificationTask(task: ModificationTask): boolean {
+  return task.targetTab === 'ppt-design' && task.pageIndex != null;
+}
+
+/** 按页码分组（页码升序；组内按更新时间倒序） */
+export function groupModificationTasksByPage(
+  tasks: ModificationTask[]
+): ModificationTaskPageGroup[] {
+  const map = new Map<number, ModificationTask[]>();
+  for (const task of tasks) {
+    if (task.pageIndex == null) continue;
+    const list = map.get(task.pageIndex) || [];
+    list.push(task);
+    map.set(task.pageIndex, list);
+  }
+  return [...map.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([pageIndex, pageTasks]) => ({
+      pageIndex,
+      pageLabel: `第 ${pageIndex + 1} 页`,
+      tasks: [...pageTasks].sort((a, b) => b.updatedAt - a.updatedAt),
+    }));
 }
 
 export function formatModificationTaskTime(ts: number): string {

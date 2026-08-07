@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import {
   ArrowUpRight,
   CheckCircle2,
+  ChevronLeft,
   FileText,
   Image as ImageIcon,
   Layers3,
@@ -201,9 +202,10 @@ export function BrandPreview({ asset }: { asset: BrandAsset }) {
 
 interface AssetLibraryPageProps {
   onNotify: (message: string) => void;
+  onBack: () => void;
 }
 
-export function AssetLibraryPage({ onNotify }: AssetLibraryPageProps) {
+export function AssetLibraryPage({ onNotify, onBack }: AssetLibraryPageProps) {
   const [activeTab, setActiveTab] = useState<AssetTab>('templates');
   const [templateKind, setTemplateKind] = useState<TemplateKind>('ppt');
   const [query, setQuery] = useState('');
@@ -283,6 +285,14 @@ export function AssetLibraryPage({ onNotify }: AssetLibraryPageProps) {
 
   return (
     <div className="page relative z-10 px-6 pb-8 lg:px-10">
+      <button
+        type="button"
+        className="mb-4 inline-flex items-center gap-1 text-[12px] font-medium text-muted-foreground transition hover:text-primary"
+        onClick={onBack}
+      >
+        <ChevronLeft className="h-3.5 w-3.5" />
+        返回首页
+      </button>
       <div className="mb-6 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <div className="mb-3 flex items-center gap-3">
@@ -369,20 +379,15 @@ export function AssetLibraryPage({ onNotify }: AssetLibraryPageProps) {
       {activeTab === 'templates' ? (
         <>
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap gap-2" role="tablist" aria-label="模板分类">
+            <div className="creator-right-tabs is-inline" role="tablist" aria-label="模板分类">
               {TEMPLATE_FILTERS.map(({ id, label, Icon }) => (
                 <button
                   key={id}
                   type="button"
                   role="tab"
                   aria-selected={templateKind === id}
+                  className={templateKind === id ? 'active' : ''}
                   onClick={() => setTemplateKind(id)}
-                  className={cn(
-                    'inline-flex items-center gap-2 rounded-xl border px-3.5 py-2 text-[12px] font-medium transition',
-                    templateKind === id
-                      ? 'border-primary/35 bg-primary/10 text-primary'
-                      : 'border-border/70 bg-white/65 text-muted-foreground hover:border-primary/30 hover:text-foreground'
-                  )}
                 >
                   <Icon className="h-3.5 w-3.5" />
                   {label}

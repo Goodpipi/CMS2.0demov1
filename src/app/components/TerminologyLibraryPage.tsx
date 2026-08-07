@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import {
   BookMarked,
   Check,
+  ChevronLeft,
   Download,
   FileDown,
   Pencil,
@@ -26,6 +27,7 @@ import {
 
 interface TerminologyLibraryPageProps {
   onNotify: (message: string) => void;
+  onBack: () => void;
 }
 
 const EMPTY_DRAFT: TerminologyDraft = {
@@ -37,7 +39,7 @@ const EMPTY_DRAFT: TerminologyDraft = {
   note: '',
 };
 
-export function TerminologyLibraryPage({ onNotify }: TerminologyLibraryPageProps) {
+export function TerminologyLibraryPage({ onNotify, onBack }: TerminologyLibraryPageProps) {
   const [entries, setEntries] = useState<TerminologyEntry[]>(() => loadTerminologyEntries());
   const [query, setQuery] = useState('');
   const [domainFilter, setDomainFilter] = useState('全部');
@@ -137,6 +139,14 @@ export function TerminologyLibraryPage({ onNotify }: TerminologyLibraryPageProps
 
   return (
     <div className="page relative z-10 px-6 pb-8 lg:px-10">
+      <button
+        type="button"
+        className="mb-4 inline-flex items-center gap-1 text-[12px] font-medium text-muted-foreground transition hover:text-primary"
+        onClick={onBack}
+      >
+        <ChevronLeft className="h-3.5 w-3.5" />
+        返回首页
+      </button>
       <div className="mb-6 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <div className="mb-3 flex items-center gap-3">

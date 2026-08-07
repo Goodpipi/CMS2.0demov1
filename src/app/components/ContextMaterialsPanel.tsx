@@ -94,8 +94,8 @@ function AssetSection({
 }) {
   return (
     <div className="glass-card-subtle rounded-2xl p-2.5">
-      <div className="mb-1.5 flex items-center justify-between px-1">
-        <div className="flex items-center gap-1.5 text-[12px] font-semibold text-foreground">
+      <div className="mb-1.5 flex items-center justify-between px-1 text-[12px] leading-[1.25]">
+        <div className="flex items-center gap-1.5 font-semibold text-foreground">
           {title}
           {badge !== undefined && badge > 0 && (
             <span className="grid h-4 min-w-[16px] place-items-center rounded-full bg-gradient-to-br from-[#54B9F9] to-[#8AD329] px-1 text-[10px] font-bold text-white shadow-[0_2px_6px_-1px_rgba(59, 150, 210,0.5)]">
@@ -106,10 +106,11 @@ function AssetSection({
         {addable && category && onOpenPicker && (
           <button
             type="button"
-            className="inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10.5px] font-medium text-primary transition hover:bg-primary/10"
+            className="inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 font-medium text-primary transition hover:bg-primary/10"
+            style={{ fontSize: 'inherit', lineHeight: 'inherit' }}
             onClick={() => onOpenPicker(category)}
           >
-            <Plus className="h-3 w-3" />
+            <Plus className="h-3 w-3" strokeWidth={2.4} />
             添加
           </button>
         )}
@@ -120,7 +121,9 @@ function AssetSection({
             <MaterialSourceRow key={item.id} item={item} onPreview={onPreview} onRemove={onRemove} />
           ))
         ) : (
-          <div className="px-2 py-3 text-center text-[11px] text-muted-foreground">暂无引用素材</div>
+          <div className="rounded-lg border border-dashed border-border/80 bg-white/70 px-2 py-3 text-center text-[11px] text-muted-foreground">
+            暂无引用素材
+          </div>
         )}
       </div>
     </div>

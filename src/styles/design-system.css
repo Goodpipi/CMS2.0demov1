@@ -1,0 +1,341 @@
+/**
+ * Enterprise SaaS design system — spacing / radius / type only.
+ * Loaded last so shared component tokens stay consistent without restyling chrome.
+ */
+
+:root {
+  /* 8px spacing grid */
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 32px;
+  --space-5: 40px;
+
+  /* Component radius */
+  --r-card: 16px;
+  --r-input: 12px;
+  --r-btn: 8px;
+  --r-badge: 12px;
+
+  /* Align legacy radius aliases */
+  --r: 12px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 16px;
+  --btn-radius: 8px;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 16px;
+
+  /* Type scale */
+  --fs-page-title: 20px;
+  --fs-module-title: 16px;
+  --fs-body: 14px;
+  --fs-aux: 12px;
+}
+
+/* —— 1. Spacing (8px grid on shared layout shells) —— */
+body {
+  font-size: var(--fs-body);
+}
+
+.top {
+  padding: 0 var(--space-3);
+}
+
+.page {
+  padding: var(--space-3);
+}
+
+.library-page {
+  padding: var(--space-3);
+  gap: var(--space-2);
+}
+
+.workspace {
+  gap: var(--space-2);
+  padding: var(--space-2);
+}
+
+.right-head {
+  padding: 0;
+}
+
+.panel-head {
+  padding: var(--space-2);
+}
+
+.task-list {
+  padding: var(--space-2);
+}
+
+.task-row {
+  padding: var(--space-2);
+  margin-bottom: var(--space-1);
+  gap: var(--space-2);
+}
+
+.stat {
+  padding: var(--space-2);
+}
+
+.hero-card {
+  padding: var(--space-3);
+}
+
+.home-section {
+  margin-bottom: var(--space-3);
+}
+
+.home-section-title {
+  margin: 0 0 var(--space-2);
+}
+
+.project-card {
+  padding: var(--space-2);
+  margin: var(--space-2);
+}
+
+.mat-card {
+  padding: var(--space-2);
+}
+
+.detail {
+  padding: var(--space-2);
+}
+
+.detail-card {
+  padding: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.bubble {
+  padding: 10px 12px;
+  border-radius: 12px !important;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.48));
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  font-size: 13px !important;
+  box-shadow:
+    0 8px 20px -12px rgba(84, 185, 249, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+.msg.ai .bubble,
+.msg:not(.user) .bubble {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.48)) !important;
+  box-shadow:
+    0 8px 20px -12px rgba(84, 185, 249, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95) !important;
+}
+
+.chat-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 12px 16px;
+}
+
+.msg {
+  margin-bottom: 0;
+}
+
+.msg .avatar {
+  width: 24px !important;
+  height: 24px !important;
+  font-size: 9px !important;
+}
+
+.compose-line {
+  padding: var(--space-1);
+}
+
+.compose-shell {
+  min-height: 48px;
+  padding: var(--space-1);
+  gap: var(--space-1);
+  border-radius: 16px !important;
+}
+
+.compose-input {
+  font-size: var(--fs-body);
+}
+
+.copy-preview,
+.option {
+  padding: var(--space-1) var(--space-2);
+}
+
+.filters {
+  gap: var(--space-1);
+}
+
+.template-grid {
+  gap: var(--space-2);
+}
+
+.drawer {
+  inset: calc(var(--app-header-height, 88px) + 16px) var(--space-2) var(--space-2);
+}
+
+.toast {
+  padding: var(--space-1) var(--space-2);
+}
+
+/* —— 2. Radius —— */
+.wpanel,
+.wpanel.chat,
+.wpanel.right,
+.wpanel.context,
+.context-sidebar,
+.workspace > .wpanel,
+.workspace > .context-sidebar {
+  border-radius: var(--r-card) !important;
+}
+
+.card,
+.panel,
+.stat,
+.task-row,
+.mat-card,
+.detail-card,
+.material-group,
+.default-group,
+.compose-line,
+.upload-box,
+.video-version-card,
+.reviewer-visual-card,
+.ppt-slide-card,
+.ops-image-review-item,
+.ops-image-review-panel,
+.project-card,
+.copy-preview,
+.copy-review-editor,
+.copy-revision-panel,
+.content-tile,
+.ppt-chapter,
+.modal-card,
+.confirm-modal,
+.canvas-large,
+.glass-card,
+.glass-card-subtle,
+.creator-ppt-preview-card,
+.creator-tasks-panel,
+.creator-comments-panel {
+  border-radius: var(--r-card) !important;
+}
+
+.input,
+.select,
+textarea,
+.model-select,
+.lib-search-input,
+.home-new-project-input,
+.home-project-rename-input,
+.home-task-search input,
+.compose-main textarea,
+.video-script-edit-textarea,
+.visual-editor-element-ai-input,
+.props-field .input,
+.props-field textarea,
+.reviewer-ppt-comment-input,
+.creator-comment-compose textarea,
+.reviewer-comment-reply-compose textarea {
+  border-radius: var(--r-input) !important;
+}
+
+.btn,
+.btn.primary,
+.btn.green,
+.btn.soft,
+.btn.warn,
+.btn-danger,
+.creator-comment-compose .btn,
+.reviewer-comment-reply-compose .btn,
+.preview-history-actions .btn,
+.image-preview-submit-actions .btn,
+.content-submit-actions .btn,
+.ppt-design-fit-panel > .content-submit-actions .btn,
+.ppt-design-title-row .btn,
+.reference-picker-actions .btn,
+.chat-generated-image .btn,
+.lib-selection-float .btn.soft,
+.lib-selection-float .btn.primary,
+.creator-ppt-stage-head .btn.soft,
+.creator-ppt-tool {
+  border-radius: var(--r-btn) !important;
+}
+
+.creator-task-actions .btn {
+  border-radius: 999px !important;
+}
+
+.badge {
+  border-radius: var(--r-badge) !important;
+  font-size: var(--fs-aux);
+}
+
+/* —— 3. Type hierarchy —— */
+.hero h2 {
+  font-size: var(--fs-page-title) !important;
+}
+
+.panel-title,
+.home-section-title,
+.workspace-preview-title,
+.workspace-panel-title-text,
+.context-sidebar-title,
+.chat-title h3,
+.chat-head h3,
+.project-card h3,
+.detail-card h4,
+.mat-card h4 {
+  font-size: 16px !important;
+}
+
+.workspace-preview-title,
+.workspace-panel-title-text,
+.context-sidebar-title,
+.chat-title h3,
+.chat-head h3 {
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  color: #64748b !important;
+}
+
+body,
+.bubble,
+.input,
+.select,
+textarea,
+.hero p {
+  font-size: var(--fs-body);
+}
+
+.muted,
+.small,
+.section-title,
+.brand p,
+.role-switcher-label,
+.model-note,
+.template-card-label,
+.preview-history-trigger,
+.preview-history-option,
+.preview-history-option small,
+.preview-history-banner span,
+.toast,
+.badge {
+  font-size: var(--fs-aux) !important;
+}
+
+.workspace-panel-title-text,
+.context-sidebar-title,
+.workspace-preview-title,
+.chat-title h3,
+.chat-head h3 {
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  color: #64748b !important;
+}

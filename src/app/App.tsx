@@ -37,13 +37,14 @@ import {
   applyTabForModificationTarget,
   createMockModificationTasks,
   formatModificationTaskTime,
+  isPptDesignModificationTask,
   MODIFICATION_TASK_FILTERS,
   MODIFICATION_TASK_STATUS_LABEL,
   type ModificationTask,
   type ModificationTaskFilter,
 } from '@/lib/modificationTasks';
 import { applyElementAiToSvg } from '@/lib/elementAiEdit';
-import { SelectableSvgPreview, type SelectableSvgSelection } from '@/app/components/SelectableSvgPreview';
+import { SelectableSvgPreview, type SelectableSvgPreviewHandle, type SelectableSvgSelection } from '@/app/components/SelectableSvgPreview';
 import {
   buildTeamReviewPayload,
   TEAM_CONTENT_LABELS,
@@ -77,6 +78,7 @@ import {
   slideToPreviewUrl,
 } from '@/app/components/pptUtils';
 import { RoleSwitcher } from '@/app/components/RoleSwitcher';
+import { BrandLogo } from '@/app/components/BrandLogo';
 import { ReviewerHome } from '@/app/components/ReviewerHome';
 import { CopyRevisionDisplay } from '@/app/components/CopyRevisionDisplay';
 import { OpsImageReviewPanel } from '@/app/components/OpsImageReviewPanel';
@@ -96,6 +98,7 @@ import {
   mergeSessionCopyRevisions,
   sessionCopyRevisionBase,
   propagateCopyRevisionsToSession,
+  saveReviewTasks,
 } from '@/lib/reviewTasks';
 import { createCopyRevision, downloadDataUrl, latestCopyText, saveCopyRevisionMerged, normalizeCopyRevisions } from '@/lib/copyRevisionUtils';
 import {
@@ -148,6 +151,7 @@ import { SparkleField } from '@/app/components/shell/SparkleField';
 import { cn } from '@/app/components/ui/utils';
 import {
   ArrowRight,
+  ArrowUp,
   ArrowUpRight,
   Check,
   ChevronDown,
@@ -156,13 +160,14 @@ import {
   BookMarked,
   Database,
   FileText,
-  Filter,
   FolderOpen,
   History,
   Image as ImageIcon,
   Library as LibraryIcon,
   Eraser,
+  MessageSquare,
   Paintbrush,
+  Plus,
   Presentation,
   Search,
   Sparkles,
@@ -189,7 +194,6 @@ import {
   DEFAULT_SESSION_TITLE,
   DEMO_SESSION_ID,
   deleteSession,
-  deriveSessionStatus,
   deriveSessionSubtitle,
   fallbackSessionTitle,
   formatSessionTime,
@@ -197,8 +201,6 @@ import {
   loadAllSessions,
   saveSession,
   seedSessionsIfEmpty,
-  sessionStatusBadgeClass,
-  sessionStatusLabel,
 } from '@/lib/chatSessions';
 import type {
   ChatMessage as Message,
@@ -208,7 +210,7 @@ import type {
 } from '@/types/session';
 
 const cats = ['热点洞察', '合规手册', '参考知识', '品牌briefing', '渠道特色'];
-const HOME_TASK_PAGE_SIZE = 6;
+const HOME_TASK_PAGE_SIZE = 7;
 
 const HOME_WORKFLOW_ACTIONS: {
   title: string;
@@ -326,6 +328,7 @@ const emptyWorkspaceState = (): AppState => ({
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [activeCat, setActiveCat] = useState(cats[0]);
+  const [libCatFilter, setLibCatFilter] = useState('全部');
   const [onlyDefault, setOnlyDefault] = useState(false);
   const [library, setLibrary] = useState(initialLibrary);
   const [libSearch, setLibSearch] = useState('');
@@ -4251,8 +4254,10 @@ export default function App() {
   };
 
   const filteredLibrary = library
-    .filter(x => !libSearch || `${x.title} ${x.meta} ${x.cat}`.toLowerCase().includes(libSearch.toLowerCase()))
-    .filter(x => !onlyDefault || x.def);
+    .filter((x) => libCatFilter === '全部' || x.cat === libCatFilter)
+    .filter((x) => !libSearch || `${x.title} ${x.meta} ${x.cat}`.toLowerCase().includes(libSearch.toLowerCase()))
+    .filter((x) => !onlyDefault || x.def);
+  const libraryUploadCat = libCatFilter === '全部' ? activeCat : libCatFilter;
   const referencedTemplateItems = useMemo(
     () =>
       library.filter(
@@ -4339,7 +4344,6 @@ export default function App() {
     toast(`已创建新对话，带入 ${items.length} 项素材`);
   };
 
-  const defaultCount = library.filter(x => x.def).length;
   const activeReviewTask = activeReviewTaskId ? getReviewTask(activeReviewTaskId) : undefined;
   const reviewFocusMode = Boolean(activeReviewTaskId && isReviewerRole(userRole));
   const reviewerAllowedTabs =
@@ -4375,14 +4379,22 @@ export default function App() {
   const creatorCurrentPageComments = creatorPptComments.filter(
     ({ comment }) => comment.pageIndex === creatorPptPageIndex
   );
+  const pptModificationTasks = useMemo(
+    () => modificationTasks.filter(isPptDesignModificationTask),
+    [modificationTasks]
+  );
+  const currentPageModificationTasks = useMemo(
+    () => pptModificationTasks.filter((task) => task.pageIndex === creatorPptPageIndex),
+    [pptModificationTasks, creatorPptPageIndex]
+  );
   const filteredModificationTasks = useMemo(() => {
     const list =
       modificationTaskFilter === 'all'
-        ? modificationTasks
-        : modificationTasks.filter((task) => task.status === modificationTaskFilter);
+        ? currentPageModificationTasks
+        : currentPageModificationTasks.filter((task) => task.status === modificationTaskFilter);
     return [...list].sort((a, b) => b.updatedAt - a.updatedAt);
-  }, [modificationTasks, modificationTaskFilter]);
-  const runningModificationTaskCount = modificationTasks.filter(
+  }, [currentPageModificationTasks, modificationTaskFilter]);
+  const runningModificationTaskCount = pptModificationTasks.filter(
     (task) => task.status === 'running'
   ).length;
 
@@ -4485,6 +4497,83 @@ export default function App() {
     setCreatorPptPageIndex(index);
     setWorkspaceElementSel(null);
   }, []);
+
+  const handleReorderCreatorPptSlides = useCallback(
+    (fromIndex: number, toIndex: number) => {
+      if (!pptResult || fromIndex === toIndex) return;
+      const slides = pptResult.slides;
+      if (
+        fromIndex < 0 ||
+        toIndex < 0 ||
+        fromIndex >= slides.length ||
+        toIndex >= slides.length
+      ) {
+        return;
+      }
+
+      const remapIndex = (oldIndex: number) => {
+        if (oldIndex === fromIndex) return toIndex;
+        if (fromIndex < toIndex) {
+          if (oldIndex > fromIndex && oldIndex <= toIndex) return oldIndex - 1;
+        } else if (oldIndex >= toIndex && oldIndex < fromIndex) {
+          return oldIndex + 1;
+        }
+        return oldIndex;
+      };
+
+      const nextSlides = [...slides];
+      const [moved] = nextSlides.splice(fromIndex, 1);
+      nextSlides.splice(toIndex, 0, moved);
+      const renumbered = nextSlides.map((slide, index) => ({
+        ...slide,
+        page: index + 1,
+      }));
+
+      setPptResult((prev) => (prev ? { ...prev, slides: renumbered } : prev));
+      setPptVersions((prev) =>
+        prev.map((version) =>
+          version.id === selectedPptVersionId || (!selectedPptVersionId && version.id === prev[0]?.id)
+            ? { ...version, slides: renumbered, coverDataUrl: renumbered[0]?.imageUrl || version.coverDataUrl }
+            : version
+        )
+      );
+      setCreatorPptPageIndex((prev) => remapIndex(prev));
+      setWorkspaceElementSel((prev) =>
+        prev ? { ...prev, slideIndex: remapIndex(prev.slideIndex) } : prev
+      );
+      setModificationTasks((prev) =>
+        prev.map((task) => {
+          if (task.targetTab !== 'ppt-design' || task.pageIndex == null) return task;
+          const nextPage = remapIndex(task.pageIndex);
+          if (nextPage === task.pageIndex) return task;
+          return {
+            ...task,
+            pageIndex: nextPage,
+            targetLabel: `PPT 设计 · 第 ${nextPage + 1} 页`,
+            updatedAt: Date.now(),
+          };
+        })
+      );
+
+      const nextReviewTasks = loadReviewTasks().map((task) => {
+        if (task.sessionId !== currentSessionId || task.contentType !== 'ppt' || !task.pptComments?.length) {
+          return task;
+        }
+        return {
+          ...task,
+          pptComments: task.pptComments.map((comment) => ({
+            ...comment,
+            pageIndex: remapIndex(comment.pageIndex),
+          })),
+          updatedAt: Date.now(),
+        };
+      });
+      saveReviewTasks(nextReviewTasks);
+      setReviewTasks(nextReviewTasks);
+      toast(`已调整页面顺序：第 ${fromIndex + 1} 页 → 第 ${toIndex + 1} 页`);
+    },
+    [pptResult, selectedPptVersionId, currentSessionId, toast]
+  );
 
   const handleWorkspaceElementSelect = useCallback((selection: SelectableSvgSelection | null, slideIndex: number) => {
     if (!selection) {
@@ -4659,57 +4748,35 @@ export default function App() {
     if (homeTaskPage > homeTaskPageCount) setHomeTaskPage(homeTaskPageCount);
   }, [homeTaskPage, homeTaskPageCount]);
 
-  const libraryCategoryCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const c of cats) {
-      counts[c] = library.filter((x) => x.cat === c).length;
-    }
-    return counts;
-  }, [library]);
-
-  const librarySelectedByCategory = useMemo(() => {
-    const selected = new Set(libSelectedIds);
-    const counts: Record<string, number> = {};
-    for (const c of cats) {
-      counts[c] = library.filter((x) => x.cat === c && selected.has(x.id)).length;
-    }
-    return counts;
-  }, [library, libSelectedIds]);
+  const showGlobalHeader = currentScreen === 'home' || currentScreen === 'workspace';
 
   return (
     <div className="relative min-h-screen overflow-hidden">
       <AmbientOrbs />
-      <header className="relative z-10 flex h-[72px] items-center justify-between px-6 lg:px-10">
-        <div className="flex min-w-0 items-center gap-4 animate-fade-up">
-          {currentScreen !== 'home' && (
-            <button
-              type="button"
-              className="home-back-btn shrink-0"
-              onClick={goToHome}
-            >
-              <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
-              返回首页
-            </button>
-          )}
-        </div>
-        <div className="flex items-center gap-3 text-xs animate-fade-up [animation-delay:120ms]">
-          <RoleSwitcher role={userRole} onChange={handleRoleChange} />
-          <div className="flex items-center gap-2">
-            <span className="text-muted-foreground">当前品牌</span>
-            <select className="rounded-lg border border-border/70 bg-glass px-3 py-1.5 font-medium text-foreground shadow-soft transition hover:border-primary/40">
-              <option value="">请选择品牌</option>
-              <option>拜新同</option>
-              <option>拜唐苹</option>
-              <option>优迈</option>
-              <option>爱格希</option>
-            </select>
+      {showGlobalHeader && (
+        <header className="app-global-header relative z-10">
+          <div className="app-global-header-left animate-fade-up">
+            <BrandLogo onClick={goToHome} />
           </div>
-        </div>
-      </header>
+          <div className="app-global-header-right animate-fade-up [animation-delay:120ms]">
+            <RoleSwitcher role={userRole} onChange={handleRoleChange} />
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">当前品牌</span>
+              <select className="rounded-lg border border-border/70 bg-glass px-3 py-1.5 font-medium text-foreground shadow-soft transition hover:border-primary/40">
+                <option value="">请选择品牌</option>
+                <option>拜新同</option>
+                <option>拜唐苹</option>
+                <option>优迈</option>
+                <option>爱格希</option>
+              </select>
+            </div>
+          </div>
+        </header>
+      )}
 
       {/* Home Screen */}
       <section className={`screen home-screen ${currentScreen === 'home' ? 'active' : ''}`}>
-        <div className={`relative z-10 min-h-0 px-6 pb-6 lg:px-10 ${!isReviewerRole(userRole) ? 'h-[calc(100vh-72px)]' : 'min-h-[calc(100vh-72px)]'}`}>
+        <div className={`relative z-10 min-h-0 px-6 pb-6 lg:px-10 ${!isReviewerRole(userRole) ? 'h-[calc(100vh-88px)]' : 'min-h-[calc(100vh-88px)]'}`}>
             <main className="relative min-h-0 min-w-0 flex-1">
               <div className="absolute right-0 top-0 z-20 flex items-center gap-2 animate-fade-up">
                 <button
@@ -4855,9 +4922,7 @@ export default function App() {
                       {homeTaskSessions.length > 0 ? (
                         <>
                           <div className="home-task-grid home-inspire-history-list">
-                            {pagedHomeTaskSessions.map((session) => {
-                              const status = deriveSessionStatus(session);
-                              return (
+                            {pagedHomeTaskSessions.map((session) => (
                                 <article
                                   key={session.id}
                                   className={`home-task-card group ${currentSessionId === session.id ? 'active' : ''}`}
@@ -4871,14 +4936,7 @@ export default function App() {
                                       <Presentation className="h-4 w-4 text-white" strokeWidth={2.4} />
                                     </span>
                                     <span className="home-task-card-copy">
-                                      <strong>
-                                        {session.title}
-                                        <span
-                                          className={`home-inspire-status ${sessionStatusBadgeClass(status)}`}
-                                        >
-                                          {sessionStatusLabel(status)}
-                                        </span>
-                                      </strong>
+                                      <strong>{session.title}</strong>
                                       <span>
                                         {session.id.slice(0, 10)} · {deriveSessionSubtitle(session)} ·{' '}
                                         {formatSessionTime(session.updatedAt)}
@@ -4896,8 +4954,7 @@ export default function App() {
                                     <X className="h-3.5 w-3.5" />
                                   </button>
                                 </article>
-                              );
-                            })}
+                              ))}
                           </div>
                           {homeTaskPageCount > 1 && (
                             <nav className="home-task-pagination" aria-label="历史任务分页">
@@ -4963,313 +5020,190 @@ export default function App() {
       </section>
 
       {/* Knowledge Library Screen */}
-      <section className={`screen ${currentScreen === 'library' ? 'active' : ''}`}>
-        <div className="page library-page relative z-10 px-6 pb-6 lg:px-8">
-          <div className="relative mb-5 animate-fade-up">
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 text-[12px] font-medium text-muted-foreground transition hover:text-primary"
-              onClick={goToHome}
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-              返回首页
-            </button>
-            <div className="mt-2 flex items-end justify-between gap-4">
-              <div>
-                <h2 className="flex items-center gap-2 text-[28px] font-semibold tracking-tight text-foreground">
-                  <span className="sparkle-surface relative grid h-9 w-9 place-items-center rounded-2xl bg-hero-gradient shadow-glow animate-gradient-pan">
-                    <LibraryIcon className="relative z-10 h-4 w-4 text-white" strokeWidth={2.4} />
-                  </span>
-                  <span>知识<span className="text-gradient">库</span></span>
-                </h2>
-                <p className="mt-1.5 text-[12.5px] text-muted-foreground">
-                  管理品牌知识、合规手册与 CMS 内容，支持多选后一键带入新对话
-                </p>
-              </div>
-              <div className="relative">
-                <div className="absolute -inset-1 rounded-2xl bg-hero-gradient opacity-50 blur-xl" />
-                <div className="sparkle-surface relative flex items-center gap-3 rounded-2xl bg-hero-gradient px-5 py-3 shadow-glow ring-1 ring-white/40 animate-gradient-pan">
-                  <div className="text-right">
-                    <div className="text-[28px] font-bold leading-none text-white">{library.length}</div>
-                    <div className="mt-1 text-[10.5px] font-medium tracking-wide text-white/90">知识总数</div>
-                  </div>
-                  <Database className="h-5 w-5 text-white/80" strokeWidth={2.2} />
+      <section className={`screen screen-full ${currentScreen === 'library' ? 'active' : ''}`}>
+        <div className="page relative z-10 px-6 pb-8 lg:px-10">
+          <button
+            type="button"
+            className="mb-4 inline-flex items-center gap-1 text-[12px] font-medium text-muted-foreground transition hover:text-primary"
+            onClick={goToHome}
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+            返回首页
+          </button>
+
+          <div className="mb-6 flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="mb-3 flex items-center gap-3">
+                <span className="sparkle-surface grid h-11 w-11 place-items-center rounded-2xl bg-hero-gradient text-white shadow-glow">
+                  <Database className="h-5 w-5" />
+                </span>
+                <div>
+                  <h2 className="text-[28px] font-semibold tracking-tight text-foreground">知识库</h2>
+                  <p className="mt-0.5 max-w-xl text-[12.5px] text-muted-foreground">
+                    管理品牌知识、合规手册与 CMS 内容，支持多选后一键带入新对话。
+                  </p>
                 </div>
+              </div>
+              <div className="text-[12px] text-muted-foreground">
+                共 <strong className="text-foreground">{library.length}</strong> 项知识
+                {filteredLibrary.length !== library.length
+                  ? ` · 当前显示 ${filteredLibrary.length} 项`
+                  : ''}
+                {libSelectedCount > 0 ? ` · 已选 ${libSelectedCount}` : ''}
+              </div>
+            </div>
+
+            <div className="flex w-full max-w-3xl flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative min-w-[180px] flex-1">
+                  <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    value={libSearch}
+                    onChange={(e) => setLibSearch(e.target.value)}
+                    placeholder="搜索知识名称、来源、标签…"
+                    className="glass-input w-full rounded-xl border border-border/70 py-2.5 pl-10 pr-3 text-[13px] outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/15"
+                  />
+                </div>
+                <select
+                  value={libCatFilter}
+                  onChange={(e) => setLibCatFilter(e.target.value)}
+                  className="glass-input rounded-xl border border-border/70 px-3 py-2.5 text-[12.5px] outline-none"
+                  aria-label="按分类筛选"
+                >
+                  <option value="全部">全部分类</option>
+                  {cats.map((cat) => (
+                    <option key={cat} value={cat}>
+                      {cat}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-xl border px-3 py-2.5 text-[12px] font-medium transition',
+                    onlyDefault
+                      ? 'border-primary/35 bg-primary/10 text-primary'
+                      : 'border-border/70 bg-white/65 text-muted-foreground hover:border-primary/30 hover:text-foreground'
+                  )}
+                  onClick={() => setOnlyDefault(!onlyDefault)}
+                >
+                  <Star
+                    className={cn('h-3.5 w-3.5', onlyDefault && 'text-[#FFB547]')}
+                    fill={onlyDefault ? '#FFB547' : 'none'}
+                  />
+                  仅默认
+                </button>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className="btn soft inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-semibold"
+                  onClick={() => openMaterialPicker('workspace', libraryUploadCat, 'cms')}
+                >
+                  <Search className="h-3.5 w-3.5" />
+                  搜索 CMS
+                </button>
+                <button
+                  type="button"
+                  className="btn soft inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-[12px] font-semibold"
+                  disabled={filteredLibrary.length === 0}
+                  onClick={toggleSelectAllVisible}
+                >
+                  <Check className="h-3.5 w-3.5" />
+                  {allVisibleSelected ? '取消全选' : '全选'}
+                </button>
+                <button
+                  type="button"
+                  className="btn-hero-3d inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-[12px] font-semibold"
+                  onClick={() => openMaterialPicker('workspace', libraryUploadCat)}
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  上传知识
+                </button>
               </div>
             </div>
           </div>
 
-          <div className="flex gap-5">
-            <aside className="hidden">
-              <div className="bg-glass hud-frame relative flex h-[calc(100vh-12rem)] flex-col rounded-3xl border border-border/60 p-3 shadow-soft">
-                <div className="flex gap-2 px-1 pb-3">
+          <div className="glass-card overflow-hidden rounded-2xl border border-border/70 p-4 md:p-5">
+            {filteredLibrary.length > 0 ? (
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {filteredLibrary.map((x) => (
+                  <LibraryMaterialCard
+                    key={x.id}
+                    item={x}
+                    selected={libSelectedIds.includes(x.id)}
+                    onToggleSelect={() => toggleLibSelect(x.id)}
+                    onToggleDefault={() => toggleDefault(x.id)}
+                    onPreview={() => setPreviewMaterial(x)}
+                    onDelete={() => deleteKnowledgeItem(x.id)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-hero-gradient text-white shadow-glow">
+                  <FolderOpen className="h-6 w-6" strokeWidth={2.2} />
+                </div>
+                <p className="text-[13px] font-semibold text-foreground">暂无匹配的知识</p>
+                <p className="mt-1.5 max-w-xs text-[11.5px] leading-relaxed text-muted-foreground">
+                  上传本地文件，或从 CMS 搜索已审批内容加入知识库。
+                </p>
+                <div className="mt-4 flex gap-2">
                   <button
                     type="button"
-                    className="group flex flex-1 items-center justify-center gap-1.5 rounded-xl btn-hero-3d py-2 text-[12px] font-semibold"
-                    onClick={() => openMaterialPicker('workspace', activeCat)}
+                    className="btn-hero-3d inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-[12px] font-semibold"
+                    onClick={() => openMaterialPicker('workspace', libraryUploadCat)}
                   >
                     <Upload className="h-3.5 w-3.5" />
                     上传知识
                   </button>
                   <button
                     type="button"
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-xl glass-button py-2 text-[12px] font-medium text-foreground"
-                    onClick={() => openMaterialPicker('workspace', activeCat, 'cms')}
+                    className="btn soft rounded-xl px-4 py-2 text-[12px] font-medium"
+                    onClick={() => openMaterialPicker('workspace', libraryUploadCat, 'cms')}
                   >
-                    <Search className="h-3.5 w-3.5" />
                     搜索 CMS
                   </button>
                 </div>
-
-                <div className="flex items-center gap-1.5 px-2 pb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  <Filter className="h-3 w-3" />
-                  分类
-                </div>
-
-                <nav className="space-y-1 px-1" aria-label="知识分类">
-                  {cats.map((c) => {
-                    const isActive = c === activeCat;
-                    return (
-                      <button
-                        key={c}
-                        type="button"
-                        className={cn(
-                          'group flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left transition',
-                          isActive
-                            ? 'bg-gradient-to-r from-[#54B9F9]/15 to-[#8AD329]/10 shadow-[inset_0_0_0_1px_rgba(84, 185, 249,0.3)]'
-                            : 'hover:bg-background/70'
-                        )}
-                        onClick={() => setActiveCat(c)}
-                      >
-                        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-[#54B9F9] to-[#3BA6E8] shadow-[0_3px_8px_-2px_rgba(59, 150, 210,0.4)] ring-1 ring-white/40">
-                          <FileText className="h-3.5 w-3.5 text-white" strokeWidth={2.4} />
-                        </span>
-                        <span className={cn('flex-1 text-[12.5px]', isActive ? 'font-semibold text-foreground' : 'font-medium text-foreground/85')}>
-                          {c}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          {librarySelectedByCategory[c] > 0 && (
-                            <span className="rounded-full bg-[#8AD329]/15 px-1.5 text-[10px] font-semibold text-[#4f8f14]">
-                              {librarySelectedByCategory[c]}
-                            </span>
-                          )}
-                          <span
-                            className={cn(
-                              'grid h-5 min-w-[20px] place-items-center rounded-full px-1.5 text-[10.5px] font-bold',
-                              isActive ? 'bg-gradient-to-br from-[#54B9F9] to-[#8AD329] text-white shadow-[0_2px_6px_-1px_rgba(59, 150, 210,0.5)]' : 'bg-secondary text-muted-foreground'
-                            )}
-                          >
-                            {libraryCategoryCounts[c]}
-                          </span>
-                        </span>
-                      </button>
-                    );
-                  })}
-                </nav>
-
-                <div className="mt-4 flex-1 overflow-y-auto rounded-2xl glass-card p-2.5">
-                  <div className="mb-1.5 flex items-center justify-between px-1">
-                    <div className="flex items-center gap-1.5 text-[11.5px] font-semibold text-foreground">
-                      <Star className="h-3 w-3 text-[#FFB547]" fill="#FFB547" />
-                      默认知识
-                    </div>
-                    <span className="grid h-4 min-w-[16px] place-items-center rounded-full bg-gradient-to-br from-[#54B9F9] to-[#8AD329] px-1 text-[10px] font-bold text-white">
-                      {defaultCount}
-                    </span>
-                  </div>
-                  <div className="space-y-1">
-                    {cats.map((c) => {
-                      const items = library.filter((x) => x.cat === c && x.def);
-                      if (!items.length) return null;
-                      return (
-                        <div key={c}>
-                          <div className="px-1 pt-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
-                            {c}
-                          </div>
-                          {items.map((i) => (
-                            <button
-                              key={i.id}
-                              type="button"
-                              className="flex w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] text-foreground/85 transition hover:bg-background/80"
-                              onClick={() => {
-                                setActiveCat(c);
-                                setOnlyDefault(false);
-                                setPreviewMaterial(i);
-                              }}
-                            >
-                              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-gradient-to-br from-[#54B9F9] to-[#8AD329]" />
-                              <span className="truncate">{i.title}</span>
-                            </button>
-                          ))}
-                        </div>
-                      );
-                    })}
-                    {defaultCount === 0 && (
-                      <div className="px-2 py-3 text-center text-[11px] text-muted-foreground">暂无默认知识</div>
-                    )}
-                  </div>
-                </div>
               </div>
-            </aside>
-
-            <main className="relative flex-1">
-              <div className="bg-glass hud-frame scanline relative flex h-[calc(100vh-12rem)] flex-col overflow-hidden rounded-3xl border border-border/60 shadow-soft">
-                <SparkleField />
-
-                <div className="relative z-10 flex items-center gap-2.5 border-b border-border/50 p-4">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                    <input
-                      className="w-full rounded-xl glass-input py-2.5 pl-9 pr-3 text-[12.5px] placeholder:text-muted-foreground/70 focus:border-[#54B9F9]/50 focus:outline-none focus:ring-2 focus:ring-[#54B9F9]/15"
-                      placeholder="搜索知识名称、来源、标签…"
-                      value={libSearch}
-                      onChange={(e) => setLibSearch(e.target.value)}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1.5 rounded-xl btn-hero-3d px-3 py-2 text-[12px] font-semibold"
-                    onClick={() => openMaterialPicker('workspace', activeCat)}
-                  >
-                    <Upload className="h-3.5 w-3.5" />
-                    上传知识
-                  </button>
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1.5 rounded-xl glass-button px-3 py-2 text-[12px] font-medium text-foreground"
-                    onClick={() => openMaterialPicker('workspace', activeCat, 'cms')}
-                  >
-                    <Search className="h-3.5 w-3.5" />
-                    搜索 CMS
-                  </button>
-                  <button
-                    type="button"
-                    className={cn(
-                      'inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[12px] font-medium transition',
-                      onlyDefault
-                        ? 'border-[#54B9F9]/40 bg-gradient-to-r from-[#54B9F9]/15 to-[#8AD329]/10 text-[#2d5a8a] shadow-[0_3px_10px_-3px_rgba(59, 150, 210,0.4)]'
-                        : 'border-border/60 bg-background/60 text-foreground hover:border-primary/40'
-                    )}
-                    onClick={() => setOnlyDefault(!onlyDefault)}
-                  >
-                    <Star className={cn('h-3 w-3', onlyDefault && 'text-[#FFB547]')} fill={onlyDefault ? '#FFB547' : 'none'} />
-                    仅默认
-                  </button>
-                </div>
-
-                <div className="relative z-10 flex items-center justify-between px-5 pb-2.5 pt-4">
-                  <div className="flex items-center gap-2">
-                    <span className="grid h-7 w-7 place-items-center rounded-xl bg-gradient-to-br from-[#54B9F9] to-[#3BA6E8] shadow-[0_4px_10px_-2px_rgba(59, 150, 210,0.5)] ring-1 ring-white/40">
-                      <FileText className="h-3.5 w-3.5 text-white" strokeWidth={2.4} />
-                    </span>
-                    <h3 className="text-[14.5px] font-semibold text-foreground">全部知识</h3>
-                    <span className="rounded-full bg-secondary px-2 py-0.5 text-[10.5px] font-semibold text-muted-foreground">
-                      {filteredLibrary.length} 项
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {libSelectedCount > 0 && (
-                      <span className="rounded-full border border-[#8AD329]/30 bg-[#8AD329]/10 px-2.5 py-0.5 text-[11px] font-semibold text-[#4f8f14]">
-                        已选 {libSelectedCount}
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1 rounded-lg border border-border/60 bg-background/60 px-2.5 py-1 text-[11.5px] font-medium text-foreground transition hover:border-primary/40 hover:text-primary disabled:opacity-50"
-                      disabled={filteredLibrary.length === 0}
-                      onClick={toggleSelectAllVisible}
-                    >
-                      <Check className="h-3 w-3" />
-                      {allVisibleSelected ? '取消全选' : '全选'}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="relative z-10 flex-1 overflow-y-auto px-5 pb-5">
-                  {filteredLibrary.length > 0 ? (
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                      {filteredLibrary.map((x) => (
-                        <LibraryMaterialCard
-                          key={x.id}
-                          item={x}
-                          selected={libSelectedIds.includes(x.id)}
-                          onToggleSelect={() => toggleLibSelect(x.id)}
-                          onToggleDefault={() => toggleDefault(x.id)}
-                          onPreview={() => setPreviewMaterial(x)}
-                          onDelete={() => deleteKnowledgeItem(x.id)}
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex h-full flex-col items-center justify-center py-16 text-center">
-                      <div className="sparkle-surface relative mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-hero-gradient shadow-glow animate-gradient-pan">
-                        <FolderOpen className="relative z-10 h-6 w-6 text-white" strokeWidth={2.2} />
-                      </div>
-                      <p className="text-[13px] font-semibold text-foreground">该分类暂无知识</p>
-                      <p className="mt-1.5 max-w-xs text-[11.5px] leading-relaxed text-muted-foreground">
-                        上传本地文件，或从 CMS 搜索已审批内容加入知识库。
-                      </p>
-                      <div className="mt-4 flex gap-2">
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1.5 rounded-xl btn-hero-3d px-4 py-2 text-[12px] font-semibold"
-                          onClick={() => openMaterialPicker('workspace', activeCat)}
-                        >
-                          <Upload className="h-3.5 w-3.5" />
-                          上传知识
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded-xl border border-border/60 bg-background/60 px-4 py-2 text-[12px] font-medium text-foreground transition hover:border-primary/40"
-                          onClick={() => openMaterialPicker('workspace', activeCat, 'cms')}
-                        >
-                          搜索 CMS
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {libSelectedCount > 0 && (
-                  <div className="relative z-10 border-t border-border/50 bg-gradient-to-b from-transparent to-white/60 p-4 animate-fade-up">
-                    <div className="flex items-center justify-between">
-                      <div className="text-[12.5px] text-muted-foreground">
-                        已选 <span className="font-semibold text-foreground">{libSelectedCount}</span> 项知识
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          className="rounded-xl border border-border/60 bg-background/60 px-3.5 py-2 text-[12px] font-medium text-foreground transition hover:border-primary/40"
-                          onClick={() => setLibSelectedIds([])}
-                        >
-                          清空
-                        </button>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1.5 rounded-xl btn-hero-3d px-4 py-2 text-[12.5px] font-semibold active:scale-[0.98]"
-                          onClick={startChatWithSelectedMaterials}
-                        >
-                          <Sparkles className="h-3.5 w-3.5" />
-                          添加至新对话
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </main>
+            )}
           </div>
+
+          {libSelectedCount > 0 && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/70 bg-white/70 px-4 py-3 shadow-sm">
+              <div className="text-[12.5px] text-muted-foreground">
+                已选 <span className="font-semibold text-foreground">{libSelectedCount}</span> 项知识
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="btn soft rounded-xl px-3.5 py-2 text-[12px] font-medium"
+                  onClick={() => setLibSelectedIds([])}
+                >
+                  清空
+                </button>
+                <button
+                  type="button"
+                  className="btn-hero-3d inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-[12.5px] font-semibold"
+                  onClick={startChatWithSelectedMaterials}
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  添加至新对话
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </section>
 
       {/* Asset Library Screen */}
-      <section className={`screen ${currentScreen === 'assets' ? 'active' : ''}`}>
-        <AssetLibraryPage onNotify={toast} />
+      <section className={`screen screen-full ${currentScreen === 'assets' ? 'active' : ''}`}>
+        <AssetLibraryPage onNotify={toast} onBack={goToHome} />
       </section>
 
       {/* Terminology Glossary Screen */}
-      <section className={`screen ${currentScreen === 'terminology' ? 'active' : ''}`}>
-        <TerminologyLibraryPage onNotify={toast} />
+      <section className={`screen screen-full ${currentScreen === 'terminology' ? 'active' : ''}`}>
+        <TerminologyLibraryPage onNotify={toast} onBack={goToHome} />
       </section>
 
       {/* Workspace Screen */}
@@ -5281,7 +5215,7 @@ export default function App() {
               <>
                 <div className="context-sidebar-head">
                   <div className="context-sidebar-head-row">
-                    <div className="context-sidebar-head-title">
+                    <div className="context-sidebar-head-title workspace-panel-title">
                       <span className="context-sidebar-head-icon" aria-hidden>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -5291,7 +5225,7 @@ export default function App() {
                           <path d="M10 9H8" />
                         </svg>
                       </span>
-                      <h3 className="section-title context-sidebar-title">引用素材</h3>
+                      <h3 className="context-sidebar-title workspace-panel-title-text">引用素材</h3>
                     </div>
                     <button
                       type="button"
@@ -5353,11 +5287,14 @@ export default function App() {
             <SparkleField />
             <div className="relative z-10 flex h-full flex-col">
             <div className="chat-head">
-              <div className="chat-title">
+              <div className="chat-title workspace-panel-title">
+                <span className="context-sidebar-head-icon" aria-hidden>
+                  <MessageSquare className="h-4 w-4" strokeWidth={2.2} />
+                </span>
                 {isEditingTitle ? (
                   <input
                     type="text"
-                    className="input"
+                    className="input workspace-panel-title-input"
                     value={taskTitle}
                     onChange={e => setTaskTitle(e.target.value)}
                     onBlur={commitTitleEdit}
@@ -5371,10 +5308,13 @@ export default function App() {
                       }
                     }}
                     autoFocus
-                    style={{ fontSize: '16px', fontWeight: '700', padding: '4px 8px' }}
                   />
                 ) : (
-                  <h3 onClick={() => setIsEditingTitle(true)} style={{ cursor: 'pointer' }}>
+                  <h3
+                    className="workspace-panel-title-text"
+                    onClick={() => setIsEditingTitle(true)}
+                    style={{ cursor: 'pointer' }}
+                  >
                     {taskTitle}
                   </h3>
                 )}
@@ -5406,7 +5346,7 @@ export default function App() {
                 className={creatorRightTab === 'tasks' ? 'active' : ''}
                 onClick={() => setCreatorRightTab('tasks')}
               >
-                全部任务
+                当前版本任务
                 {runningModificationTaskCount > 0 && (
                   <span>{runningModificationTaskCount}</span>
                 )}
@@ -5459,9 +5399,6 @@ export default function App() {
                 <div key={idx} className={`msg ${msg.role}`}>
                   <div className="avatar">{msg.role === 'user' ? '我' : 'AI'}</div>
                   <div className="bubble">
-                    {msg.role === 'ai' && msg.model ? (
-                      <div className="model-note">GPT-5.5</div>
-                    ) : null}
                     <div dangerouslySetInnerHTML={{ __html: msg.html }} />
                     {msg.imageUrl && (
                       <div className="chat-generated-image">
@@ -5542,63 +5479,52 @@ export default function App() {
                 </div>
               )}
 
-              <div className={`compose-shell ${promptEditScope === 'global' ? 'is-global-scope' : 'is-page-scope'}`}>
-                <div className="compose-main">
-                  <button
-                    className="icon-btn"
-                    title="上传本地文件或搜索 CMS"
-                    onClick={() => openMaterialPicker('chat')}
+              <div className="compose-shell">
+                <button
+                  type="button"
+                  className="compose-attach"
+                  title="添加附件"
+                  aria-label="添加附件"
+                  onClick={() => openMaterialPicker('chat')}
+                >
+                  <Plus className="h-4 w-4" strokeWidth={2.4} />
+                </button>
+                <textarea
+                  className="compose-input"
+                  placeholder={getComposerPlaceholder()}
+                  value={inputValue}
+                  rows={1}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  disabled={workspaceElementBusy}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      send();
+                    }
+                  }}
+                />
+                <div className="compose-actions">
+                  <select
+                    className="model-select"
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    aria-label="选择模型"
                   >
-                    ＋
-                  </button>
-                  <textarea
-                    placeholder={getComposerPlaceholder()}
-                    value={inputValue}
-                    onChange={(e) => setInputValue(e.target.value)}
-                    disabled={workspaceElementBusy}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        send();
-                      }
-                    }}
-                  />
-                </div>
-                <div className="compose-footer">
-                  <div className="compose-footer-left">
-                    <button
-                      type="button"
-                      className="prompt-scope-switch"
-                      data-scope={promptEditScope}
-                      role="switch"
-                      aria-checked={promptEditScope === 'global'}
-                      aria-label="切换单页或全局修改"
-                      title="左右切换：本次输入作用于单页或全局"
-                      onClick={() =>
-                        setPromptEditScope((prev) => (prev === 'page' ? 'global' : 'page'))
-                      }
-                    >
-                      <span className="prompt-scope-thumb" aria-hidden />
-                      <span className="prompt-scope-option">单页</span>
-                      <span className="prompt-scope-option">全局</span>
-                    </button>
-                    <select
-                      className="model-select"
-                      value={selectedModel}
-                      onChange={(e) => setSelectedModel(e.target.value)}
-                    >
-                      <option>GPT-5.5</option>
-                    </select>
-                    <span className="composer-mode-hint">
-                      {promptEditScope === 'page' ? '仅改当前页' : '作用于全部页面'}
-                    </span>
-                  </div>
+                    <option>GPT-5.5</option>
+                  </select>
                   <button
-                    className="btn primary compose-send"
+                    type="button"
+                    className="compose-send"
                     onClick={send}
-                    disabled={workspaceElementBusy}
+                    disabled={workspaceElementBusy || !inputValue.trim()}
+                    title={workspaceElementBusy ? '修改中…' : '发送'}
+                    aria-label={workspaceElementBusy ? '修改中' : '发送'}
                   >
-                    {workspaceElementBusy ? '修改中…' : '发送'}
+                    {workspaceElementBusy ? (
+                      <span className="compose-send-label">…</span>
+                    ) : (
+                      <ArrowUp className="h-4 w-4" strokeWidth={2.6} />
+                    )}
                   </button>
                 </div>
               </div>
@@ -5606,143 +5532,173 @@ export default function App() {
             </>
             ) : creatorRightTab === 'tasks' ? (
               <div className="creator-tasks-view">
-                <div className="creator-tasks-filters" role="tablist" aria-label="任务状态筛选">
-                  {MODIFICATION_TASK_FILTERS.map(({ key, label }) => {
-                    const count =
-                      key === 'all'
-                        ? modificationTasks.length
-                        : modificationTasks.filter((task) => task.status === key).length;
-                    return (
-                      <button
-                        key={key}
-                        type="button"
-                        role="tab"
-                        aria-selected={modificationTaskFilter === key}
-                        className={modificationTaskFilter === key ? 'active' : ''}
-                        onClick={() => setModificationTaskFilter(key)}
-                      >
-                        {label}
-                        <span>{count}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="creator-tasks-list">
-                  {filteredModificationTasks.length > 0 ? (
-                    filteredModificationTasks.map((task) => (
-                      <article
-                        key={task.id}
-                        className={`creator-task-card status-${task.status}`}
-                      >
-                        <div className="creator-task-card-head">
-                          <span className={`creator-task-status status-${task.status}`}>
-                            {MODIFICATION_TASK_STATUS_LABEL[task.status]}
-                          </span>
-                          <span className="creator-task-target">{task.targetLabel}</span>
-                        </div>
-                        <p className="creator-task-prompt">{task.prompt}</p>
-                        {task.resultSummary && (
-                          <p className="creator-task-summary">{task.resultSummary}</p>
-                        )}
-                        <div className="creator-task-meta">
-                          <span>更新于 {formatModificationTaskTime(task.updatedAt)}</span>
-                        </div>
-                        <div className="creator-task-actions">
-                          <button
-                            type="button"
-                            className="btn soft"
-                            onClick={() => openModificationTaskDetail(task)}
-                          >
-                            查看详情
-                          </button>
-                          {task.status === 'completed' && (
-                            <button
-                              type="button"
-                              className="btn primary"
-                              onClick={() => setRollbackConfirm(task)}
+                <div className="creator-tasks-panel">
+                  <div className="creator-tasks-summary">
+                    <div className="creator-tasks-summary-title">
+                      <Presentation className="h-3.5 w-3.5 text-[#3BA6E8]" strokeWidth={2.4} />
+                      <strong>第 {creatorPptPageIndex + 1} 页任务</strong>
+                    </div>
+                    <span className="creator-tasks-count">{currentPageModificationTasks.length}</span>
+                  </div>
+                  <div className="creator-tasks-filters" role="tablist" aria-label="任务状态筛选">
+                    {MODIFICATION_TASK_FILTERS.map(({ key, label }) => {
+                      const count =
+                        key === 'all'
+                          ? currentPageModificationTasks.length
+                          : currentPageModificationTasks.filter((task) => task.status === key).length;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          role="tab"
+                          aria-selected={modificationTaskFilter === key}
+                          className={modificationTaskFilter === key ? 'active' : ''}
+                          onClick={() => setModificationTaskFilter(key)}
+                        >
+                          {label}
+                          <span>{count}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="creator-tasks-list">
+                    {filteredModificationTasks.length > 0 ? (
+                      filteredModificationTasks.map((task) => (
+                        <article
+                          key={task.id}
+                          className={`creator-task-card status-${task.status}`}
+                        >
+                          <div className="creator-task-card-main">
+                            <span
+                              className={`creator-task-card-icon tone-${
+                                task.status === 'completed'
+                                  ? 'green'
+                                  : task.status === 'running'
+                                    ? 'blue'
+                                    : 'muted'
+                              }`}
+                              aria-hidden
                             >
-                              回退至此
-                            </button>
-                          )}
-                          {task.status === 'running' && (
-                            <button
-                              type="button"
-                              className="btn warn"
-                              onClick={() => cancelModificationTask(task.id)}
-                            >
-                              取消任务
-                            </button>
-                          )}
-                          {task.status === 'cancelled' && (
-                            <button
-                              type="button"
-                              className="btn primary"
-                              onClick={() => restartModificationTask(task.id)}
-                            >
-                              重新运转
-                            </button>
-                          )}
-                        </div>
-                      </article>
-                    ))
-                  ) : (
-                    <div className="creator-tasks-empty">当前筛选下暂无修改任务</div>
-                  )}
+                              <Presentation className="h-3.5 w-3.5 text-white" strokeWidth={2.4} />
+                            </span>
+                            <div className="creator-task-card-body">
+                              <div className="creator-task-card-head">
+                                <span className={`creator-task-status status-${task.status}`}>
+                                  {MODIFICATION_TASK_STATUS_LABEL[task.status]}
+                                </span>
+                                <span className="creator-task-target">{task.targetLabel}</span>
+                              </div>
+                              <p className="creator-task-prompt">{task.prompt}</p>
+                              {task.resultSummary && (
+                                <p className="creator-task-summary">{task.resultSummary}</p>
+                              )}
+                              <div className="creator-task-meta">
+                                <span>更新于 {formatModificationTaskTime(task.updatedAt)}</span>
+                              </div>
+                              <div className="creator-task-actions">
+                                {task.status === 'completed' && (
+                                  <button
+                                    type="button"
+                                    className="btn primary"
+                                    onClick={() => setRollbackConfirm(task)}
+                                  >
+                                    回退至此
+                                  </button>
+                                )}
+                                {task.status === 'running' && (
+                                  <button
+                                    type="button"
+                                    className="btn warn"
+                                    onClick={() => cancelModificationTask(task.id)}
+                                  >
+                                    取消任务
+                                  </button>
+                                )}
+                                {task.status === 'cancelled' && (
+                                  <button
+                                    type="button"
+                                    className="btn primary"
+                                    onClick={() => restartModificationTask(task.id)}
+                                  >
+                                    重新运转
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </article>
+                      ))
+                    ) : (
+                      <div className="creator-tasks-empty">当前页面暂无修改任务</div>
+                    )}
+                  </div>
                 </div>
               </div>
             ) : (
               <div className="creator-comments-view">
-                <div className="creator-comments-summary">
-                  <strong>第 {creatorPptPageIndex + 1} 页批注</strong>
-                  <span>{creatorCurrentPageComments.length} 条</span>
-                </div>
-                <div className="creator-comments-list">
-                  {creatorCurrentPageComments.length > 0 ? (
-                    creatorCurrentPageComments.map(({ taskId, reviewerName, reviewerDept, comment }) => (
-                      <article key={comment.id} className="creator-comment-thread">
-                        <div className="creator-comment-meta">
-                          <strong>第 {comment.pageNumber} 页 · {reviewerName}</strong>
-                          <span>{reviewerDept}</span>
-                        </div>
-                        <p>{comment.content}</p>
-                        {(comment.replies || []).map((reply) => (
-                          <div
-                            key={reply.id}
-                            className={`creator-comment-reply ${
-                              reply.authorRole === 'ops' ? 'reply-ops' : 'reply-reviewer'
-                            }`}
-                          >
-                            <strong>{reply.authorName} 回复</strong>
-                            <span>{reply.content}</span>
-                          </div>
-                        ))}
-                        <div className="creator-comment-compose">
-                          <textarea
-                            value={creatorReplyDrafts[comment.id] || ''}
-                            onChange={(event) =>
-                              setCreatorReplyDrafts((prev) => ({
-                                ...prev,
-                                [comment.id]: event.target.value,
-                              }))
-                            }
-                            placeholder="回复这条批注…"
-                          />
-                          <button
-                            type="button"
-                            className="btn primary"
-                            disabled={!creatorReplyDrafts[comment.id]?.trim()}
-                            onClick={() => replyToPptComment(taskId, comment.id)}
-                          >
-                            回复
-                          </button>
-                        </div>
-                      </article>
-                    ))
-                  ) : (
-                    <div className="reviewer-ppt-comments-empty">
-                      当前页面暂无审阅批注。
+                <div className="creator-comments-panel">
+                  <div className="creator-comments-summary">
+                    <div className="creator-comments-summary-title">
+                      <MessageSquare className="h-3.5 w-3.5 text-[#3BA6E8]" strokeWidth={2.4} />
+                      <strong>第 {creatorPptPageIndex + 1} 页批注</strong>
                     </div>
-                  )}
+                    <span className="creator-comments-count">{creatorCurrentPageComments.length}</span>
+                  </div>
+                  <div className="creator-comments-list">
+                    {creatorCurrentPageComments.length > 0 ? (
+                      creatorCurrentPageComments.map(({ taskId, reviewerName, reviewerDept, comment }) => (
+                        <article key={comment.id} className="creator-comment-thread">
+                          <div className="creator-comment-card-main">
+                            <span className="creator-comment-card-icon" aria-hidden>
+                              <MessageSquare className="h-3.5 w-3.5 text-white" strokeWidth={2.4} />
+                            </span>
+                            <div className="creator-comment-card-body">
+                              <div className="creator-comment-meta">
+                                <strong>
+                                  第 {comment.pageNumber} 页 · {reviewerName}
+                                </strong>
+                                <span className="creator-comment-dept">{reviewerDept}</span>
+                              </div>
+                              <p>{comment.content}</p>
+                              {(comment.replies || []).map((reply) => (
+                                <div
+                                  key={reply.id}
+                                  className={`creator-comment-reply ${
+                                    reply.authorRole === 'ops' ? 'reply-ops' : 'reply-reviewer'
+                                  }`}
+                                >
+                                  <strong>{reply.authorName} 回复</strong>
+                                  <span>{reply.content}</span>
+                                </div>
+                              ))}
+                              <div className="creator-comment-compose">
+                                <textarea
+                                  value={creatorReplyDrafts[comment.id] || ''}
+                                  onChange={(event) =>
+                                    setCreatorReplyDrafts((prev) => ({
+                                      ...prev,
+                                      [comment.id]: event.target.value,
+                                    }))
+                                  }
+                                  placeholder="回复这条批注…"
+                                />
+                                <button
+                                  type="button"
+                                  className="btn primary"
+                                  disabled={!creatorReplyDrafts[comment.id]?.trim()}
+                                  onClick={() => replyToPptComment(taskId, comment.id)}
+                                >
+                                  回复
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </article>
+                      ))
+                    ) : (
+                      <div className="creator-comments-empty">当前页面暂无审阅批注</div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -5855,6 +5811,7 @@ export default function App() {
             onRichTextChange={setRichTextContent}
             creatorPptPageIndex={creatorPptPageIndex}
             onCreatorPptPageChange={handleCreatorPptPageChange}
+            onReorderCreatorPptSlides={handleReorderCreatorPptSlides}
             creatorPptComments={creatorPptComments.map(({ comment }) => comment)}
             workspaceElementId={workspaceElementSel?.elementId ?? null}
             onWorkspaceElementSelect={handleWorkspaceElementSelect}
@@ -6532,6 +6489,7 @@ function WorkspaceRightPanel({
   onRichTextChange,
   creatorPptPageIndex,
   onCreatorPptPageChange,
+  onReorderCreatorPptSlides,
   creatorPptComments,
   workspaceElementId,
   onWorkspaceElementSelect,
@@ -6622,6 +6580,7 @@ function WorkspaceRightPanel({
   onRichTextChange: (html: string) => void;
   creatorPptPageIndex: number;
   onCreatorPptPageChange: (index: number) => void;
+  onReorderCreatorPptSlides: (fromIndex: number, toIndex: number) => void;
   creatorPptComments: PptReviewComment[];
   workspaceElementId: string | null;
   onWorkspaceElementSelect: (selection: SelectableSvgSelection | null, slideIndex: number) => void;
@@ -6705,6 +6664,8 @@ function WorkspaceRightPanel({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [previewHistoryId, setPreviewHistoryId] = useState<string | null>(null);
   const [restoredFrom, setRestoredFrom] = useState<string | null>(null);
+  const pptPreviewRef = useRef<SelectableSvgPreviewHandle>(null);
+  const [pptToolState, setPptToolState] = useState({ brushActive: false, canClear: false });
   const historyVersions = [
     { id: 'latest', label: restoredFrom ? `当前版本（回溯自 ${restoredFrom}）` : '当前版本', time: '刚刚' },
     { id: 'v2', label: '版本 V2', time: '今天 15:24' },
@@ -7621,7 +7582,7 @@ function WorkspaceRightPanel({
         );
         const creatorActiveSlide = previewSlides[creatorActivePageIndex] || previewSlides[0];
         return (
-          <>
+          <div className="ppt-design-fit-panel">
             {!singleVersion && (
               <div className="detail-card detail-card-ppt-design">
                 <div className="ppt-design-title-row">
@@ -7653,65 +7614,97 @@ function WorkspaceRightPanel({
             )}
             {pptResult && creatorActiveSlide && (
               <div className="creator-ppt-preview-card">
-                <div className="creator-ppt-thumbnails">
-                  {previewSlides.map((slide, index) => {
-                    const commentCount = creatorPptComments.filter(
-                      (comment) => comment.pageIndex === index
-                    ).length;
-                    return (
-                      <button
-                        key={`${slide.page}-${index}`}
-                        type="button"
-                        className={creatorActivePageIndex === index ? 'active' : ''}
-                        onClick={() => onCreatorPptPageChange(index)}
-                      >
-                        <span className="creator-ppt-thumbnail-page">{slide.page ?? index + 1}</span>
-                        <img src={slideToPreviewUrl(slide)} alt={`第 ${slide.page ?? index + 1} 页`} />
-                        {commentCount > 0 && (
-                          <span className="creator-ppt-thumbnail-comments">{commentCount}</span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="creator-ppt-stage">
-                  <div className="creator-ppt-stage-head">
-                    <div>
-                      <strong>第 {creatorActiveSlide.page ?? creatorActivePageIndex + 1} 页</strong>
-                      <span>{creatorActiveSlide.title}</span>
-                    </div>
+                <div className="creator-ppt-toolbar">
+                  <div className="creator-ppt-toolbar-page">
+                    <strong>第 {creatorActiveSlide.page ?? creatorActivePageIndex + 1} 页</strong>
+                    <span>{creatorActiveSlide.title}</span>
+                  </div>
+                  <div className="creator-ppt-toolbar-tools" role="toolbar" aria-label="页面操作">
                     {!selectedHistory && (
-                      <button
-                        type="button"
-                        className="btn soft"
-                        onClick={() => onOpenPptSlideEditor(creatorActivePageIndex)}
-                      >
-                        手动调整
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          className={`creator-ppt-tool ${pptToolState.brushActive ? 'active' : ''}`}
+                          onClick={() => pptPreviewRef.current?.toggleBrush()}
+                        >
+                          <Paintbrush className="h-3.5 w-3.5" strokeWidth={2.2} />
+                          画笔
+                        </button>
+                        <button
+                          type="button"
+                          className="creator-ppt-tool"
+                          disabled={!pptToolState.canClear}
+                          onClick={() => pptPreviewRef.current?.clearStrokes()}
+                        >
+                          <Eraser className="h-3.5 w-3.5" strokeWidth={2.2} />
+                          清除
+                        </button>
+                        <span className="creator-ppt-toolbar-divider" aria-hidden />
+                        <button
+                          type="button"
+                          className="creator-ppt-tool primary"
+                          onClick={() => onOpenPptSlideEditor(creatorActivePageIndex)}
+                        >
+                          手动调整
+                        </button>
+                      </>
                     )}
                   </div>
-                  <div className="creator-ppt-slide-canvas">
-                    <SelectableSvgPreview
-                      key={`${creatorActiveSlide.page}-${creatorActivePageIndex}-${(creatorActiveSlide.svg || '').slice(0, 48)}`}
-                      svgMarkup={creatorActiveSlide.svg}
-                      imageSrc={slideToPreviewUrl(creatorActiveSlide)}
-                      selectedId={workspaceElementId}
-                      disabled={Boolean(selectedHistory)}
-                      onSelect={(selection) =>
-                        onWorkspaceElementSelect(selection, creatorActivePageIndex)
-                      }
-                    />
+                </div>
+                <div className="creator-ppt-workspace">
+                  <div className="creator-ppt-thumbnails">
+                    {previewSlides.map((slide, index) => {
+                      const commentCount = creatorPptComments.filter(
+                        (comment) => comment.pageIndex === index
+                      ).length;
+                      return (
+                        <button
+                          key={`${slide.page}-${index}`}
+                          type="button"
+                          className={creatorActivePageIndex === index ? 'active' : ''}
+                          onClick={() => onCreatorPptPageChange(index)}
+                        >
+                          <span className="creator-ppt-thumbnail-page">
+                            {slide.page ?? index + 1}
+                          </span>
+                          <img
+                            src={slideToPreviewUrl(slide)}
+                            alt={`第 ${slide.page ?? index + 1} 页`}
+                          />
+                          {commentCount > 0 && (
+                            <span className="creator-ppt-thumbnail-comments">{commentCount}</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="creator-ppt-stage">
+                    <div className="creator-ppt-slide-canvas">
+                      <SelectableSvgPreview
+                        ref={pptPreviewRef}
+                        key={`${creatorActiveSlide.page}-${creatorActivePageIndex}-${(creatorActiveSlide.svg || '').slice(0, 48)}`}
+                        svgMarkup={creatorActiveSlide.svg}
+                        imageSrc={slideToPreviewUrl(creatorActiveSlide)}
+                        selectedId={workspaceElementId}
+                        disabled={Boolean(selectedHistory)}
+                        hideToolbar
+                        onToolStateChange={setPptToolState}
+                        onSelect={(selection) =>
+                          onWorkspaceElementSelect(selection, creatorActivePageIndex)
+                        }
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
             )}
-            <div className="ppt-design-foot-actions">
-              {!singleVersion && (
+            {!singleVersion && (
+              <div className="ppt-design-foot-actions">
                 <button type="button" className="btn soft" onClick={() => fillQuick('生成设计')}>
                   重新生成设计
                 </button>
-              )}
-            </div>
+              </div>
+            )}
             <div className="content-submit-actions">
               <button type="button" className="btn soft" onClick={exportAllPptPages}>
                 一键导出全部页面
@@ -7736,7 +7729,7 @@ function WorkspaceRightPanel({
                 </>
               )}
             </div>
-          </>
+          </div>
         );
       }
 
@@ -7783,60 +7776,75 @@ function WorkspaceRightPanel({
   return (
     <aside className="wpanel right">
       <div className="right-head">
-        <div className="workspace-preview-title">内容预览</div>
-        <div className="tabs">
-          {previewFile && !isGeneratedImagePreview ? (
-            <span className="tab active">文件预览</span>
-          ) : visibleTabs.length > 0 ? visibleTabs.map((k) => (
-              <button
-                key={k}
-                type="button"
-                className={`tab ${state.active === k ? 'active' : ''}`}
-                onClick={() => setState((prev) => ({ ...prev, active: k }))}
-              >
-                {tabNames[k]}
-              </button>
-          )) : null}
-        </div>
-      </div>
-      <div className="detail">
-        {!reviewerMode && (state.active || previewFile) && <div className="preview-history-row">
-          <div className="preview-history-control">
-            <button
-              type="button"
-              className="preview-history-trigger"
-              onClick={() => setHistoryOpen((open) => !open)}
-              aria-expanded={historyOpen}
-            >
-              <History className="h-3.5 w-3.5" />
-              查看历史版本
-              <ChevronDown className={`h-3.5 w-3.5 transition ${historyOpen ? 'rotate-180' : ''}`} />
-            </button>
-            {historyOpen && (
-              <div className="preview-history-menu">
-                {historyVersions.map((version) => (
-                  <button
-                    key={version.id}
-                    type="button"
-                    className={`preview-history-option ${
-                      (version.id === 'latest' && !previewHistoryId) ||
-                      previewHistoryId === version.id
-                        ? 'active'
-                        : ''
-                    }`}
-                    onClick={() => {
-                      setPreviewHistoryId(version.id === 'latest' ? null : version.id);
-                      setHistoryOpen(false);
-                    }}
-                  >
-                    <span>{version.label}</span>
-                    <small>{version.time}</small>
-                  </button>
-                ))}
+        <div className="right-head-title-row">
+          <div className="workspace-panel-title">
+            <span className="context-sidebar-head-icon" aria-hidden>
+              <Presentation className="h-4 w-4" strokeWidth={2.2} />
+            </span>
+            <h3 className="workspace-preview-title workspace-panel-title-text">内容预览</h3>
+            {visibleTabs.length > 0 && (
+              <div className="ppt-compliance-check right-head-compliance-check">
+                <span className="ppt-compliance-dot" aria-hidden />
+                生成内容已通过智能合规校验
               </div>
             )}
           </div>
-        </div>}
+        </div>
+        <div className="tabs">
+          <div className="tabs-list">
+            {previewFile && !isGeneratedImagePreview ? (
+              <span className="tab active">文件预览</span>
+            ) : visibleTabs.length > 0 ? visibleTabs.map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  className={`tab ${state.active === k ? 'active' : ''}`}
+                  onClick={() => setState((prev) => ({ ...prev, active: k }))}
+                >
+                  {tabNames[k]}
+                </button>
+            )) : null}
+          </div>
+          {!reviewerMode && (state.active || previewFile) && (
+            <div className="preview-history-control">
+              <button
+                type="button"
+                className="preview-history-trigger"
+                onClick={() => setHistoryOpen((open) => !open)}
+                aria-expanded={historyOpen}
+              >
+                <History className="h-3.5 w-3.5" />
+                查看历史版本
+                <ChevronDown className={`h-3.5 w-3.5 transition ${historyOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {historyOpen && (
+                <div className="preview-history-menu">
+                  {historyVersions.map((version) => (
+                    <button
+                      key={version.id}
+                      type="button"
+                      className={`preview-history-option ${
+                        (version.id === 'latest' && !previewHistoryId) ||
+                        previewHistoryId === version.id
+                          ? 'active'
+                          : ''
+                      }`}
+                      onClick={() => {
+                        setPreviewHistoryId(version.id === 'latest' ? null : version.id);
+                        setHistoryOpen(false);
+                      }}
+                    >
+                      <span>{version.label}</span>
+                      <small>{version.time}</small>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="detail">
         {selectedHistory && (
           <div className="preview-history-banner">
             <div>
@@ -7907,12 +7915,6 @@ function WorkspaceRightPanel({
           </div>
         ) : (
           <>
-            {visibleTabs.length > 0 && (
-              <div className="ppt-compliance-check detail-compliance-check">
-                <span className="ppt-compliance-dot" aria-hidden />
-                生成内容已通过智能合规校验
-              </div>
-            )}
             {renderDetail()}
           </>
         )}
