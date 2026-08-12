@@ -75,6 +75,8 @@ const SHAPE_TOOLS: { type: InsertShapeType; label: string; Icon: typeof Square }
   { type: 'arrow', label: '箭头', Icon: ArrowRight },
 ];
 
+const TEXT_ONLY_TOOLS = SHAPE_TOOLS.filter((tool) => tool.type === 'text');
+
 function isLockedBackgroundElement(el: Element | null): boolean {
   if (!el) return false;
   const tag = el.tagName.toLowerCase();
@@ -94,6 +96,8 @@ interface VisualEditorProps {
   }) => Promise<{ dataUrl: string; svg?: string; title?: string }>;
   isGenerating?: boolean;
   allowBrush?: boolean;
+  /** false 时仅保留插入文字 */
+  allowShapes?: boolean;
 }
 
 function getMaskBounds(canvas: HTMLCanvasElement): { x: number; y: number; w: number; h: number } | null {
@@ -136,8 +140,10 @@ export function VisualEditor({
   onGenerate,
   isGenerating = false,
   allowBrush = true,
+  allowShapes = true,
 }: VisualEditorProps) {
   const [mode, setMode] = useState<EditMode>(allowBrush ? 'brush' : 'drag');
+  const insertTools = allowShapes ? SHAPE_TOOLS : TEXT_ONLY_TOOLS;
   const [brushTool, setBrushTool] = useState<BrushTool>('brush');
   const [editPrompt, setEditPrompt] = useState(
     '把圈选区域调整得更清爽，减少营销感，保持拜耳蓝绿风格。'
@@ -637,13 +643,15 @@ export function VisualEditor({
           <>
             <div className="small" style={{ marginTop: 10 }}>
               {insertTool
-                ? `插入模式：在画布空白处点击添加「${SHAPE_TOOLS.find((s) => s.type === insertTool)?.label}」`
-                : '选中元素后可拖拽、改属性；或使用下方工具插入新形状。'}
+                ? `插入模式：在画布空白处点击添加「${insertTools.find((s) => s.type === insertTool)?.label}」`
+                : allowShapes
+                  ? '选中元素后可拖拽、改属性；或使用下方工具插入新形状。'
+                  : '选中元素后可拖拽、改属性；也可插入文字。'}
             </div>
 
-            <h4 className="props-subtitle">插入形状</h4>
+            <h4 className="props-subtitle">{allowShapes ? '插入形状' : '插入文字'}</h4>
             <div className="visual-editor-shape-grid">
-              {SHAPE_TOOLS.map(({ type, label, Icon }) => (
+              {insertTools.map(({ type, label, Icon }) => (
                 <button
                   key={type}
                   type="button"

@@ -36,6 +36,7 @@ import type {
 import {
   applyTabForModificationTarget,
   createMockModificationTasks,
+  prunePageTasksThrough,
   formatModificationTaskTime,
   isPptDesignModificationTask,
   MODIFICATION_TASK_FILTERS,
@@ -43,6 +44,17 @@ import {
   type ModificationTask,
   type ModificationTaskFilter,
 } from '@/lib/modificationTasks';
+import { useSpeechRecognition } from '@/lib/useSpeechRecognition';
+import {
+  searchLiteratureMock,
+  type LiteratureArticle,
+} from '@/lib/literatureMocks';
+import {
+  TOPIC_INSIGHT_MOCK_REPORT,
+  isTopicInsightGenerateIntent,
+  ensureTopicInsightHtml,
+  htmlToPlainText,
+} from '@/lib/topicInsightMocks';
 import { applyElementAiToSvg } from '@/lib/elementAiEdit';
 import { SelectableSvgPreview, type SelectableSvgPreviewHandle, type SelectableSvgSelection } from '@/app/components/SelectableSvgPreview';
 import {
@@ -76,6 +88,7 @@ import {
   parseAudience,
   parseScenario,
   slideToPreviewUrl,
+  ensureSlideSpeakerNotes,
 } from '@/app/components/pptUtils';
 import { RoleSwitcher } from '@/app/components/RoleSwitcher';
 import { BrandLogo } from '@/app/components/BrandLogo';
@@ -159,6 +172,7 @@ import {
   ChevronRight,
   BookMarked,
   Database,
+  ExternalLink,
   FileText,
   FolderOpen,
   History,
@@ -166,11 +180,13 @@ import {
   Library as LibraryIcon,
   Eraser,
   MessageSquare,
+  Mic,
   Paintbrush,
   Plus,
   Presentation,
   Search,
   Sparkles,
+  Square,
   Star,
   Upload,
   Video,
@@ -218,39 +234,39 @@ const HOME_WORKFLOW_ACTIONS: {
   intent: HomeEntryIntent;
   prompt: string;
   Icon: typeof Presentation;
-  tone: 'blue' | 'green';
+  art: 'ppt' | 'article' | 'image' | 'text';
 }[] = [
   {
-    title: '优化已有 PPT',
-    description: '上传已有演示文稿，AI 帮你改结构、配色与表达',
+    title: '生成演示文稿',
+    description: '上传资料后，AI 自动梳理结构并生成可编辑 PPT，支持继续优化与团队审阅。',
     intent: 'ppt',
-    prompt: '优化已有 PPT',
+    prompt: '从资料生成演示文稿',
     Icon: Presentation,
-    tone: 'blue',
+    art: 'ppt',
   },
   {
-    title: '翻译 PPT',
-    description: '结合专业术语库，按标准译法翻译并校对演示文稿',
-    intent: 'ppt',
-    prompt: '翻译 PPT',
+    title: '生成长图文',
+    description: '结合品牌与知识素材，生成可编辑长图文，便于渠道分发与团队审阅。',
+    intent: 'copy',
+    prompt: '生成长图文',
     Icon: BookMarked,
-    tone: 'green',
+    art: 'article',
   },
   {
     title: '生成图片',
-    description: '根据主题与品牌规范生成配图、海报与图卡',
+    description: '根据主题与品牌规范生成配图、海报与图卡。',
     intent: 'visual',
     prompt: '',
     Icon: ImageIcon,
-    tone: 'blue',
+    art: 'image',
   },
   {
-    title: '生成文案',
-    description: '面向公众或 HCP 渠道，快速产出合规文案',
+    title: '生成文本',
+    description: '面向公众或 HCP 渠道，快速产出合规文本内容。',
     intent: 'copy',
-    prompt: '',
+    prompt: '生成文本',
     Icon: FileText,
-    tone: 'green',
+    art: 'text',
   },
 ];
 
@@ -269,6 +285,7 @@ const initialLibrary: LibraryItem[] = [
 const tabNames = {
   insight: '话题洞察',
   'topic-recommendation': '话题推荐',
+  literature: '推荐文献',
   copy: '文案生成',
   'rich-text': '图文',
   team: '团队修改',
@@ -314,6 +331,7 @@ const emptyWorkspaceState = (): AppState => ({
   active: null,
   insight: false,
   topicRecommendation: false,
+  literature: false,
   copy: false,
   richText: false,
   team: false,
@@ -335,6 +353,17 @@ export default function App() {
   const [libSelectedIds, setLibSelectedIds] = useState<number[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
+  const voiceBaseRef = useRef('');
+  const speech = useSpeechRecognition({
+    lang: 'zh-CN',
+    onFinal: (chunk) => {
+      const piece = chunk.trim();
+      if (!piece) return;
+      const next = `${voiceBaseRef.current}${voiceBaseRef.current && !voiceBaseRef.current.endsWith(' ') ? ' ' : ''}${piece}`;
+      voiceBaseRef.current = next;
+      setInputValue(next);
+    },
+  });
   const [homeAgentIntent, setHomeAgentIntent] = useState<HomeEntryIntent | null>(null);
   const [selectedModel, setSelectedModel] = useState('GPT-5.5');
   /** 本次输入作用于当前页，还是全局（全部页面/内容） */
@@ -343,6 +372,9 @@ export default function App() {
   const [insightSummary, setInsightSummary] = useState('');
   const [hotInsightReport, setHotInsightReport] = useState<HotInsightReport | null>(null);
   const [recommendedTopics, setRecommendedTopics] = useState<TopicRecommendationItem[]>([]);
+  const [literatureResults, setLiteratureResults] = useState<LiteratureArticle[]>([]);
+  const [addedLiteratureIds, setAddedLiteratureIds] = useState<string[]>([]);
+  const [topicInsightReportText, setTopicInsightReportText] = useState('');
   const [copies, setCopies] = useState<CopyItem[]>([]);
   const [teamResult, setTeamResult] = useState<TeamResult | null>(null);
   const [videoResult, setVideoResult] = useState<VideoResult | null>(null);
@@ -416,6 +448,7 @@ export default function App() {
   const [workspaceElementBusy, setWorkspaceElementBusy] = useState(false);
   const [creatorReplyDrafts, setCreatorReplyDrafts] = useState<Record<string, string>>({});
   const [creatorPptPageIndex, setCreatorPptPageIndex] = useState(0);
+  const [pptPageVersionEpoch, setPptPageVersionEpoch] = useState(0);
   const [copyRevisions, setCopyRevisions] = useState<CopyRevision[]>([]);
   const [copyRevisionBase, setCopyRevisionBase] = useState('');
   const [teamAssigneeRoles, setTeamAssigneeRoles] = useState<('medical' | 'marketing')[]>([]);
@@ -499,6 +532,7 @@ export default function App() {
       imageReviewStatuses,
       selectedImages,
       insightSummary,
+      topicInsightReportText,
       hotInsightReport,
       recommendedTopics,
       selectedTopics,
@@ -530,6 +564,7 @@ export default function App() {
       imageReviewStatuses,
       selectedImages,
       insightSummary,
+      topicInsightReportText,
       hotInsightReport,
       recommendedTopics,
       selectedTopics,
@@ -603,6 +638,7 @@ export default function App() {
       videoScript: false,
       videoRender: legacy.videoRender ?? legacy.videoScript ?? Boolean(legacy.video),
       topicRecommendation: legacy.topicRecommendation ?? false,
+      literature: legacy.literature ?? false,
       richText: legacy.richText ?? false,
       active: normalizedActive,
     };
@@ -641,8 +677,11 @@ export default function App() {
           : []
     );
     setInsightSummary(w.insightSummary);
+    setTopicInsightReportText(w.topicInsightReportText ?? '');
     setHotInsightReport(w.hotInsightReport ?? null);
     setRecommendedTopics(w.recommendedTopics ?? []);
+    setLiteratureResults([]);
+    setAddedLiteratureIds([]);
     setSelectedTopics(w.selectedTopics);
     setSelectedCopies(w.selectedCopies);
     let revisions = w.copyRevisions || [];
@@ -1349,6 +1388,8 @@ export default function App() {
     setInsightSummary('');
     setHotInsightReport(null);
     setRecommendedTopics([]);
+    setLiteratureResults([]);
+    setAddedLiteratureIds([]);
     setSelectedTopics([]);
     setSelectedCopies([]);
     setCopyRevisions([]);
@@ -1356,6 +1397,7 @@ export default function App() {
     setWorkspacePreviewMaterial(null);
     pendingTopicInsightNoteRef.current = '';
     topicInsightUploadPendingRef.current = false;
+    const apiHint =
       apiReady === false
         ? '<br><span style="color:#b72c3e">⚠ 未检测到 DeepSeek API Key，请在项目根目录配置 .env 后重启服务。</span>'
         : '';
@@ -1425,7 +1467,88 @@ export default function App() {
     }));
   };
 
+  const runLiteratureSearch = (query: string) => {
+    const results = searchLiteratureMock(query);
+    setLiteratureResults(results);
+    setState((prev) => ({
+      ...prev,
+      tabs: prev.tabs.includes('literature') ? prev.tabs : [...prev.tabs, 'literature'],
+      active: 'literature',
+      literature: true,
+    }));
+    const freeCount = results.filter((item) => item.access === 'free').length;
+    const paidCount = results.length - freeCount;
+    const basedOnAttachments =
+      attachments.length > 0
+        ? `已结合当前 ${attachments.length} 个附件完成文献检索`
+        : '已根据检索意图完成文献检索';
+    addMsg(
+      'ai',
+      `${basedOnAttachments}，共推荐 <strong>${results.length}</strong> 篇英文医药文献（免费 ${freeCount} · 付费 ${paidCount}）。请在中间「推荐文献」中查看摘要，并将合适文献添加到当前任务。`,
+      '文献检索'
+    );
+  };
+
+  const runTopicInsightReport = () => {
+    setTopicInsightReportText(TOPIC_INSIGHT_MOCK_REPORT);
+    setHotInsightReport(null);
+    setRecommendedTopics([]);
+    setState((prev) => ({
+      ...prev,
+      tabs: prev.tabs.includes('insight') ? prev.tabs : [...prev.tabs, 'insight'],
+      active: 'insight',
+      insight: true,
+      topicRecommendation: false,
+    }));
+    const basedOnAttachments =
+      attachments.length > 0
+        ? `已结合当前 ${attachments.length} 个附件`
+        : '已根据你的生成请求';
+    addMsg(
+      'ai',
+      `${basedOnAttachments}生成话题洞察报告，共 6 个心内科话题方向。请在中间「话题洞察」中查看，并可一键复制全文。`,
+      '话题洞察'
+    );
+  };
+
+  const addLiteratureToTask = (article: LiteratureArticle) => {
+    if (addedLiteratureIds.includes(article.id)) return;
+    const now = Date.now();
+    const item: LibraryItem = {
+      id: now,
+      cat: '参考知识',
+      title: article.title,
+      meta: `${article.publisher} · ${article.year} · ${article.access === 'free' ? 'Open access' : 'Paid'}`,
+      cms: false,
+      def: false,
+      referenced: true,
+      addedAt: now,
+      contentType: 'text',
+      contentText: [
+        article.title,
+        `${article.publisher} (${article.year})`,
+        '',
+        article.abstract,
+        '',
+        `Source: ${article.sourceUrl}`,
+      ].join('\n'),
+    };
+    setLibrary((prev) => [item, ...prev]);
+    setAddedLiteratureIds((prev) => [...prev, article.id]);
+    toast(`已添加「${article.title}」到参考知识`);
+  };
+
   const runWorkspaceMockCommand = (text: string): boolean => {
+    if (/检索文献|搜索文献|文献检索|search\s*literature|find\s*papers/i.test(text)) {
+      runLiteratureSearch(text);
+      return true;
+    }
+
+    if (isTopicInsightGenerateIntent(text)) {
+      runTopicInsightReport();
+      return true;
+    }
+
     const command = text.replace(/\s+/g, '').toLowerCase();
 
     if (
@@ -1579,7 +1702,20 @@ export default function App() {
   };
 
   const send = () => {
-    const text = inputValue.trim();
+    let text = inputValue.trim();
+    if (speech.listening) {
+      const interim = speech.interimTranscript.trim();
+      if (interim) {
+        text = `${voiceBaseRef.current}${
+          voiceBaseRef.current && !voiceBaseRef.current.endsWith(' ') ? ' ' : ''
+        }${interim}`.trim();
+        voiceBaseRef.current = text;
+        setInputValue(text);
+      } else {
+        text = voiceBaseRef.current.trim() || text;
+      }
+      speech.stop();
+    }
     if (!text || workspaceElementBusy) return;
     if (workspaceElementSel) {
       void applyWorkspaceElementAi(text, promptEditScope);
@@ -1588,7 +1724,9 @@ export default function App() {
     const scopedText = formatScopedUserPrompt(text);
     addMsg('user', scopedText, selectedModel);
     setInputValue('');
+    voiceBaseRef.current = '';
     setSelectedPrompt('');
+    setAttachments([]);
     if (runWorkspaceMockCommand(text)) return;
     if (runDemoScenarioScript(text, { addUserMessage: false })) return;
     if (visualWizard?.active && handleVisualWizardReply(text)) return;
@@ -1604,6 +1742,27 @@ export default function App() {
       return;
     }
     dispatchUserIntent(text, true);
+  };
+
+  const startVoiceInput = () => {
+    if (workspaceElementBusy) return;
+    if (!speech.supported) {
+      toast('当前浏览器不支持语音输入，请使用 Chrome / Edge');
+      return;
+    }
+    voiceBaseRef.current = inputValue.trim();
+    const ok = speech.start();
+    if (!ok) toast('无法启动语音识别，请检查麦克风权限');
+  };
+
+  const stopVoiceInput = () => {
+    speech.stop();
+    const interim = speech.interimTranscript.trim();
+    if (interim) {
+      const next = `${voiceBaseRef.current}${voiceBaseRef.current && !voiceBaseRef.current.endsWith(' ') ? ' ' : ''}${interim}`;
+      voiceBaseRef.current = next;
+      setInputValue(next);
+    }
   };
 
   const clearLoadingMessages = () => {
@@ -2637,8 +2796,12 @@ export default function App() {
       const designs = await api.generatePptDesigns(outline, audience, scenario, null);
       notifyMockIfNeeded(designs);
       const { versions } = designs;
-      setPptVersions(versions);
-      const first = versions[0];
+      const notedVersions = versions.map((version) => ({
+        ...version,
+        slides: ensureSlideSpeakerNotes(version.slides),
+      }));
+      setPptVersions(notedVersions);
+      const first = notedVersions[0];
       if (first) {
         setSelectedPptVersionId(first.id);
         setPptResult({ title: outline.title, slides: first.slides });
@@ -2834,7 +2997,10 @@ export default function App() {
         tpl?.generationTemplateId ?? tpl?.id ?? null
       );
       notifyMockIfNeeded(designs);
-      const versions = tpl ? designs.versions : designs.versions.slice(0, 1);
+      const versions = (tpl ? designs.versions : designs.versions.slice(0, 1)).map((version) => ({
+        ...version,
+        slides: ensureSlideSpeakerNotes(version.slides),
+      }));
       setPptVersions(versions);
       const first = versions[0];
       if (first) {
@@ -2864,8 +3030,12 @@ export default function App() {
   };
 
   const selectPptVersion = (version: PptDesignVersion) => {
+    const slides = ensureSlideSpeakerNotes(version.slides);
     setSelectedPptVersionId(version.id);
-    setPptResult({ title: pptOutline?.title, slides: version.slides });
+    setPptResult({ title: pptOutline?.title, slides });
+    setPptVersions((prev) =>
+      prev.map((item) => (item.id === version.id ? { ...item, slides } : item))
+    );
     toast(`已选用「${version.name}」`);
   };
 
@@ -4444,54 +4614,95 @@ export default function App() {
     toast('任务已重新运转');
   }, [toast]);
 
+  const restorePageVersionFromTask = useCallback(
+    (task: ModificationTask) => {
+      if (task.pageIndex == null || !task.slideSnapshot) {
+        toast('该版本没有可回溯的页面快照');
+        return;
+      }
+      const pageIndex = task.pageIndex;
+      const snapshot: PptSlide = {
+        ...task.slideSnapshot,
+        page: task.slideSnapshot.page || pageIndex + 1,
+        bullets: [...(task.slideSnapshot.bullets || [])],
+      };
+
+      setPptResult((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          slides: prev.slides.map((slide, index) =>
+            index === pageIndex ? { ...snapshot, page: slide.page || pageIndex + 1 } : slide
+          ),
+        };
+      });
+      setPptVersions((prev) =>
+        prev.map((version) => {
+          if (selectedPptVersionId && version.id !== selectedPptVersionId) return version;
+          return {
+            ...version,
+            slides: version.slides.map((slide, index) =>
+              index === pageIndex ? { ...snapshot, page: slide.page || pageIndex + 1 } : slide
+            ),
+          };
+        })
+      );
+
+      setModificationTasks((prev) => {
+        if (!prev.some((item) => item.id === task.id)) return prev;
+        // 目标快照写入「当前」后，该任务及之后的历史节点一并清除
+        return prunePageTasksThrough(prev, pageIndex, task.id).next;
+      });
+
+      setCreatorPptPageIndex(pageIndex);
+      setPptPageVersionEpoch((value) => value + 1);
+      setWorkspaceElementSel(null);
+      setCreatorRightTab('tasks');
+      toast(`已回溯为当前版本，该版本及之后的小版本与任务已清除`);
+    },
+    [selectedPptVersionId, toast]
+  );
+
   const confirmRollbackModificationTask = useCallback(() => {
     const target = rollbackConfirm;
-    if (!target || target.status !== 'completed') {
+    if (!target || !target.slideSnapshot) {
       setRollbackConfirm(null);
+      if (target && !target.slideSnapshot) {
+        toast('该任务没有可回溯的页面快照');
+      }
       return;
     }
-    const now = Date.now();
-    setModificationTasks((prev) =>
-      prev.map((task) => {
-        if (task.id === target.id) {
-          return {
-            ...task,
-            resultSummary: `${task.resultSummary || '已完成修改'}（已回退至此版本）`,
-            updatedAt: now,
-          };
-        }
-        if (
-          task.status === 'completed' &&
-          task.updatedAt > target.updatedAt
-        ) {
-          return {
-            ...task,
-            status: 'cancelled',
-            resultSummary: `已因回退至「${target.targetLabel}」更早任务而失效。`,
-            updatedAt: now,
-          };
-        }
-        if (task.status === 'running') {
-          return {
-            ...task,
-            status: 'cancelled',
-            resultSummary: '回退时已中止进行中的任务。',
-            updatedAt: now,
-          };
-        }
-        return task;
-      })
-    );
+    restorePageVersionFromTask(target);
     setWorkspacePreviewMaterial(null);
     setWorkspaceElementSel(null);
     setState((prev) => applyTabForModificationTarget(prev, target.targetTab));
-    if (target.pageIndex != null) {
-      setCreatorPptPageIndex(target.pageIndex);
-    }
     setCreatorRightTab('tasks');
     setRollbackConfirm(null);
-    toast(`已回退至「${target.targetLabel}」`);
-  }, [rollbackConfirm, toast]);
+  }, [restorePageVersionFromTask, rollbackConfirm, toast]);
+
+  const handleSpeakerNotesChange = useCallback(
+    (pageIndex: number, notes: string) => {
+      setPptResult((prev) => {
+        if (!prev) return prev;
+        const slides = prev.slides.map((slide, index) =>
+          index === pageIndex ? { ...slide, speakerNotes: notes } : slide
+        );
+        return { ...prev, slides };
+      });
+      setPptVersions((prev) =>
+        prev.map((version) => {
+          if (selectedPptVersionId && version.id !== selectedPptVersionId) return version;
+          return {
+            ...version,
+            slides: version.slides.map((slide, index) =>
+              index === pageIndex ? { ...slide, speakerNotes: notes } : slide
+            ),
+          };
+        })
+      );
+    },
+    [selectedPptVersionId]
+  );
 
   const handleCreatorPptPageChange = useCallback((index: number) => {
     setCreatorPptPageIndex(index);
@@ -4662,6 +4873,7 @@ export default function App() {
             pageIndex: target.slideIndex,
             targetLabel: `PPT 设计 · ${scopeSummary} · ${target.label}`,
             resultSummary: primary.summary,
+            slideSnapshot: slides[target.slideIndex],
             createdAt: now,
             updatedAt: now,
           },
@@ -4846,54 +5058,79 @@ export default function App() {
 
                   <div className="home-inspire-grid relative z-10 mt-6 animate-fade-up [animation-delay:120ms]">
                     <div className="home-inspire-left">
-                      <button
-                        type="button"
-                        className="home-inspire-hero bg-hero-gradient"
-                        onClick={() => newTask('从资料生成演示文稿', 'ppt')}
-                      >
-                        <div className="home-inspire-hero-copy">
-                          <strong>从资料生成演示文稿</strong>
-                          <p>上传资料后，AI 自动梳理结构并生成可编辑 PPT，支持继续优化与团队审阅。</p>
-                          <span className="home-inspire-hero-cta">
-                            新建任务
-                            <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={2.4} />
-                          </span>
-                        </div>
-                        <div className="home-inspire-hero-art" aria-hidden="true">
-                          <div className="home-inspire-ppt-stack">
-                            <div className="home-inspire-ppt-page is-back">
-                              <span />
-                              <span />
-                              <span />
-                            </div>
-                            <div className="home-inspire-ppt-page is-front">
-                              <span className="home-inspire-ppt-title" />
-                              <span className="home-inspire-ppt-rule" />
-                              <div className="home-inspire-ppt-bars">
-                                <i style={{ height: '42%' }} />
-                                <i style={{ height: '68%' }} />
-                                <i style={{ height: '54%' }} />
-                                <i style={{ height: '86%' }} />
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </button>
-
                       <div className="home-inspire-actions">
-                        {HOME_WORKFLOW_ACTIONS.map(({ title, description, intent, prompt, Icon, tone }) => (
+                        {HOME_WORKFLOW_ACTIONS.map(({ title, description, intent, prompt, Icon, art }) => (
                           <button
                             key={title}
                             type="button"
-                            className={`home-inspire-action home-task-card tone-${tone}`}
+                            className="home-inspire-action home-task-card"
                             onClick={() => newTask(prompt, intent)}
                           >
-                            <span className={`home-inspire-action-icon tone-${tone}`}>
-                              <Icon className="h-4 w-4 text-white" strokeWidth={2.4} />
+                            <span className="home-inspire-action-icon">
+                              <Icon className="h-4 w-4" strokeWidth={2.4} />
                             </span>
                             <ArrowUpRight className="home-inspire-action-arrow h-4 w-4" />
-                            <strong>{title}</strong>
-                            <span>{description}</span>
+                            <div className="home-inspire-action-body">
+                              <strong>{title}</strong>
+                              <span className="home-inspire-action-desc">{description}</span>
+                              <span className="home-inspire-action-cta">
+                                新建任务
+                                <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={2.4} />
+                              </span>
+                            </div>
+                            <div className={`home-inspire-action-art art-${art}`} aria-hidden="true">
+                              {art === 'ppt' && (
+                                <div className="home-inspire-deco is-ppt">
+                                  <div className="home-inspire-deco-back" />
+                                  <div className="home-inspire-deco-front">
+                                    <span className="deco-ppt-rule is-accent" />
+                                    <span className="deco-ppt-rule is-muted" />
+                                    <div className="deco-ppt-chart">
+                                      <i style={{ height: '46%' }} />
+                                      <i style={{ height: '72%' }} />
+                                      <i style={{ height: '58%' }} />
+                                      <i style={{ height: '88%' }} />
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                              {art === 'article' && (
+                                <div className="home-inspire-deco is-article">
+                                  <div className="home-inspire-deco-back" />
+                                  <div className="home-inspire-deco-front">
+                                    <span className="deco-article-thumb" />
+                                    <span className="deco-line w-80" />
+                                    <span className="deco-line w-95" />
+                                    <span className="deco-line w-70" />
+                                  </div>
+                                </div>
+                              )}
+                              {art === 'image' && (
+                                <div className="home-inspire-deco is-image">
+                                  <div className="home-inspire-deco-back" />
+                                  <div className="home-inspire-deco-front">
+                                    <div className="deco-landscape">
+                                      <span className="deco-sun" />
+                                      <span className="deco-peak is-far" />
+                                      <span className="deco-peak is-near" />
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                              {art === 'text' && (
+                                <div className="home-inspire-deco is-text">
+                                  <div className="home-inspire-deco-back" />
+                                  <div className="home-inspire-deco-front">
+                                    <span className="deco-quote" aria-hidden>
+                                      “
+                                    </span>
+                                    <span className="deco-line w-85" />
+                                    <span className="deco-line w-95" />
+                                    <span className="deco-line w-65" />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </button>
                         ))}
                       </div>
@@ -5479,53 +5716,109 @@ export default function App() {
                 </div>
               )}
 
-              <div className="compose-shell">
+              <div className={`compose-shell${speech.listening ? ' is-listening' : ''}`}>
                 <button
                   type="button"
                   className="compose-attach"
                   title="添加附件"
                   aria-label="添加附件"
                   onClick={() => openMaterialPicker('chat')}
+                  disabled={speech.listening}
                 >
                   <Plus className="h-4 w-4" strokeWidth={2.4} />
                 </button>
-                <textarea
-                  className="compose-input"
-                  placeholder={getComposerPlaceholder()}
-                  value={inputValue}
-                  rows={1}
-                  onChange={(e) => setInputValue(e.target.value)}
-                  disabled={workspaceElementBusy}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      send();
-                    }
-                  }}
-                />
+                {speech.listening ? (
+                  <div className="compose-voice-live" aria-live="polite">
+                    <span className="compose-voice-bars" aria-hidden>
+                      <i />
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                    <span className="compose-voice-label">
+                      {speech.interimTranscript.trim() || '正在聆听…'}
+                    </span>
+                  </div>
+                ) : (
+                  <textarea
+                    className="compose-input"
+                    placeholder={getComposerPlaceholder()}
+                    value={inputValue}
+                    rows={1}
+                    onChange={(e) => {
+                      setInputValue(e.target.value);
+                      voiceBaseRef.current = e.target.value;
+                    }}
+                    disabled={workspaceElementBusy}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        send();
+                      }
+                    }}
+                  />
+                )}
                 <div className="compose-actions">
-                  <select
-                    className="model-select"
-                    value={selectedModel}
-                    onChange={(e) => setSelectedModel(e.target.value)}
-                    aria-label="选择模型"
-                  >
-                    <option>GPT-5.5</option>
-                  </select>
-                  <button
-                    type="button"
-                    className="compose-send"
-                    onClick={send}
-                    disabled={workspaceElementBusy || !inputValue.trim()}
-                    title={workspaceElementBusy ? '修改中…' : '发送'}
-                    aria-label={workspaceElementBusy ? '修改中' : '发送'}
-                  >
-                    {workspaceElementBusy ? (
-                      <span className="compose-send-label">…</span>
-                    ) : (
-                      <ArrowUp className="h-4 w-4" strokeWidth={2.6} />
-                    )}
-                  </button>
+                  {!speech.listening && (
+                    <select
+                      className="model-select"
+                      value={selectedModel}
+                      onChange={(e) => setSelectedModel(e.target.value)}
+                      aria-label="选择模型"
+                    >
+                      <option>GPT-5.5</option>
+                    </select>
+                  )}
+                  {speech.listening ? (
+                    <>
+                      <button
+                        type="button"
+                        className="compose-voice-stop"
+                        onClick={stopVoiceInput}
+                        title="停止录音"
+                        aria-label="停止录音"
+                      >
+                        <Square className="h-3.5 w-3.5" strokeWidth={2.6} fill="currentColor" />
+                      </button>
+                      <button
+                        type="button"
+                        className="compose-send"
+                        onClick={send}
+                        disabled={workspaceElementBusy || !(inputValue.trim() || speech.interimTranscript.trim())}
+                        title="发送"
+                        aria-label="发送"
+                      >
+                        <ArrowUp className="h-4 w-4" strokeWidth={2.6} />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="compose-mic"
+                        onClick={startVoiceInput}
+                        disabled={workspaceElementBusy}
+                        title="语音输入"
+                        aria-label="语音输入"
+                      >
+                        <Mic className="h-4 w-4" strokeWidth={2.4} />
+                      </button>
+                      <button
+                        type="button"
+                        className="compose-send"
+                        onClick={send}
+                        disabled={workspaceElementBusy || !inputValue.trim()}
+                        title={workspaceElementBusy ? '修改中…' : '发送'}
+                        aria-label={workspaceElementBusy ? '修改中' : '发送'}
+                      >
+                        {workspaceElementBusy ? (
+                          <span className="compose-send-label">…</span>
+                        ) : (
+                          <ArrowUp className="h-4 w-4" strokeWidth={2.6} />
+                        )}
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -5596,7 +5889,7 @@ export default function App() {
                                 <span>更新于 {formatModificationTaskTime(task.updatedAt)}</span>
                               </div>
                               <div className="creator-task-actions">
-                                {task.status === 'completed' && (
+                                {task.slideSnapshot && task.status !== 'cancelled' && (
                                   <button
                                     type="button"
                                     className="btn primary"
@@ -5810,8 +6103,12 @@ export default function App() {
             richTextContent={richTextContent}
             onRichTextChange={setRichTextContent}
             creatorPptPageIndex={creatorPptPageIndex}
+            pptPageVersionEpoch={pptPageVersionEpoch}
             onCreatorPptPageChange={handleCreatorPptPageChange}
             onReorderCreatorPptSlides={handleReorderCreatorPptSlides}
+            pageModificationTasks={currentPageModificationTasks}
+            onSpeakerNotesChange={handleSpeakerNotesChange}
+            onRestorePageVersion={restorePageVersionFromTask}
             creatorPptComments={creatorPptComments.map(({ comment }) => comment)}
             workspaceElementId={workspaceElementSel?.elementId ?? null}
             onWorkspaceElementSelect={handleWorkspaceElementSelect}
@@ -5831,6 +6128,7 @@ export default function App() {
             onSelectPptVersion={selectPptVersion}
             onStartPptFlow={() => startPptFlow()}
             insightSummary={insightSummary}
+            topicInsightReportText={topicInsightReportText}
             selectedTopics={selectedTopics}
             setSelectedTopics={setSelectedTopics}
             copyCountPerTopic={copyCountPerTopic}
@@ -5848,6 +6146,9 @@ export default function App() {
             expandTopics={expandTopics}
             hotInsightReport={hotInsightReport}
             recommendedTopics={recommendedTopics}
+            literatureResults={literatureResults}
+            addedLiteratureIds={addedLiteratureIds}
+            onAddLiteratureToTask={addLiteratureToTask}
             taskTitle={taskTitle}
             onDownloadInsightReport={() => {
               if (!hotInsightReport) {
@@ -6015,6 +6316,7 @@ export default function App() {
                 }}
                 isGenerating={isGenerating}
                 allowBrush={editorTarget?.kind !== 'ppt-slide'}
+                allowShapes={editorTarget?.kind !== 'ppt-slide'}
               />
             </>
           )}
@@ -6299,7 +6601,7 @@ export default function App() {
         title="回退至此"
         message={
           rollbackConfirm
-            ? `确定回退到任务「${rollbackConfirm.prompt}」吗？其后完成的修改将失效，进行中的任务也会被中止。`
+            ? `确定回退到任务「${rollbackConfirm.prompt}」吗？该版本会成为当前页，其本身及之后的小版本与任务都会被清除。`
             : ''
         }
         confirmLabel="确认回退"
@@ -6488,8 +6790,12 @@ function WorkspaceRightPanel({
   richTextContent,
   onRichTextChange,
   creatorPptPageIndex,
+  pptPageVersionEpoch,
   onCreatorPptPageChange,
   onReorderCreatorPptSlides,
+  pageModificationTasks,
+  onSpeakerNotesChange,
+  onRestorePageVersion,
   creatorPptComments,
   workspaceElementId,
   onWorkspaceElementSelect,
@@ -6502,6 +6808,7 @@ function WorkspaceRightPanel({
   onSelectPptVersion,
   onStartPptFlow,
   insightSummary,
+  topicInsightReportText,
   selectedTopics,
   setSelectedTopics,
   copyCountPerTopic,
@@ -6531,6 +6838,9 @@ function WorkspaceRightPanel({
   expandTopics,
   hotInsightReport,
   recommendedTopics,
+  literatureResults,
+  addedLiteratureIds,
+  onAddLiteratureToTask,
   taskTitle,
   onDownloadInsightReport,
   onStartVisualFlow,
@@ -6579,8 +6889,12 @@ function WorkspaceRightPanel({
   richTextContent: string;
   onRichTextChange: (html: string) => void;
   creatorPptPageIndex: number;
+  pptPageVersionEpoch: number;
   onCreatorPptPageChange: (index: number) => void;
   onReorderCreatorPptSlides: (fromIndex: number, toIndex: number) => void;
+  pageModificationTasks: ModificationTask[];
+  onSpeakerNotesChange: (pageIndex: number, notes: string) => void;
+  onRestorePageVersion: (task: ModificationTask) => void;
   creatorPptComments: PptReviewComment[];
   workspaceElementId: string | null;
   onWorkspaceElementSelect: (selection: SelectableSvgSelection | null, slideIndex: number) => void;
@@ -6593,6 +6907,7 @@ function WorkspaceRightPanel({
   onSelectPptVersion: (v: PptDesignVersion) => void;
   onStartPptFlow: () => void;
   insightSummary: string;
+  topicInsightReportText: string;
   selectedTopics: boolean[];
   setSelectedTopics: React.Dispatch<React.SetStateAction<boolean[]>>;
   copyCountPerTopic: number;
@@ -6622,6 +6937,9 @@ function WorkspaceRightPanel({
   expandTopics: () => void;
   hotInsightReport: HotInsightReport | null;
   recommendedTopics: TopicRecommendationItem[];
+  literatureResults: LiteratureArticle[];
+  addedLiteratureIds: string[];
+  onAddLiteratureToTask: (article: LiteratureArticle) => void;
   taskTitle: string;
   onDownloadInsightReport: () => void;
   onStartVisualFlow: () => void;
@@ -6664,8 +6982,11 @@ function WorkspaceRightPanel({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [previewHistoryId, setPreviewHistoryId] = useState<string | null>(null);
   const [restoredFrom, setRestoredFrom] = useState<string | null>(null);
+  const [slideVersionId, setSlideVersionId] = useState('current');
+  const [draggingThumbIndex, setDraggingThumbIndex] = useState<number | null>(null);
+  const [dropThumbIndex, setDropThumbIndex] = useState<number | null>(null);
+  const thumbDragMovedRef = useRef(false);
   const pptPreviewRef = useRef<SelectableSvgPreviewHandle>(null);
-  const [pptToolState, setPptToolState] = useState({ brushActive: false, canClear: false });
   const historyVersions = [
     { id: 'latest', label: restoredFrom ? `当前版本（回溯自 ${restoredFrom}）` : '当前版本', time: '刚刚' },
     { id: 'v2', label: '版本 V2', time: '今天 15:24' },
@@ -6691,6 +7012,10 @@ function WorkspaceRightPanel({
     () => findCopyIndexForRevision(copies, copyRevisionBase, copyRevisions),
     [copies, copyRevisionBase, copyRevisions]
   );
+
+  useEffect(() => {
+    setSlideVersionId('current');
+  }, [creatorPptPageIndex, pptPageVersionEpoch]);
 
   useEffect(() => {
     if (selectedCopyRevisionIndex !== null && selectedCopyRevisionIndex !== revisedCopyIndex) {
@@ -6818,11 +7143,44 @@ function WorkspaceRightPanel({
 
     switch (k) {
       case 'insight':
+        if (topicInsightReportText.trim()) {
+          const insightHtml = ensureTopicInsightHtml(topicInsightReportText);
+          const titleMatch = insightHtml.match(/^<h1>([\s\S]*?)<\/h1>\s*/);
+          const titleHtml = titleMatch?.[1] ?? '话题洞察';
+          const bodyHtml = titleMatch ? insightHtml.slice(titleMatch[0].length) : insightHtml;
+          return (
+            <div className="workspace-surface-panel topic-insight-preview-panel">
+              <div className="topic-insight-title-row">
+                <h1 dangerouslySetInnerHTML={{ __html: titleHtml }} />
+                <button
+                  type="button"
+                  className="btn primary topic-insight-copy-btn"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(htmlToPlainText(insightHtml));
+                      toast('话题洞察已复制');
+                    } catch {
+                      toast('复制失败，请手动选择文本复制');
+                    }
+                  }}
+                >
+                  一键复制
+                </button>
+              </div>
+              <div
+                className="topic-insight-markdown"
+                dangerouslySetInnerHTML={{ __html: bodyHtml }}
+              />
+            </div>
+          );
+        }
         if (!topics.length && !hotInsightReport) {
           return (
             <div className="detail-card">
               <h4>话题洞察</h4>
-              <div className="small">在对话中点击「基于素材生成话题洞察」，AI 将在此展示完整洞察报告。</div>
+              <div className="small">
+                在对话区输入「帮我生成五到六个话题」（可有可无附件），即可在此查看话题洞察报告。
+              </div>
               <button
                 className="btn primary"
                 style={{ marginTop: 12 }}
@@ -6949,6 +7307,81 @@ function WorkspaceRightPanel({
             onStartVisualFlow={onStartVisualFlow}
             openDetail={openDetail}
           />
+        );
+
+      case 'literature':
+        if (!literatureResults.length) {
+          return (
+            <div className="detail-card">
+              <h4>推荐文献</h4>
+              <div className="small">
+                在对话区输入「检索文献」即可在此查看推荐的英文医药文献；添加附件后也可一并作为检索上下文。
+              </div>
+            </div>
+          );
+        }
+        return (
+          <div className="workspace-surface-panel literature-panel">
+            <div className="literature-list">
+              {literatureResults.map((article) => {
+                const added = addedLiteratureIds.includes(article.id);
+                return (
+                  <article key={article.id} className="literature-card">
+                    <div className="literature-card-top">
+                      <span className={`literature-access-tag ${article.access}`}>
+                        {article.access === 'free' ? 'Free access' : 'Paid'}
+                      </span>
+                      <span className="literature-meta">
+                        {article.publisher} · {article.year}
+                      </span>
+                    </div>
+                    <h5>{article.title}</h5>
+                    <p className="literature-abstract">{article.abstract}</p>
+                    <div className="literature-actions">
+                      {article.access === 'free' ? (
+                        <>
+                          <a
+                            className="btn soft literature-link-btn"
+                            href={article.sourceUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" strokeWidth={2.2} />
+                            查看原文章链接
+                          </a>
+                          <button
+                            type="button"
+                            className={`btn ${added ? 'soft' : 'primary'} literature-add-btn`}
+                            disabled={added}
+                            onClick={() => onAddLiteratureToTask(article)}
+                          >
+                            {added ? (
+                              <>
+                                <Check className="h-3.5 w-3.5" strokeWidth={2.4} />
+                                已添加
+                              </>
+                            ) : (
+                              '添加到当前任务'
+                            )}
+                          </button>
+                        </>
+                      ) : (
+                        <a
+                          className="btn soft literature-link-btn"
+                          href={article.sourceUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" strokeWidth={2.2} />
+                          前往原链接下载
+                        </a>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
         );
 
       case 'copy':
@@ -7574,13 +8007,46 @@ function WorkspaceRightPanel({
           );
         }
         const singleVersion = pptVersions.length <= 1;
-        const activeVersion =
-          pptVersions.find((v) => v.id === selectedPptVersionId) || pptVersions[0];
         const creatorActivePageIndex = Math.min(
           creatorPptPageIndex,
           Math.max(previewSlides.length - 1, 0)
         );
-        const creatorActiveSlide = previewSlides[creatorActivePageIndex] || previewSlides[0];
+        const liveSlide = previewSlides[creatorActivePageIndex] || previewSlides[0];
+        const pageVersions = [
+          ...[...pageModificationTasks]
+            .filter((task) => task.slideSnapshot)
+            .sort((a, b) => a.createdAt - b.createdAt)
+            .map((task, index) => ({
+              id: task.id,
+              label: `V${index + 1}`,
+              prompt: task.prompt,
+              status: task.status,
+              slide: task.slideSnapshot!,
+            })),
+          ...(liveSlide
+            ? [
+                {
+                  id: 'current',
+                  label: '当前',
+                  prompt: '当前页面版本',
+                  status: 'current' as const,
+                  slide: liveSlide,
+                },
+              ]
+            : []),
+        ];
+        const activePageVersion =
+          pageVersions.find((version) => version.id === slideVersionId) ||
+          pageVersions[pageVersions.length - 1];
+        const creatorActiveSlide = activePageVersion?.slide || liveSlide;
+        const viewingHistoricalVersion =
+          slideVersionId !== 'current' &&
+          pageVersions.some((version) => version.id === slideVersionId && version.id !== 'current');
+        const versionIndex = Math.max(
+          0,
+          pageVersions.findIndex((version) => version.id === (activePageVersion?.id || 'current'))
+        );
+        const canReorderThumbs = !selectedHistory && !reviewerMode;
         return (
           <div className="ppt-design-fit-panel">
             {!singleVersion && (
@@ -7616,53 +8082,120 @@ function WorkspaceRightPanel({
               <div className="creator-ppt-preview-card">
                 <div className="creator-ppt-toolbar">
                   <div className="creator-ppt-toolbar-page">
-                    <strong>第 {creatorActiveSlide.page ?? creatorActivePageIndex + 1} 页</strong>
+                    <strong>第 {liveSlide?.page ?? creatorActivePageIndex + 1} 页</strong>
                     <span>{creatorActiveSlide.title}</span>
+                    {viewingHistoricalVersion && (
+                      <span className="creator-ppt-version-pill">
+                        当前页面版本 · {activePageVersion?.label}
+                      </span>
+                    )}
                   </div>
                   <div className="creator-ppt-toolbar-tools" role="toolbar" aria-label="页面操作">
-                    {!selectedHistory && (
-                      <>
-                        <button
-                          type="button"
-                          className={`creator-ppt-tool ${pptToolState.brushActive ? 'active' : ''}`}
-                          onClick={() => pptPreviewRef.current?.toggleBrush()}
-                        >
-                          <Paintbrush className="h-3.5 w-3.5" strokeWidth={2.2} />
-                          画笔
-                        </button>
-                        <button
-                          type="button"
-                          className="creator-ppt-tool"
-                          disabled={!pptToolState.canClear}
-                          onClick={() => pptPreviewRef.current?.clearStrokes()}
-                        >
-                          <Eraser className="h-3.5 w-3.5" strokeWidth={2.2} />
-                          清除
-                        </button>
-                        <span className="creator-ppt-toolbar-divider" aria-hidden />
-                        <button
-                          type="button"
-                          className="creator-ppt-tool primary"
-                          onClick={() => onOpenPptSlideEditor(creatorActivePageIndex)}
-                        >
-                          手动调整
-                        </button>
-                      </>
+                    {!selectedHistory && viewingHistoricalVersion && activePageVersion?.id !== 'current' && (
+                      <button
+                        type="button"
+                        className="creator-ppt-tool primary"
+                        onClick={() => {
+                          const task =
+                            pageModificationTasks.find(
+                              (item) => item.id === activePageVersion?.id
+                            ) ||
+                            // 兜底：按快照 id 从当前页任务中查找
+                            pageModificationTasks.find((item) => item.slideSnapshot && item.id === slideVersionId);
+                          if (!task?.slideSnapshot) {
+                            toast('未找到可回溯的版本任务');
+                            return;
+                          }
+                          onRestorePageVersion(task);
+                          setSlideVersionId('current');
+                        }}
+                      >
+                        回溯到当前版本
+                      </button>
+                    )}
+                    {!selectedHistory && !viewingHistoricalVersion && (
+                      <button
+                        type="button"
+                        className="creator-ppt-tool primary"
+                        onClick={() => onOpenPptSlideEditor(creatorActivePageIndex)}
+                      >
+                        手动调整
+                      </button>
                     )}
                   </div>
                 </div>
                 <div className="creator-ppt-workspace">
-                  <div className="creator-ppt-thumbnails">
+                  <div className="creator-ppt-thumbnails" aria-label="页面缩略图，可拖拽排序">
                     {previewSlides.map((slide, index) => {
                       const commentCount = creatorPptComments.filter(
                         (comment) => comment.pageIndex === index
                       ).length;
                       return (
                         <button
-                          key={`${slide.page}-${index}`}
+                          key={`ppt-thumb-${index}`}
                           type="button"
-                          className={creatorActivePageIndex === index ? 'active' : ''}
-                          onClick={() => onCreatorPptPageChange(index)}
+                          draggable={canReorderThumbs}
+                          className={[
+                            creatorActivePageIndex === index ? 'active' : '',
+                            draggingThumbIndex === index ? 'is-dragging' : '',
+                            dropThumbIndex === index && draggingThumbIndex !== index
+                              ? 'is-drop-target'
+                              : '',
+                          ]
+                            .filter(Boolean)
+                            .join(' ')}
+                          title={canReorderThumbs ? '拖拽调整页面顺序' : undefined}
+                          onDragStart={(event) => {
+                            if (!canReorderThumbs) {
+                              event.preventDefault();
+                              return;
+                            }
+                            thumbDragMovedRef.current = false;
+                            setDraggingThumbIndex(index);
+                            setDropThumbIndex(null);
+                            event.dataTransfer.effectAllowed = 'move';
+                            event.dataTransfer.setData('text/plain', String(index));
+                          }}
+                          onDragOver={(event) => {
+                            if (!canReorderThumbs || draggingThumbIndex == null) return;
+                            event.preventDefault();
+                            event.dataTransfer.dropEffect = 'move';
+                            if (dropThumbIndex !== index) setDropThumbIndex(index);
+                          }}
+                          onDragLeave={() => {
+                            setDropThumbIndex((prev) => (prev === index ? null : prev));
+                          }}
+                          onDrop={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            if (!canReorderThumbs) return;
+                            const raw = event.dataTransfer.getData('text/plain');
+                            const fromIndex = Number(
+                              raw !== '' ? raw : draggingThumbIndex ?? Number.NaN
+                            );
+                            if (
+                              Number.isFinite(fromIndex) &&
+                              fromIndex >= 0 &&
+                              fromIndex < previewSlides.length &&
+                              fromIndex !== index
+                            ) {
+                              thumbDragMovedRef.current = true;
+                              onReorderCreatorPptSlides(fromIndex, index);
+                            }
+                            setDraggingThumbIndex(null);
+                            setDropThumbIndex(null);
+                          }}
+                          onDragEnd={() => {
+                            setDraggingThumbIndex(null);
+                            setDropThumbIndex(null);
+                          }}
+                          onClick={() => {
+                            if (thumbDragMovedRef.current) {
+                              thumbDragMovedRef.current = false;
+                              return;
+                            }
+                            onCreatorPptPageChange(index);
+                          }}
                         >
                           <span className="creator-ppt-thumbnail-page">
                             {slide.page ?? index + 1}
@@ -7670,6 +8203,7 @@ function WorkspaceRightPanel({
                           <img
                             src={slideToPreviewUrl(slide)}
                             alt={`第 ${slide.page ?? index + 1} 页`}
+                            draggable={false}
                           />
                           {commentCount > 0 && (
                             <span className="creator-ppt-thumbnail-comments">{commentCount}</span>
@@ -7682,18 +8216,70 @@ function WorkspaceRightPanel({
                     <div className="creator-ppt-slide-canvas">
                       <SelectableSvgPreview
                         ref={pptPreviewRef}
-                        key={`${creatorActiveSlide.page}-${creatorActivePageIndex}-${(creatorActiveSlide.svg || '').slice(0, 48)}`}
+                        key={`${creatorActiveSlide.page}-${creatorActivePageIndex}-${slideVersionId}-${(creatorActiveSlide.svg || creatorActiveSlide.imageUrl || '').slice(0, 48)}`}
                         svgMarkup={creatorActiveSlide.svg}
                         imageSrc={slideToPreviewUrl(creatorActiveSlide)}
-                        selectedId={workspaceElementId}
-                        disabled={Boolean(selectedHistory)}
+                        selectedId={viewingHistoricalVersion ? null : workspaceElementId}
+                        disabled={Boolean(selectedHistory) || viewingHistoricalVersion}
                         hideToolbar
-                        onToolStateChange={setPptToolState}
                         onSelect={(selection) =>
                           onWorkspaceElementSelect(selection, creatorActivePageIndex)
                         }
                       />
                     </div>
+                    <div className="creator-ppt-speaker-notes">
+                      <div className="creator-ppt-speaker-notes-head">
+                        <strong>Speaker Notes</strong>
+                        <span>{viewingHistoricalVersion ? '历史版本只读' : '可直接编辑'}</span>
+                      </div>
+                      <textarea
+                        value={creatorActiveSlide.speakerNotes || ''}
+                        placeholder="在此编辑本页演讲备注…"
+                        readOnly={viewingHistoricalVersion}
+                        rows={4}
+                        onChange={(event) =>
+                          onSpeakerNotesChange(creatorActivePageIndex, event.target.value)
+                        }
+                      />
+                    </div>
+                    {pageVersions.length > 1 && (
+                      <div
+                        className="creator-ppt-version-scrubber"
+                        role="slider"
+                        aria-label="查看本页版本"
+                        aria-valuemin={0}
+                        aria-valuemax={Math.max(pageVersions.length - 1, 0)}
+                        aria-valuenow={versionIndex}
+                      >
+                        <div className="creator-ppt-version-scrubber-track" aria-hidden>
+                          <i
+                            style={{
+                              width:
+                                pageVersions.length <= 1
+                                  ? '0%'
+                                  : `${(versionIndex / (pageVersions.length - 1)) * 100}%`,
+                            }}
+                          />
+                        </div>
+                        <div className="creator-ppt-version-scrubber-nodes">
+                          {pageVersions.map((version) => (
+                            <button
+                              key={version.id}
+                              type="button"
+                              className={`creator-ppt-version-node ${
+                                slideVersionId === version.id ? 'active' : ''
+                              }`}
+                              title={version.prompt}
+                              aria-label={version.label}
+                              onClick={() => setSlideVersionId(version.id)}
+                            >
+                              <span className="creator-ppt-version-dot" />
+                              <span className="creator-ppt-version-label">{version.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -7805,7 +8391,7 @@ function WorkspaceRightPanel({
                 </button>
             )) : null}
           </div>
-          {!reviewerMode && (state.active || previewFile) && (
+          {!reviewerMode && state.active !== 'literature' && (state.active || previewFile) && (
             <div className="preview-history-control">
               <button
                 type="button"

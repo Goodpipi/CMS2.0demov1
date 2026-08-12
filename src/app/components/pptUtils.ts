@@ -96,6 +96,20 @@ export function flattenOutline(outline: PptOutline): PptSlide[] {
   return slides;
 }
 
+/** 确保每页都有可编辑的 Speaker Notes */
+export function ensureSlideSpeakerNotes(slides: PptSlide[]): PptSlide[] {
+  return slides.map((slide, index) => {
+    if (slide.speakerNotes?.trim()) return slide;
+    const bulletHint = slide.bullets?.slice(0, 2).join('；');
+    return {
+      ...slide,
+      speakerNotes:
+        bulletHint ||
+        `讲解第 ${slide.page || index + 1} 页「${slide.title}」时，先点题再展开要点，并补充合规边界。`,
+    };
+  });
+}
+
 export function outlinePageCount(outline: PptOutline) {
   return outline.chapters.reduce((n, ch) => n + ch.pages.length, 0);
 }

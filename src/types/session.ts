@@ -19,6 +19,7 @@ import type { CopyRevision, ImageReviewStatus } from '@/types/review';
 export type TabKey =
   | 'insight'
   | 'topic-recommendation'
+  | 'literature'
   | 'copy'
   | 'rich-text'
   | 'team'
@@ -47,6 +48,7 @@ export interface SessionAppState {
   active: TabKey | null;
   insight: boolean;
   topicRecommendation: boolean;
+  literature: boolean;
   copy: boolean;
   richText: boolean;
   team: boolean;
@@ -80,6 +82,7 @@ export interface SessionWorkspace {
   imageReviewStatuses?: ImageReviewStatus[];
   selectedImages: boolean[];
   insightSummary: string;
+  topicInsightReportText?: string;
   hotInsightReport: HotInsightReport | null;
   recommendedTopics: TopicRecommendationItem[];
   selectedTopics: boolean[];
