@@ -172,22 +172,26 @@ export function addPptComment(
     authorRole: UserRole;
     authorName: string;
     content: string;
+    imageUrl?: string;
   }
 ): PptReviewComment | undefined {
   const task = getReviewTask(taskId);
   if (!task) return undefined;
   const now = Date.now();
+  const content = input.content.trim();
+  const imageUrl = input.imageUrl?.trim() || undefined;
+  if (!content && !imageUrl) return undefined;
   const comment: PptReviewComment = {
     id: makeId('ppt_comment'),
     pageIndex: input.pageIndex,
     pageNumber: input.pageNumber,
     authorRole: input.authorRole,
     authorName: input.authorName,
-    content: input.content.trim(),
+    content,
+    imageUrl,
     createdAt: now,
     replies: [],
   };
-  if (!comment.content) return undefined;
   upsertReviewTask({
     ...task,
     status: task.status === 'pending' ? 'in_progress' : task.status,
@@ -204,18 +208,21 @@ export function addPptCommentReply(
     authorRole: UserRole;
     authorName: string;
     content: string;
+    imageUrl?: string;
   }
 ): PptCommentReply | undefined {
   const task = getReviewTask(taskId);
   if (!task) return undefined;
   const content = input.content.trim();
-  if (!content) return undefined;
+  const imageUrl = input.imageUrl?.trim() || undefined;
+  if (!content && !imageUrl) return undefined;
   const now = Date.now();
   const reply: PptCommentReply = {
     id: makeId('reply'),
     authorRole: input.authorRole,
     authorName: input.authorName,
     content,
+    imageUrl,
     createdAt: now,
   };
   const comments = task.pptComments || [];

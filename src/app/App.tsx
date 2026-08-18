@@ -37,8 +37,10 @@ import {
   applyTabForModificationTarget,
   createMockModificationTasks,
   prunePageTasksThrough,
+  pruneAssetTasksThrough,
   formatModificationTaskTime,
   isPptDesignModificationTask,
+  isVisualModificationTask,
   MODIFICATION_TASK_FILTERS,
   MODIFICATION_TASK_STATUS_LABEL,
   type ModificationTask,
@@ -49,6 +51,14 @@ import {
   searchLiteratureMock,
   type LiteratureArticle,
 } from '@/lib/literatureMocks';
+import {
+  MOCK_KV_VERSIONS,
+  MOCK_POSTER_VERSIONS,
+  createMockVisualTasks,
+  isGenerateConferencePosterIntent,
+  isGenerateKeyVisualIntent,
+  type VisualAssetKey,
+} from '@/lib/imageMocks';
 import {
   TOPIC_INSIGHT_MOCK_REPORT,
   isTopicInsightGenerateIntent,
@@ -177,6 +187,7 @@ import {
   FolderOpen,
   History,
   Image as ImageIcon,
+  ImagePlus,
   Library as LibraryIcon,
   Eraser,
   MessageSquare,
@@ -431,7 +442,11 @@ export default function App() {
   const [reviewPptPageIndex, setReviewPptPageIndex] = useState(0);
   const [reviewPptNotes, setReviewPptNotes] = useState<Record<number, PptReviewComment[]>>({});
   const [reviewPptNoteDraft, setReviewPptNoteDraft] = useState('');
+  const [reviewPptNoteImageDraft, setReviewPptNoteImageDraft] = useState<string | null>(null);
   const [reviewerReplyDrafts, setReviewerReplyDrafts] = useState<Record<string, string>>({});
+  const [reviewerReplyImageDrafts, setReviewerReplyImageDrafts] = useState<Record<string, string>>(
+    {}
+  );
   const [creatorRightTab, setCreatorRightTab] = useState<'ai' | 'tasks' | 'comments'>('ai');
   const [modificationTasks, setModificationTasks] = useState<ModificationTask[]>(() =>
     createMockModificationTasks()
@@ -447,8 +462,13 @@ export default function App() {
   } | null>(null);
   const [workspaceElementBusy, setWorkspaceElementBusy] = useState(false);
   const [creatorReplyDrafts, setCreatorReplyDrafts] = useState<Record<string, string>>({});
+  const [creatorReplyImageDrafts, setCreatorReplyImageDrafts] = useState<Record<string, string>>(
+    {}
+  );
   const [creatorPptPageIndex, setCreatorPptPageIndex] = useState(0);
   const [pptPageVersionEpoch, setPptPageVersionEpoch] = useState(0);
+  const [previewedImageAssetKey, setPreviewedImageAssetKey] = useState<VisualAssetKey | null>(null);
+  const [imagePageVersionEpoch, setImagePageVersionEpoch] = useState(0);
   const [copyRevisions, setCopyRevisions] = useState<CopyRevision[]>([]);
   const [copyRevisionBase, setCopyRevisionBase] = useState('');
   const [teamAssigneeRoles, setTeamAssigneeRoles] = useState<('medical' | 'marketing')[]>([]);
@@ -1444,27 +1464,69 @@ export default function App() {
     setMessages(prev => [...prev, { role, html, model: role === 'ai' ? 'GPT-5.5' : model, quick }]);
   };
 
-  const openMockImageInPreview = (imageUrl: string, title: string) => {
+  const openMockImageInPreview = (
+    imageUrl: string,
+    title: string,
+    assetKey?: VisualAssetKey
+  ) => {
     const now = Date.now();
+    const isRaster = /\.png|\.jpe?g|\.webp|image\/png|image\/jpeg/i.test(imageUrl);
     setWorkspacePreviewMaterial({
       id: now,
       cat: '生成图片',
       title,
-      meta: '本地 Mock 数据 · 可在部署环境直接预览',
+      meta: '本地 Mock 数据 · 可预览版本并修改',
       cms: false,
       def: false,
       addedAt: now,
-      fileName: `${title}.svg`,
+      fileName: `${title}${isRaster ? '.png' : '.svg'}`,
       contentType: 'image',
       contentUrl: imageUrl,
-      mimeType: 'image/svg+xml',
+      mimeType: isRaster ? 'image/png' : 'image/svg+xml',
     });
+    setGeneratedImages((prev) => (prev.includes(imageUrl) ? prev : [...prev, imageUrl]));
+    setGeneratedImageMeta((prev) =>
+      prev.some((item) => item.copyTitle === title)
+        ? prev
+        : [...prev, { copyTitle: title, copyIndex: -1, imageIndex: prev.length }]
+    );
+    setSelectedImages((prev) => [...prev, true].slice(0, Math.max(prev.length + 1, 1)));
+    setPreviewedImageAssetKey(assetKey || null);
+    setImagePageVersionEpoch((value) => value + 1);
     setState((prev) => ({
       ...prev,
       tabs: prev.tabs.includes('visual') ? prev.tabs : [...prev.tabs, 'visual'],
       active: 'visual',
       visual: true,
     }));
+  };
+
+  const publishChatImage = (opts: {
+    html: string;
+    imageUrl: string;
+    imageTitle: string;
+    assetKey: VisualAssetKey;
+  }) => {
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: 'ai',
+        html: opts.html,
+        model: '本地 Mock',
+        imageUrl: opts.imageUrl,
+        imageTitle: opts.imageTitle,
+        imageActionLabel: '修改此图片',
+        imageAssetKey: opts.assetKey,
+      },
+    ]);
+  };
+
+  const seedVisualTasks = (assetKey: VisualAssetKey) => {
+    const seeded = createMockVisualTasks(assetKey);
+    setModificationTasks((prev) => [
+      ...prev.filter((task) => task.assetKey !== assetKey),
+      ...seeded,
+    ]);
   };
 
   const runLiteratureSearch = (query: string) => {
@@ -1546,6 +1608,36 @@ export default function App() {
 
     if (isTopicInsightGenerateIntent(text)) {
       runTopicInsightReport();
+      return true;
+    }
+
+    const demoScriptBusy = isDemoMode() && demoScriptStep !== 'idle';
+
+    if (!demoScriptBusy && isGenerateKeyVisualIntent(text)) {
+      seedVisualTasks('kv');
+      publishChatImage({
+        html:
+          attachments.length > 0
+            ? `已结合当前 ${attachments.length} 个附件生成主 KV。请先在对话中查看，点击「修改此图片」后可在中间区域预览版本并继续修改。`
+            : '主 KV 已生成。请先在对话中查看，点击「修改此图片」后可在中间区域预览版本并继续修改。',
+        imageUrl: MOCK_KV_VERSIONS.current.dataUrl,
+        imageTitle: MOCK_KV_VERSIONS.current.title,
+        assetKey: 'kv',
+      });
+      return true;
+    }
+
+    if (!demoScriptBusy && isGenerateConferencePosterIntent(text)) {
+      const hasKeyVisual = modificationTasks.some((task) => task.assetKey === 'kv');
+      seedVisualTasks('poster');
+      publishChatImage({
+        html: hasKeyVisual
+          ? '已根据主 KV 延展生成学术会议海报，包含会议名称、时间地点、嘉宾、亮点与议程。请先在对话中查看，点击「修改此图片」后可在中间区域预览版本。'
+          : '学术会议海报已生成，包含会议名称、时间地点、嘉宾、亮点与议程。请先在对话中查看，点击「修改此图片」后可在中间区域预览版本。',
+        imageUrl: MOCK_POSTER_VERSIONS.current.dataUrl,
+        imageTitle: MOCK_POSTER_VERSIONS.current.title,
+        assetKey: 'poster',
+      });
       return true;
     }
 
@@ -1670,29 +1762,22 @@ export default function App() {
       }));
       addMsg(
         'ai',
-        '图文内容已生成，并已在中间区域打开富文本编辑器。你可以直接修改标题、段落、列表和强调样式。',
+        '病例解读已生成。中间可直接修改文字；配图支持点击替换，也可拖拽调整顺序。',
         '本地 Mock'
       );
       return true;
     }
 
     if (/(生成|创建|制作).*(p?图片|配图|海报)/.test(command)) {
-      setGeneratedImages([WORKSPACE_MOCK_IMAGE.dataUrl]);
-      setGeneratedImageMeta([
-        { copyTitle: WORKSPACE_MOCK_IMAGE.title, copyIndex: -1, imageIndex: 0 },
-      ]);
-      setImageReviewOrigins([WORKSPACE_MOCK_IMAGE.dataUrl]);
-      setImageReviewStatuses([null]);
-      setSelectedImages([true]);
       setMessages((prev) => [
         ...prev,
         {
           role: 'ai',
-          html: '图片已生成。你可以先在对话中查看，点击下方按钮后在中间区域进行预览和修改。',
+          html: '图片已生成。你可以先在对话中查看，点击「修改此图片」后在中间区域进行预览和修改。',
           model: '本地 Mock',
           imageUrl: WORKSPACE_MOCK_IMAGE.dataUrl,
           imageTitle: WORKSPACE_MOCK_IMAGE.title,
-          imageActionLabel: '图片修改',
+          imageActionLabel: '修改此图片',
         },
       ]);
       return true;
@@ -3805,9 +3890,27 @@ export default function App() {
     }
   };
 
+  const readCommentImageFile = useCallback(async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast('请选择图片文件');
+      return null;
+    }
+    if (file.size > 2.5 * 1024 * 1024) {
+      toast('图片请小于 2.5MB');
+      return null;
+    }
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error || new Error('读取失败'));
+      reader.readAsDataURL(file);
+    });
+  }, [toast]);
+
   const replyToPptComment = (taskId: string, commentId: string) => {
-    const content = creatorReplyDrafts[commentId]?.trim();
-    if (!content) return;
+    const content = creatorReplyDrafts[commentId]?.trim() || '';
+    const imageUrl = creatorReplyImageDrafts[commentId];
+    if (!content && !imageUrl) return;
     const task = getReviewTask(taskId);
     if (!task) {
       toast('批注所属审阅任务不存在');
@@ -3827,6 +3930,7 @@ export default function App() {
                   authorRole: 'ops',
                   authorName: ROLE_PROFILES.ops.name,
                   content,
+                  imageUrl,
                   createdAt: now,
                 },
               ],
@@ -3835,13 +3939,19 @@ export default function App() {
       ),
     });
     setCreatorReplyDrafts((prev) => ({ ...prev, [commentId]: '' }));
+    setCreatorReplyImageDrafts((prev) => {
+      const next = { ...prev };
+      delete next[commentId];
+      return next;
+    });
     refreshReviewTasks();
     toast('回复已同步给审阅者');
   };
 
   const replyToCreatorAsReviewer = (commentId: string) => {
-    const content = reviewerReplyDrafts[commentId]?.trim();
-    if (!content || !activeReviewTaskId) return;
+    const content = reviewerReplyDrafts[commentId]?.trim() || '';
+    const imageUrl = reviewerReplyImageDrafts[commentId];
+    if ((!content && !imageUrl) || !activeReviewTaskId) return;
     const task = getReviewTask(activeReviewTaskId);
     if (!task) return;
     const now = Date.now();
@@ -3859,6 +3969,7 @@ export default function App() {
                   authorRole: userRole,
                   authorName: ROLE_PROFILES[userRole].name,
                   content,
+                  imageUrl,
                   createdAt: now,
                 },
               ],
@@ -3867,6 +3978,11 @@ export default function App() {
       ),
     });
     setReviewerReplyDrafts((prev) => ({ ...prev, [commentId]: '' }));
+    setReviewerReplyImageDrafts((prev) => {
+      const next = { ...prev };
+      delete next[commentId];
+      return next;
+    });
     refreshReviewTasks();
     toast('回复已同步给内容创作者');
   };
@@ -4557,24 +4673,42 @@ export default function App() {
     () => pptModificationTasks.filter((task) => task.pageIndex === creatorPptPageIndex),
     [pptModificationTasks, creatorPptPageIndex]
   );
+  const visualModificationTasks = useMemo(
+    () =>
+      modificationTasks.filter(
+        (task) =>
+          isVisualModificationTask(task) &&
+          (!previewedImageAssetKey || task.assetKey === previewedImageAssetKey)
+      ),
+    [modificationTasks, previewedImageAssetKey]
+  );
+  const showingVisualTasks = state.active === 'visual' && Boolean(previewedImageAssetKey);
+  const contextModificationTasks = showingVisualTasks
+    ? visualModificationTasks
+    : currentPageModificationTasks;
   const filteredModificationTasks = useMemo(() => {
     const list =
       modificationTaskFilter === 'all'
-        ? currentPageModificationTasks
-        : currentPageModificationTasks.filter((task) => task.status === modificationTaskFilter);
+        ? contextModificationTasks
+        : contextModificationTasks.filter((task) => task.status === modificationTaskFilter);
     return [...list].sort((a, b) => b.updatedAt - a.updatedAt);
-  }, [currentPageModificationTasks, modificationTaskFilter]);
-  const runningModificationTaskCount = pptModificationTasks.filter(
+  }, [contextModificationTasks, modificationTaskFilter]);
+  const runningModificationTaskCount = (showingVisualTasks ? visualModificationTasks : pptModificationTasks).filter(
     (task) => task.status === 'running'
   ).length;
 
   const openModificationTaskDetail = useCallback(
     (task: ModificationTask) => {
-      setWorkspacePreviewMaterial(null);
       setWorkspaceElementSel(null);
       setState((prev) => applyTabForModificationTarget(prev, task.targetTab));
-      if (task.pageIndex != null) {
-        setCreatorPptPageIndex(task.pageIndex);
+      if (task.targetTab === 'visual' && task.imageSnapshot) {
+        const assetKey = (task.assetKey as VisualAssetKey) || 'kv';
+        openMockImageInPreview(task.imageSnapshot, task.targetLabel, assetKey);
+      } else {
+        setWorkspacePreviewMaterial(null);
+        if (task.pageIndex != null) {
+          setCreatorPptPageIndex(task.pageIndex);
+        }
       }
       setCreatorRightTab('tasks');
       toast(`已定位到「${task.targetLabel}」`);
@@ -4663,22 +4797,46 @@ export default function App() {
     [selectedPptVersionId, toast]
   );
 
+  const restoreImageVersionFromTask = useCallback(
+    (task: ModificationTask) => {
+      if (!task.imageSnapshot || !task.assetKey) {
+        toast('该版本没有可回溯的图片快照');
+        return;
+      }
+      const assetKey = task.assetKey as VisualAssetKey;
+      const snapshot = task.imageSnapshot;
+      const title = task.assetKey === 'poster' ? MOCK_POSTER_VERSIONS.current.title : MOCK_KV_VERSIONS.current.title;
+      setModificationTasks((prev) => {
+        if (!prev.some((item) => item.id === task.id)) return prev;
+        return pruneAssetTasksThrough(prev, assetKey, task.id).next;
+      });
+      openMockImageInPreview(snapshot, title, assetKey);
+      setCreatorRightTab('tasks');
+      toast('已回溯为当前版本，该版本及之后的小版本与任务已清除');
+    },
+    [toast]
+  );
+
   const confirmRollbackModificationTask = useCallback(() => {
     const target = rollbackConfirm;
-    if (!target || !target.slideSnapshot) {
+    if (!target || (!target.slideSnapshot && !target.imageSnapshot)) {
       setRollbackConfirm(null);
-      if (target && !target.slideSnapshot) {
-        toast('该任务没有可回溯的页面快照');
+      if (target && !target.slideSnapshot && !target.imageSnapshot) {
+        toast('该任务没有可回溯的版本快照');
       }
       return;
     }
-    restorePageVersionFromTask(target);
-    setWorkspacePreviewMaterial(null);
+    if (target.imageSnapshot) {
+      restoreImageVersionFromTask(target);
+    } else {
+      restorePageVersionFromTask(target);
+      setWorkspacePreviewMaterial(null);
+      setState((prev) => applyTabForModificationTarget(prev, target.targetTab));
+    }
     setWorkspaceElementSel(null);
-    setState((prev) => applyTabForModificationTarget(prev, target.targetTab));
     setCreatorRightTab('tasks');
     setRollbackConfirm(null);
-  }, [restorePageVersionFromTask, rollbackConfirm, toast]);
+  }, [restoreImageVersionFromTask, restorePageVersionFromTask, rollbackConfirm, toast]);
 
   const handleSpeakerNotesChange = useCallback(
     (pageIndex: number, notes: string) => {
@@ -5646,11 +5804,12 @@ export default function App() {
                           onClick={() =>
                             openMockImageInPreview(
                               msg.imageUrl || WORKSPACE_MOCK_IMAGE.dataUrl,
-                              msg.imageTitle || WORKSPACE_MOCK_IMAGE.title
+                              msg.imageTitle || WORKSPACE_MOCK_IMAGE.title,
+                              msg.imageAssetKey as VisualAssetKey | undefined
                             )
                           }
                         >
-                          {msg.imageActionLabel || '图片修改'}
+                          {msg.imageActionLabel || '修改此图片'}
                         </button>
                       </div>
                     )}
@@ -5828,17 +5987,25 @@ export default function App() {
                 <div className="creator-tasks-panel">
                   <div className="creator-tasks-summary">
                     <div className="creator-tasks-summary-title">
-                      <Presentation className="h-3.5 w-3.5 text-[#3BA6E8]" strokeWidth={2.4} />
-                      <strong>第 {creatorPptPageIndex + 1} 页任务</strong>
+                      {showingVisualTasks ? (
+                        <ImageIcon className="h-3.5 w-3.5 text-[#3BA6E8]" strokeWidth={2.4} />
+                      ) : (
+                        <Presentation className="h-3.5 w-3.5 text-[#3BA6E8]" strokeWidth={2.4} />
+                      )}
+                      <strong>
+                        {showingVisualTasks
+                          ? `${previewedImageAssetKey === 'poster' ? '会议海报' : '主KV'}任务`
+                          : `第 ${creatorPptPageIndex + 1} 页任务`}
+                      </strong>
                     </div>
-                    <span className="creator-tasks-count">{currentPageModificationTasks.length}</span>
+                    <span className="creator-tasks-count">{contextModificationTasks.length}</span>
                   </div>
                   <div className="creator-tasks-filters" role="tablist" aria-label="任务状态筛选">
                     {MODIFICATION_TASK_FILTERS.map(({ key, label }) => {
                       const count =
                         key === 'all'
-                          ? currentPageModificationTasks.length
-                          : currentPageModificationTasks.filter((task) => task.status === key).length;
+                          ? contextModificationTasks.length
+                          : contextModificationTasks.filter((task) => task.status === key).length;
                       return (
                         <button
                           key={key}
@@ -5872,7 +6039,11 @@ export default function App() {
                               }`}
                               aria-hidden
                             >
-                              <Presentation className="h-3.5 w-3.5 text-white" strokeWidth={2.4} />
+                              {showingVisualTasks ? (
+                                <ImageIcon className="h-3.5 w-3.5 text-white" strokeWidth={2.4} />
+                              ) : (
+                                <Presentation className="h-3.5 w-3.5 text-white" strokeWidth={2.4} />
+                              )}
                             </span>
                             <div className="creator-task-card-body">
                               <div className="creator-task-card-head">
@@ -5889,7 +6060,7 @@ export default function App() {
                                 <span>更新于 {formatModificationTaskTime(task.updatedAt)}</span>
                               </div>
                               <div className="creator-task-actions">
-                                {task.slideSnapshot && task.status !== 'cancelled' && (
+                                {(task.slideSnapshot || task.imageSnapshot) && task.status !== 'cancelled' && (
                                   <button
                                     type="button"
                                     className="btn primary"
@@ -5922,7 +6093,9 @@ export default function App() {
                         </article>
                       ))
                     ) : (
-                      <div className="creator-tasks-empty">当前页面暂无修改任务</div>
+                      <div className="creator-tasks-empty">
+                        {showingVisualTasks ? '当前图片暂无修改任务' : '当前页面暂无修改任务'}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -5953,6 +6126,20 @@ export default function App() {
                                 <span className="creator-comment-dept">{reviewerDept}</span>
                               </div>
                               <p>{comment.content}</p>
+                              {comment.imageUrl && (
+                                <a
+                                  className="comment-attach-image-link"
+                                  href={comment.imageUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  <img
+                                    src={comment.imageUrl}
+                                    alt="批注附图"
+                                    className="comment-attach-image"
+                                  />
+                                </a>
+                              )}
                               {(comment.replies || []).map((reply) => (
                                 <div
                                   key={reply.id}
@@ -5961,28 +6148,95 @@ export default function App() {
                                   }`}
                                 >
                                   <strong>{reply.authorName} 回复</strong>
-                                  <span>{reply.content}</span>
+                                  {reply.content ? <span>{reply.content}</span> : null}
+                                  {reply.imageUrl && (
+                                    <a
+                                      className="comment-attach-image-link"
+                                      href={reply.imageUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                    >
+                                      <img
+                                        src={reply.imageUrl}
+                                        alt="回复附图"
+                                        className="comment-attach-image"
+                                      />
+                                    </a>
+                                  )}
                                 </div>
                               ))}
                               <div className="creator-comment-compose">
-                                <textarea
-                                  value={creatorReplyDrafts[comment.id] || ''}
-                                  onChange={(event) =>
-                                    setCreatorReplyDrafts((prev) => ({
-                                      ...prev,
-                                      [comment.id]: event.target.value,
-                                    }))
-                                  }
-                                  placeholder="回复这条批注…"
-                                />
-                                <button
-                                  type="button"
-                                  className="btn primary"
-                                  disabled={!creatorReplyDrafts[comment.id]?.trim()}
-                                  onClick={() => replyToPptComment(taskId, comment.id)}
-                                >
-                                  回复
-                                </button>
+                                {creatorReplyImageDrafts[comment.id] && (
+                                  <div className="comment-image-draft">
+                                    <img
+                                      src={creatorReplyImageDrafts[comment.id]}
+                                      alt="待发送附图"
+                                    />
+                                    <button
+                                      type="button"
+                                      className="comment-image-draft-remove"
+                                      aria-label="移除图片"
+                                      onClick={() =>
+                                        setCreatorReplyImageDrafts((prev) => {
+                                          const next = { ...prev };
+                                          delete next[comment.id];
+                                          return next;
+                                        })
+                                      }
+                                    >
+                                      <X className="h-3.5 w-3.5" strokeWidth={2.4} />
+                                    </button>
+                                  </div>
+                                )}
+                                <div className="comment-compose-row">
+                                  <label
+                                    className="comment-image-upload-btn"
+                                    title="上传图片"
+                                  >
+                                    <ImagePlus className="h-4 w-4" strokeWidth={2.2} />
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      hidden
+                                      onChange={async (event) => {
+                                        const file = event.target.files?.[0];
+                                        event.target.value = '';
+                                        if (!file) return;
+                                        try {
+                                          const dataUrl = await readCommentImageFile(file);
+                                          if (!dataUrl) return;
+                                          setCreatorReplyImageDrafts((prev) => ({
+                                            ...prev,
+                                            [comment.id]: dataUrl,
+                                          }));
+                                        } catch {
+                                          toast('图片读取失败');
+                                        }
+                                      }}
+                                    />
+                                  </label>
+                                  <textarea
+                                    value={creatorReplyDrafts[comment.id] || ''}
+                                    onChange={(event) =>
+                                      setCreatorReplyDrafts((prev) => ({
+                                        ...prev,
+                                        [comment.id]: event.target.value,
+                                      }))
+                                    }
+                                    placeholder="回复这条批注…"
+                                  />
+                                  <button
+                                    type="button"
+                                    className="btn primary"
+                                    disabled={
+                                      !creatorReplyDrafts[comment.id]?.trim() &&
+                                      !creatorReplyImageDrafts[comment.id]
+                                    }
+                                    onClick={() => replyToPptComment(taskId, comment.id)}
+                                  >
+                                    回复
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -6026,6 +6280,7 @@ export default function App() {
                       onClick={() => {
                         setReviewPptPageIndex(index);
                         setReviewPptNoteDraft('');
+                        setReviewPptNoteImageDraft(null);
                       }}
                     >
                       <span className="reviewer-ppt-page-no">{slide.page ?? index + 1}</span>
@@ -6107,8 +6362,11 @@ export default function App() {
             onCreatorPptPageChange={handleCreatorPptPageChange}
             onReorderCreatorPptSlides={handleReorderCreatorPptSlides}
             pageModificationTasks={currentPageModificationTasks}
+            imageModificationTasks={visualModificationTasks}
+            imagePageVersionEpoch={imagePageVersionEpoch}
             onSpeakerNotesChange={handleSpeakerNotesChange}
             onRestorePageVersion={restorePageVersionFromTask}
+            onRestoreImageVersion={restoreImageVersionFromTask}
             creatorPptComments={creatorPptComments.map(({ comment }) => comment)}
             workspaceElementId={workspaceElementSel?.elementId ?? null}
             onWorkspaceElementSelect={handleWorkspaceElementSelect}
@@ -6195,7 +6453,21 @@ export default function App() {
                   (reviewPptNotes[reviewPptPageIndex] || []).map((note) => (
                     <div key={note.id} className="reviewer-ppt-comment">
                       <strong>{note.authorName}</strong>
-                      <span>{note.content}</span>
+                      {note.content ? <span>{note.content}</span> : null}
+                      {note.imageUrl && (
+                        <a
+                          className="comment-attach-image-link"
+                          href={note.imageUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <img
+                            src={note.imageUrl}
+                            alt="批注附图"
+                            className="comment-attach-image"
+                          />
+                        </a>
+                      )}
                       {(note.replies || []).map((reply) => (
                         <div
                           key={reply.id}
@@ -6204,29 +6476,90 @@ export default function App() {
                           }`}
                         >
                           <strong>{reply.authorName} 回复</strong>
-                          <span>{reply.content}</span>
+                          {reply.content ? <span>{reply.content}</span> : null}
+                          {reply.imageUrl && (
+                            <a
+                              className="comment-attach-image-link"
+                              href={reply.imageUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              <img
+                                src={reply.imageUrl}
+                                alt="回复附图"
+                                className="comment-attach-image"
+                              />
+                            </a>
+                          )}
                         </div>
                       ))}
                       {(note.replies || []).some((reply) => reply.authorRole === 'ops') && (
                         <div className="reviewer-comment-reply-compose">
-                          <textarea
-                            value={reviewerReplyDrafts[note.id] || ''}
-                            onChange={(event) =>
-                              setReviewerReplyDrafts((prev) => ({
-                                ...prev,
-                                [note.id]: event.target.value,
-                              }))
-                            }
-                            placeholder="回复内容创作者…"
-                          />
-                          <button
-                            type="button"
-                            className="btn primary"
-                            disabled={!reviewerReplyDrafts[note.id]?.trim()}
-                            onClick={() => replyToCreatorAsReviewer(note.id)}
-                          >
-                            回复
-                          </button>
+                          {reviewerReplyImageDrafts[note.id] && (
+                            <div className="comment-image-draft">
+                              <img src={reviewerReplyImageDrafts[note.id]} alt="待发送附图" />
+                              <button
+                                type="button"
+                                className="comment-image-draft-remove"
+                                aria-label="移除图片"
+                                onClick={() =>
+                                  setReviewerReplyImageDrafts((prev) => {
+                                    const next = { ...prev };
+                                    delete next[note.id];
+                                    return next;
+                                  })
+                                }
+                              >
+                                <X className="h-3.5 w-3.5" strokeWidth={2.4} />
+                              </button>
+                            </div>
+                          )}
+                          <div className="comment-compose-row">
+                            <label className="comment-image-upload-btn" title="上传图片">
+                              <ImagePlus className="h-4 w-4" strokeWidth={2.2} />
+                              <input
+                                type="file"
+                                accept="image/*"
+                                hidden
+                                onChange={async (event) => {
+                                  const file = event.target.files?.[0];
+                                  event.target.value = '';
+                                  if (!file) return;
+                                  try {
+                                    const dataUrl = await readCommentImageFile(file);
+                                    if (!dataUrl) return;
+                                    setReviewerReplyImageDrafts((prev) => ({
+                                      ...prev,
+                                      [note.id]: dataUrl,
+                                    }));
+                                  } catch {
+                                    toast('图片读取失败');
+                                  }
+                                }}
+                              />
+                            </label>
+                            <textarea
+                              value={reviewerReplyDrafts[note.id] || ''}
+                              onChange={(event) =>
+                                setReviewerReplyDrafts((prev) => ({
+                                  ...prev,
+                                  [note.id]: event.target.value,
+                                }))
+                              }
+                              placeholder="回复内容创作者…"
+                            />
+                            <button
+                              type="button"
+                              className="btn primary"
+                              disabled={
+                                !reviewerReplyDrafts[note.id]?.trim() &&
+                                !reviewerReplyImageDrafts[note.id]
+                              }
+                              onClick={() => replyToCreatorAsReviewer(note.id)}
+                            >
+                              回复
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -6236,45 +6569,88 @@ export default function App() {
                 )}
               </div>
               <div className="reviewer-ppt-comment-compose">
-                <textarea
-                  className="reviewer-ppt-comment-input"
-                  value={reviewPptNoteDraft}
-                  onChange={(event) => setReviewPptNoteDraft(event.target.value)}
-                  placeholder="针对当前页面添加批注…"
-                />
-                <button
-                  type="button"
-                  className="btn primary reviewer-ppt-comment-submit"
-                  disabled={!reviewPptNoteDraft.trim()}
-                  onClick={() => {
-                    const content = reviewPptNoteDraft.trim();
-                    if (!content || !activeReviewTaskId) return;
-                    const task = getReviewTask(activeReviewTaskId);
-                    if (!task) return;
-                    const now = Date.now();
-                    const note: PptReviewComment = {
-                      id: `ppt_comment_${now}_${Math.random().toString(36).slice(2, 8)}`,
-                      pageIndex: reviewPptPageIndex,
-                      pageNumber: reviewPptSlides[reviewPptPageIndex]?.page ?? reviewPptPageIndex + 1,
-                      authorRole: userRole,
-                      authorName: ROLE_PROFILES[userRole].name,
-                      content,
-                      createdAt: now,
-                      replies: [],
-                    };
-                    const nextComments = [...(task.pptComments || []), note];
-                    upsertReviewTask({ ...task, status: 'in_progress', pptComments: nextComments });
-                    setReviewPptNotes((prev) => ({
-                      ...prev,
-                      [reviewPptPageIndex]: [...(prev[reviewPptPageIndex] || []), note],
-                    }));
-                    setReviewPptNoteDraft('');
-                    refreshReviewTasks();
-                    toast('批注已添加');
-                  }}
-                >
-                  添加批注
-                </button>
+                {reviewPptNoteImageDraft && (
+                  <div className="comment-image-draft">
+                    <img src={reviewPptNoteImageDraft} alt="待发送附图" />
+                    <button
+                      type="button"
+                      className="comment-image-draft-remove"
+                      aria-label="移除图片"
+                      onClick={() => setReviewPptNoteImageDraft(null)}
+                    >
+                      <X className="h-3.5 w-3.5" strokeWidth={2.4} />
+                    </button>
+                  </div>
+                )}
+                <div className="comment-compose-row">
+                  <label className="comment-image-upload-btn" title="上传图片">
+                    <ImagePlus className="h-4 w-4" strokeWidth={2.2} />
+                    <input
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      onChange={async (event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = '';
+                        if (!file) return;
+                        try {
+                          const dataUrl = await readCommentImageFile(file);
+                          if (!dataUrl) return;
+                          setReviewPptNoteImageDraft(dataUrl);
+                        } catch {
+                          toast('图片读取失败');
+                        }
+                      }}
+                    />
+                  </label>
+                  <textarea
+                    className="reviewer-ppt-comment-input"
+                    value={reviewPptNoteDraft}
+                    onChange={(event) => setReviewPptNoteDraft(event.target.value)}
+                    placeholder="针对当前页面添加批注…"
+                  />
+                  <button
+                    type="button"
+                    className="btn primary reviewer-ppt-comment-submit"
+                    disabled={!reviewPptNoteDraft.trim() && !reviewPptNoteImageDraft}
+                    onClick={() => {
+                      const content = reviewPptNoteDraft.trim();
+                      const imageUrl = reviewPptNoteImageDraft || undefined;
+                      if ((!content && !imageUrl) || !activeReviewTaskId) return;
+                      const task = getReviewTask(activeReviewTaskId);
+                      if (!task) return;
+                      const now = Date.now();
+                      const note: PptReviewComment = {
+                        id: `ppt_comment_${now}_${Math.random().toString(36).slice(2, 8)}`,
+                        pageIndex: reviewPptPageIndex,
+                        pageNumber:
+                          reviewPptSlides[reviewPptPageIndex]?.page ?? reviewPptPageIndex + 1,
+                        authorRole: userRole,
+                        authorName: ROLE_PROFILES[userRole].name,
+                        content,
+                        imageUrl,
+                        createdAt: now,
+                        replies: [],
+                      };
+                      const nextComments = [...(task.pptComments || []), note];
+                      upsertReviewTask({
+                        ...task,
+                        status: 'in_progress',
+                        pptComments: nextComments,
+                      });
+                      setReviewPptNotes((prev) => ({
+                        ...prev,
+                        [reviewPptPageIndex]: [...(prev[reviewPptPageIndex] || []), note],
+                      }));
+                      setReviewPptNoteDraft('');
+                      setReviewPptNoteImageDraft(null);
+                      refreshReviewTasks();
+                      toast('批注已添加');
+                    }}
+                  >
+                    添加批注
+                  </button>
+                </div>
                 <button type="button" className="btn soft reviewer-ppt-complete" onClick={completeReviewTask}>
                   完成审阅
                 </button>
@@ -6794,8 +7170,11 @@ function WorkspaceRightPanel({
   onCreatorPptPageChange,
   onReorderCreatorPptSlides,
   pageModificationTasks,
+  imageModificationTasks,
+  imagePageVersionEpoch,
   onSpeakerNotesChange,
   onRestorePageVersion,
+  onRestoreImageVersion,
   creatorPptComments,
   workspaceElementId,
   onWorkspaceElementSelect,
@@ -6893,8 +7272,11 @@ function WorkspaceRightPanel({
   onCreatorPptPageChange: (index: number) => void;
   onReorderCreatorPptSlides: (fromIndex: number, toIndex: number) => void;
   pageModificationTasks: ModificationTask[];
+  imageModificationTasks: ModificationTask[];
+  imagePageVersionEpoch: number;
   onSpeakerNotesChange: (pageIndex: number, notes: string) => void;
   onRestorePageVersion: (task: ModificationTask) => void;
+  onRestoreImageVersion: (task: ModificationTask) => void;
   creatorPptComments: PptReviewComment[];
   workspaceElementId: string | null;
   onWorkspaceElementSelect: (selection: SelectableSvgSelection | null, slideIndex: number) => void;
@@ -6983,6 +7365,8 @@ function WorkspaceRightPanel({
   const [previewHistoryId, setPreviewHistoryId] = useState<string | null>(null);
   const [restoredFrom, setRestoredFrom] = useState<string | null>(null);
   const [slideVersionId, setSlideVersionId] = useState('current');
+  const [imageVersionId, setImageVersionId] = useState('current');
+  const [imageDownloadOpen, setImageDownloadOpen] = useState(false);
   const [draggingThumbIndex, setDraggingThumbIndex] = useState<number | null>(null);
   const [dropThumbIndex, setDropThumbIndex] = useState<number | null>(null);
   const thumbDragMovedRef = useRef(false);
@@ -7016,6 +7400,54 @@ function WorkspaceRightPanel({
   useEffect(() => {
     setSlideVersionId('current');
   }, [creatorPptPageIndex, pptPageVersionEpoch]);
+
+  useEffect(() => {
+    setImageVersionId('current');
+    setImageDownloadOpen(false);
+  }, [imagePageVersionEpoch, openedFile?.id]);
+
+  const imageVersions = [
+    ...[...imageModificationTasks]
+      .filter((task) => task.imageSnapshot)
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .map((task, index) => ({
+        id: task.id,
+        label: `V${index + 1}`,
+        prompt: task.prompt,
+        url: task.imageSnapshot!,
+      })),
+    ...(previewFile?.contentUrl
+      ? [
+          {
+            id: 'current',
+            label: '当前',
+            prompt: '当前图片版本',
+            url: previewFile.contentUrl,
+          },
+        ]
+      : []),
+  ];
+  const activeImageVersion =
+    imageVersions.find((version) => version.id === imageVersionId) ||
+    imageVersions[imageVersions.length - 1];
+  const viewingHistoricalImage =
+    imageVersionId !== 'current' &&
+    imageVersions.some((version) => version.id === imageVersionId && version.id !== 'current');
+  const imageVersionIndex = Math.max(
+    0,
+    imageVersions.findIndex((version) => version.id === (activeImageVersion?.id || 'current'))
+  );
+  const previewedImageItem =
+    previewFile && activeImageVersion?.url
+      ? {
+          ...previewFile,
+          contentUrl: activeImageVersion.url,
+          title:
+            activeImageVersion.label === '当前'
+              ? previewFile.title
+              : `${previewFile.title} · ${activeImageVersion.label}`,
+        }
+      : previewFile;
 
   useEffect(() => {
     if (selectedCopyRevisionIndex !== null && selectedCopyRevisionIndex !== revisedCopyIndex) {
@@ -7507,7 +7939,7 @@ function WorkspaceRightPanel({
 
       case 'rich-text':
         return (
-          <>
+          <div className="ppt-design-fit-panel">
             <RichTextEditor
               value={richTextContent || WORKSPACE_MOCK_RICH_TEXT}
               onChange={onRichTextChange}
@@ -7516,17 +7948,9 @@ function WorkspaceRightPanel({
               <button
                 type="button"
                 className="btn soft"
-                onClick={() => {
-                  const content = richTextContent || WORKSPACE_MOCK_RICH_TEXT;
-                  const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>图文内容</title></head><body>${content}</body></html>`;
-                  downloadDataUrl(
-                    `data:text/html;charset=utf-8,${encodeURIComponent(html)}`,
-                    '图文内容.html'
-                  );
-                  toast('图文内容已下载');
-                }}
+                onClick={() => toast('已开始导出 DOCX 文件')}
               >
-                下载图文
+                导出docx文件
               </button>
               {!reviewerMode && (
                 <>
@@ -7548,7 +7972,7 @@ function WorkspaceRightPanel({
                 </>
               )}
             </div>
-          </>
+          </div>
         );
 
       case 'team':
@@ -8391,7 +8815,7 @@ function WorkspaceRightPanel({
                 </button>
             )) : null}
           </div>
-          {!reviewerMode && state.active !== 'literature' && (state.active || previewFile) && (
+          {!reviewerMode && state.active !== 'literature' && state.active !== 'visual' && (state.active || previewFile) && (
             <div className="preview-history-control">
               <button
                 type="button"
@@ -8449,21 +8873,106 @@ function WorkspaceRightPanel({
           <div className="workspace-file-preview">
             {previewFile.contentType === 'image' && previewFile.contentUrl ? (
               <>
-                <DrawableImagePreview item={previewFile} />
+                <div className="workspace-surface-panel image-preview-stage">
+                  {previewedImageItem && <DrawableImagePreview item={previewedImageItem} />}
+                  {imageVersions.length > 1 && (
+                    <div
+                      className="creator-ppt-version-scrubber image-version-scrubber"
+                      role="slider"
+                      aria-label="查看图片版本"
+                      aria-valuemin={0}
+                      aria-valuemax={Math.max(imageVersions.length - 1, 0)}
+                      aria-valuenow={imageVersionIndex}
+                    >
+                      <div className="creator-ppt-version-scrubber-track" aria-hidden>
+                        <i
+                          style={{
+                            width:
+                              imageVersions.length <= 1
+                                ? '0%'
+                                : `${(imageVersionIndex / (imageVersions.length - 1)) * 100}%`,
+                          }}
+                        />
+                      </div>
+                      <div className="creator-ppt-version-scrubber-nodes">
+                        {imageVersions.map((version) => (
+                          <button
+                            key={version.id}
+                            type="button"
+                            className={`creator-ppt-version-node ${
+                              imageVersionId === version.id ? 'active' : ''
+                            }`}
+                            title={version.prompt}
+                            aria-label={version.label}
+                            onClick={() => setImageVersionId(version.id)}
+                          >
+                            <span className="creator-ppt-version-dot" />
+                            <span className="creator-ppt-version-label">{version.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <div className="image-preview-submit-actions">
-                  <button
-                    type="button"
-                    className="btn soft"
-                    onClick={() =>
-                      downloadDataUrl(
-                        previewFile.contentUrl || '',
-                        previewFile.fileName || `${previewFile.title}.svg`
-                      )
-                    }
-                  >
-                    下载图片
-                  </button>
-                  {!reviewerMode && (
+                  {viewingHistoricalImage && (
+                    <button
+                      type="button"
+                      className="btn primary"
+                      onClick={() => {
+                        const task = imageModificationTasks.find((item) => item.id === imageVersionId);
+                        if (!task?.imageSnapshot) {
+                          toast('未找到可回溯的图片版本');
+                          return;
+                        }
+                        onRestoreImageVersion(task);
+                        setImageVersionId('current');
+                      }}
+                    >
+                      回溯到当前版本
+                    </button>
+                  )}
+                  <div className="image-download-control">
+                    <button
+                      type="button"
+                      className="btn soft"
+                      aria-expanded={imageDownloadOpen}
+                      aria-haspopup="menu"
+                      onClick={() => setImageDownloadOpen((open) => !open)}
+                    >
+                      下载图片
+                      <ChevronDown className={`h-3.5 w-3.5 transition ${imageDownloadOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                    {imageDownloadOpen && (
+                      <div className="image-download-menu" role="menu" aria-label="选择下载格式">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="image-download-option"
+                          onClick={() => {
+                            setImageDownloadOpen(false);
+                            toast('已开始下载 JPG 格式');
+                          }}
+                        >
+                          <span>JPG 格式</span>
+                          <small>适合预览与分享</small>
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="image-download-option"
+                          onClick={() => {
+                            setImageDownloadOpen(false);
+                            toast('已开始下载 PSD 格式');
+                          }}
+                        >
+                          <span>PSD 格式</span>
+                          <small>适合分层继续修改</small>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {!reviewerMode && !viewingHistoricalImage && (
                     <>
                       <button
                         type="button"

@@ -21,6 +21,10 @@ export interface ModificationTask {
   resultSummary?: string;
   /** 该任务对应的页面版本快照（小版本） */
   slideSnapshot?: PptSlide;
+  /** 图片产出物版本快照 */
+  imageSnapshot?: string;
+  /** 图片资产标识，如 kv / poster */
+  assetKey?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -299,6 +303,10 @@ export function isPptDesignModificationTask(task: ModificationTask): boolean {
   return task.targetTab === 'ppt-design' && task.pageIndex != null;
 }
 
+export function isVisualModificationTask(task: ModificationTask): boolean {
+  return task.targetTab === 'visual';
+}
+
 /**
  * 回溯到某页的指定任务版本：该快照成为「当前」，
  * 仅保留时间线上更早的任务作为历史小版本，删除目标任务及其后的全部任务。
@@ -319,6 +327,27 @@ export function prunePageTasksThrough(
   // 目标版本会变成「当前」，因此历史轨道只保留它之前的节点
   const keepIds = new Set(pageTimeline.slice(0, targetIndex).map((item) => item.id));
   const next = tasks.filter((item) => item.pageIndex !== pageIndex || keepIds.has(item.id));
+  return { next, removedCount: tasks.length - next.length };
+}
+
+/**
+ * 回溯到某张图片的指定任务版本：该快照成为「当前」，
+ * 仅保留时间线上更早的任务作为历史小版本。
+ */
+export function pruneAssetTasksThrough(
+  tasks: ModificationTask[],
+  assetKey: string,
+  keepThroughTaskId: string
+): { next: ModificationTask[]; removedCount: number } {
+  const timeline = [...tasks]
+    .filter((item) => item.assetKey === assetKey)
+    .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id));
+  const targetIndex = timeline.findIndex((item) => item.id === keepThroughTaskId);
+  if (targetIndex < 0) {
+    return { next: tasks, removedCount: 0 };
+  }
+  const keepIds = new Set(timeline.slice(0, targetIndex).map((item) => item.id));
+  const next = tasks.filter((item) => item.assetKey !== assetKey || keepIds.has(item.id));
   return { next, removedCount: tasks.length - next.length };
 }
 

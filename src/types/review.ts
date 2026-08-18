@@ -22,6 +22,8 @@ export interface PptCommentReply {
   authorRole: UserRole;
   authorName: string;
   content: string;
+  /** 可选附图（data URL） */
+  imageUrl?: string;
   createdAt: number;
 }
 
@@ -32,6 +34,8 @@ export interface PptReviewComment {
   authorRole: UserRole;
   authorName: string;
   content: string;
+  /** 可选附图（data URL） */
+  imageUrl?: string;
   createdAt: number;
   replies: PptCommentReply[];
 }

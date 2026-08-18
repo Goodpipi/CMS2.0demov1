@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
-import { Bold, Italic, List, ListOrdered, Quote, Redo2, Underline, Undo2 } from 'lucide-react';
+import { Bold, ImagePlus, Italic, List, ListOrdered, Redo2, Underline, Undo2 } from 'lucide-react';
 
 interface RichTextEditorProps {
   value: string;
@@ -7,6 +7,8 @@ interface RichTextEditorProps {
   /** 底部操作区：下载 / 团队审阅 / Veeva（由工作台注入） */
   footerActions?: ReactNode;
 }
+
+const MOCK_INSERT_IMAGE = '/demo-assets/CaseCard_Result_01.PNG';
 
 /** 导出保留排版的独立 HTML 文件正文样式 */
 export const RICH_TEXT_EXPORT_STYLES = `
@@ -17,10 +19,10 @@ export const RICH_TEXT_EXPORT_STYLES = `
   h3 { margin: 22px 0 10px; color: #2a5678; font-size: 16px; }
   p { margin: 0 0 14px; }
   ul, ol { margin: 10px 0 18px; padding-left: 24px; }
-  blockquote { margin: 22px 0; padding: 14px 18px; border-left: 4px solid #4a9ee0; background: #eef7fe; color: #36556f; }
   .rich-text-lead { color: #546d83; font-size: 15.5px; }
-  .rich-text-callout { margin: 22px 0; padding: 15px 18px; border-radius: 10px; background: linear-gradient(135deg, #edf7ff, #f0f8ed); }
   .rich-text-disclaimer { margin-top: 28px; color: #7a8fa3; font-size: 12px; }
+  .rich-text-figure { margin: 18px 0; }
+  .rich-text-figure img { display: block; width: 100%; border-radius: 12px; }
 `.trim();
 
 export function buildRichTextHtmlDocument(content: string, title = '图文内容'): string {
@@ -38,21 +40,94 @@ export function buildRichTextHtmlDocument(content: string, title = '图文内容
 </html>`;
 }
 
+function wrapBareImages(root: HTMLElement) {
+  root.querySelectorAll('img').forEach((img) => {
+    if (img.closest('.rich-text-figure')) return;
+    const figure = document.createElement('figure');
+    figure.className = 'rich-text-figure';
+    img.parentNode?.insertBefore(figure, img);
+    figure.appendChild(img);
+  });
+}
+
+function enhanceFigures(root: HTMLElement) {
+  wrapBareImages(root);
+  root.querySelectorAll<HTMLElement>('.rich-text-figure').forEach((figure) => {
+    figure.setAttribute('contenteditable', 'false');
+    figure.setAttribute('draggable', 'true');
+    const img = figure.querySelector('img');
+    if (img) img.draggable = false;
+  });
+}
+
+function createFigure(src: string, alt = '图文配图') {
+  const figure = document.createElement('figure');
+  figure.className = 'rich-text-figure';
+  figure.setAttribute('contenteditable', 'false');
+  figure.setAttribute('draggable', 'true');
+  const img = document.createElement('img');
+  img.src = src;
+  img.alt = alt;
+  img.draggable = false;
+  figure.appendChild(img);
+  return figure;
+}
+
 export function RichTextEditor({ value, onChange, footerActions }: RichTextEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const lastEmittedRef = useRef('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const replaceTargetRef = useRef<HTMLImageElement | null>(null);
+  const dragFigureRef = useRef<HTMLElement | null>(null);
+  const dragMovedRef = useRef(false);
+
+  const emitChange = () => {
+    const html = editorRef.current?.innerHTML || '';
+    lastEmittedRef.current = html;
+    onChange(html);
+  };
 
   useEffect(() => {
     if (!editorRef.current || value === lastEmittedRef.current) return;
     editorRef.current.innerHTML = value;
+    enhanceFigures(editorRef.current);
   }, [value]);
 
   const runCommand = (command: string, commandValue?: string) => {
     editorRef.current?.focus();
     document.execCommand(command, false, commandValue);
-    const html = editorRef.current?.innerHTML || '';
-    lastEmittedRef.current = html;
-    onChange(html);
+    emitChange();
+  };
+
+  const openReplacePicker = (img: HTMLImageElement) => {
+    replaceTargetRef.current = img;
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  };
+
+  const applyImageFile = (file: File, img: HTMLImageElement | null) => {
+    if (!file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const src = String(reader.result || '');
+      if (!src) return;
+      if (img) {
+        img.src = src;
+      } else if (editorRef.current) {
+        editorRef.current.appendChild(createFigure(src, file.name));
+      }
+      enhanceFigures(editorRef.current!);
+      emitChange();
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const insertMockImage = () => {
+    editorRef.current?.appendChild(createFigure(MOCK_INSERT_IMAGE));
+    enhanceFigures(editorRef.current!);
+    emitChange();
   };
 
   const tools = [
@@ -63,11 +138,10 @@ export function RichTextEditor({ value, onChange, footerActions }: RichTextEdito
     { label: '下划线', icon: Underline, command: 'underline' },
     { label: '无序列表', icon: List, command: 'insertUnorderedList' },
     { label: '有序列表', icon: ListOrdered, command: 'insertOrderedList' },
-    { label: '引用', icon: Quote, command: 'formatBlock', value: 'blockquote' },
   ] as const;
 
   return (
-    <div className="rich-text-editor">
+    <div className="workspace-surface-panel rich-text-editor">
       <div className="rich-text-toolbar" aria-label="富文本工具栏">
         <select
           className="rich-text-format-select"
@@ -80,7 +154,7 @@ export function RichTextEditor({ value, onChange, footerActions }: RichTextEdito
           <option value="h2">标题 2</option>
           <option value="h3">标题 3</option>
         </select>
-        {tools.map(({ label, icon: Icon, command, value: commandValue }) => (
+        {tools.map(({ label, icon: Icon, command }) => (
           <button
             key={label}
             type="button"
@@ -88,22 +162,108 @@ export function RichTextEditor({ value, onChange, footerActions }: RichTextEdito
             title={label}
             aria-label={label}
             onMouseDown={(event) => event.preventDefault()}
-            onClick={() => runCommand(command, commandValue)}
+            onClick={() => runCommand(command)}
           >
             <Icon size={15} />
           </button>
         ))}
+        <button
+          type="button"
+          className="rich-text-tool"
+          title="插入图片"
+          aria-label="插入图片"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={insertMockImage}
+        >
+          <ImagePlus size={15} />
+        </button>
       </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) applyImageFile(file, replaceTargetRef.current);
+          replaceTargetRef.current = null;
+        }}
+      />
       <div className="rich-text-paper-wrap">
         <div
           ref={editorRef}
           className="rich-text-paper"
           contentEditable
           suppressContentEditableWarning
-          onInput={(event) => {
-            const html = event.currentTarget.innerHTML;
-            lastEmittedRef.current = html;
-            onChange(html);
+          onInput={() => emitChange()}
+          onClick={(event) => {
+            if (dragMovedRef.current) {
+              dragMovedRef.current = false;
+              return;
+            }
+            const figure = (event.target as HTMLElement).closest('.rich-text-figure');
+            const img = figure?.querySelector('img');
+            if (img) {
+              event.preventDefault();
+              openReplacePicker(img);
+            }
+          }}
+          onDragStart={(event) => {
+            const figure = (event.target as HTMLElement).closest('.rich-text-figure');
+            if (!figure) return;
+            dragFigureRef.current = figure;
+            dragMovedRef.current = false;
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', 'rich-text-figure');
+          }}
+          onDrag={(event) => {
+            if (Math.abs(event.movementX) + Math.abs(event.movementY) > 2) {
+              dragMovedRef.current = true;
+            }
+          }}
+          onDragOver={(event) => {
+            event.preventDefault();
+            const figure = (event.target as HTMLElement).closest('.rich-text-figure');
+            editorRef.current?.querySelectorAll('.rich-text-figure.is-drop-target').forEach((node) => {
+              node.classList.remove('is-drop-target');
+            });
+            if (figure && figure !== dragFigureRef.current) {
+              figure.classList.add('is-drop-target');
+            }
+            event.dataTransfer.dropEffect = Array.from(event.dataTransfer.types).includes('Files')
+              ? 'copy'
+              : 'move';
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            editorRef.current?.querySelectorAll('.rich-text-figure.is-drop-target').forEach((node) => {
+              node.classList.remove('is-drop-target');
+            });
+            const targetFigure = (event.target as HTMLElement).closest('.rich-text-figure');
+            const file = event.dataTransfer.files?.[0];
+            if (file?.type.startsWith('image/')) {
+              applyImageFile(file, targetFigure?.querySelector('img') || null);
+              dragFigureRef.current = null;
+              return;
+            }
+            const source = dragFigureRef.current;
+            if (source && targetFigure && source !== targetFigure && editorRef.current?.contains(targetFigure)) {
+              const rect = targetFigure.getBoundingClientRect();
+              const placeAfter = event.clientY > rect.top + rect.height / 2;
+              if (placeAfter) {
+                targetFigure.after(source);
+              } else {
+                targetFigure.before(source);
+              }
+              emitChange();
+            }
+            dragFigureRef.current = null;
+          }}
+          onDragEnd={() => {
+            editorRef.current?.querySelectorAll('.rich-text-figure.is-drop-target').forEach((node) => {
+              node.classList.remove('is-drop-target');
+            });
+            dragFigureRef.current = null;
           }}
         />
       </div>

@@ -39,6 +39,7 @@ export interface ChatMessage {
   imageUrl?: string;
   imageTitle?: string;
   imageActionLabel?: string;
+  imageAssetKey?: string;
   /** 生成中的占位消息，完成后移除 */
   loading?: boolean;
 }
