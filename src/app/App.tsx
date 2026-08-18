@@ -118,6 +118,8 @@ import {
   updateTaskStatus,
   seedReviewTasksIfEmpty,
   reviewerTabsForContentType,
+  isCommentableContentType,
+  reviewCommentScopeLabel,
   mergeSessionCopyRevisions,
   sessionCopyRevisionBase,
   propagateCopyRevisionsToSession,
@@ -794,24 +796,20 @@ export default function App() {
         );
         return;
       }
-      if (type === 'visual' && generatedImages.length > 0 && !selectedImages.some(Boolean)) {
-        toast('请至少勾选一张图片后再提交团队审阅');
+      if (type === 'visual' && generatedImages.length === 0) {
+        toast('请先生成图片后再提交团队审阅');
         return;
       }
       const payload = buildTeamPayload(type);
       if (!payload) {
-        if (type === 'visual' && generatedImages.length > 0) {
-          toast('请至少勾选一张图片后再提交团队审阅');
-        } else {
-          toast(`请先生成${TEAM_CONTENT_LABELS[type]}后再提交团队审阅`);
-        }
+        toast(`请先生成${TEAM_CONTENT_LABELS[type]}后再提交团队审阅`);
         return;
       }
       setTeamReviewTarget(type);
       setTeamAssigneeRoles([]);
       setShowTeamModal(true);
     },
-    [buildTeamPayload, generatedImages, selectedImages]
+    [buildTeamPayload, generatedImages]
   );
 
   const toggleTeamAssigneeRole = (role: 'medical' | 'marketing') => {
@@ -1113,7 +1111,7 @@ export default function App() {
   useEffect(() => {
     if (!activeReviewTaskId) return;
     const task = reviewTasks.find((item) => item.id === activeReviewTaskId);
-    if (!task || task.contentType !== 'ppt') return;
+    if (!task || !isCommentableContentType(task.contentType)) return;
     setReviewPptNotes(
       (task.pptComments || []).reduce<Record<number, PptReviewComment[]>>((grouped, comment) => {
         grouped[comment.pageIndex] = [...(grouped[comment.pageIndex] || []), comment];
@@ -4397,10 +4395,9 @@ export default function App() {
           status: 'completed',
           copyRevisions,
           copyRevisionBase: revisionBase,
-          completedReviewCount:
-            task.contentType === 'ppt'
-              ? (task.completedReviewCount || 0) + 1
-              : task.completedReviewCount,
+          completedReviewCount: isCommentableContentType(task.contentType)
+            ? (task.completedReviewCount || 0) + 1
+            : task.completedReviewCount,
         });
       }
     } else {
@@ -4646,13 +4643,17 @@ export default function App() {
     pptVersions.find((version) => version.id === selectedPptVersionId)?.slides ||
     pptVersions[0]?.slides ||
     [];
-  const creatorPptReviewTasks = reviewTasks.filter(
-    (task) => task.sessionId === currentSessionId && task.contentType === 'ppt'
+  const creatorCommentContentType: TeamContentType =
+    state.active === 'visual' ? 'visual' : state.active === 'rich-text' ? 'rich-text' : 'ppt';
+  const creatorCommentReviewTasks = reviewTasks.filter(
+    (task) =>
+      task.sessionId === currentSessionId && isCommentableContentType(task.contentType)
   );
-  const hasCompletedPptReview = creatorPptReviewTasks.some(
+  const hasCompletedContentReview = creatorCommentReviewTasks.some(
     (task) => task.status === 'completed' || (task.completedReviewCount || 0) > 0
   );
-  const creatorPptComments = creatorPptReviewTasks
+  const creatorContextComments = creatorCommentReviewTasks
+    .filter((task) => task.contentType === creatorCommentContentType)
     .flatMap((task) =>
       (task.pptComments || []).map((comment) => ({
         taskId: task.id,
@@ -4662,9 +4663,21 @@ export default function App() {
       }))
     )
     .sort((a, b) => a.comment.createdAt - b.comment.createdAt);
-  const creatorCurrentPageComments = creatorPptComments.filter(
-    ({ comment }) => comment.pageIndex === creatorPptPageIndex
-  );
+  const creatorVisibleComments =
+    creatorCommentContentType === 'ppt'
+      ? creatorContextComments.filter(({ comment }) => comment.pageIndex === creatorPptPageIndex)
+      : creatorContextComments;
+  const creatorPptComments = creatorCommentReviewTasks
+    .filter((task) => task.contentType === 'ppt')
+    .flatMap((task) =>
+      (task.pptComments || []).map((comment) => ({
+        taskId: task.id,
+        reviewerName: task.assigneeName,
+        reviewerDept: ROLE_PROFILES[task.assigneeRole].dept,
+        comment,
+      }))
+    )
+    .sort((a, b) => a.comment.createdAt - b.comment.createdAt);
   const pptModificationTasks = useMemo(
     () => modificationTasks.filter(isPptDesignModificationTask),
     [modificationTasks]
@@ -5721,7 +5734,7 @@ export default function App() {
             </div>
 
             <div
-              className={`creator-right-tabs ${hasCompletedPptReview ? 'has-comments' : ''}`}
+              className={`creator-right-tabs ${hasCompletedContentReview ? 'has-comments' : ''}`}
               role="tablist"
               aria-label="对话、任务与批注"
             >
@@ -5746,7 +5759,7 @@ export default function App() {
                   <span>{runningModificationTaskCount}</span>
                 )}
               </button>
-              {hasCompletedPptReview && (
+              {hasCompletedContentReview && (
                 <button
                   type="button"
                   role="tab"
@@ -5758,13 +5771,13 @@ export default function App() {
                   }}
                 >
                   批注
-                  {creatorPptComments.length > 0 && <span>{creatorPptComments.length}</span>}
+                  {creatorVisibleComments.length > 0 && <span>{creatorVisibleComments.length}</span>}
                 </button>
               )}
             </div>
 
             {creatorRightTab === 'ai' ||
-            (creatorRightTab === 'comments' && !hasCompletedPptReview) ? (
+            (creatorRightTab === 'comments' && !hasCompletedContentReview) ? (
             <>
             {activeReviewTaskId && activeReviewTask && (
                 <div className="review-task-banner">
@@ -6106,13 +6119,17 @@ export default function App() {
                   <div className="creator-comments-summary">
                     <div className="creator-comments-summary-title">
                       <MessageSquare className="h-3.5 w-3.5 text-[#3BA6E8]" strokeWidth={2.4} />
-                      <strong>第 {creatorPptPageIndex + 1} 页批注</strong>
+                      <strong>
+                        {creatorCommentContentType === 'ppt'
+                          ? `第 ${creatorPptPageIndex + 1} 页批注`
+                          : `${TEAM_CONTENT_LABELS[creatorCommentContentType]}批注`}
+                      </strong>
                     </div>
-                    <span className="creator-comments-count">{creatorCurrentPageComments.length}</span>
+                    <span className="creator-comments-count">{creatorVisibleComments.length}</span>
                   </div>
                   <div className="creator-comments-list">
-                    {creatorCurrentPageComments.length > 0 ? (
-                      creatorCurrentPageComments.map(({ taskId, reviewerName, reviewerDept, comment }) => (
+                    {creatorVisibleComments.length > 0 ? (
+                      creatorVisibleComments.map(({ taskId, reviewerName, reviewerDept, comment }) => (
                         <article key={comment.id} className="creator-comment-thread">
                           <div className="creator-comment-card-main">
                             <span className="creator-comment-card-icon" aria-hidden>
@@ -6121,7 +6138,11 @@ export default function App() {
                             <div className="creator-comment-card-body">
                               <div className="creator-comment-meta">
                                 <strong>
-                                  第 {comment.pageNumber} 页 · {reviewerName}
+                                  {reviewCommentScopeLabel(
+                                    creatorCommentContentType,
+                                    comment.pageNumber
+                                  )}{' '}
+                                  · {reviewerName}
                                 </strong>
                                 <span className="creator-comment-dept">{reviewerDept}</span>
                               </div>
@@ -6243,7 +6264,13 @@ export default function App() {
                         </article>
                       ))
                     ) : (
-                      <div className="creator-comments-empty">当前页面暂无审阅批注</div>
+                      <div className="creator-comments-empty">
+                        {creatorCommentContentType === 'visual'
+                          ? '当前图片暂无审阅批注'
+                          : creatorCommentContentType === 'rich-text'
+                            ? '当前图文暂无审阅批注'
+                            : '当前页面暂无审阅批注'}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -6302,7 +6329,9 @@ export default function App() {
                     <div className="small" style={{ marginTop: 6 }}>
                       {activeReviewTask.contentType === 'ppt'
                         ? '请在「PPT大纲」中修改章节与页面要点并保存；无需生成 PPT 成品。'
-                        : '请仅修改右侧已生成的内容；保存后运营可在任务中查看修改详情。'}
+                        : isCommentableContentType(activeReviewTask.contentType)
+                          ? '请在中间预览中查看内容，并在右侧批注栏添加意见。'
+                          : '请仅修改右侧已生成的内容；保存后运营可在任务中查看修改详情。'}
                     </div>
                   </div>
                   <div className="quick-row">
@@ -6442,15 +6471,25 @@ export default function App() {
             onSaveCopyReview={saveCopyReview}
             onOpenPptSlideEditor={openPptSlideEditor}
           />
-          {reviewFocusMode && activeReviewTask?.contentType === 'ppt' && (
+          {reviewFocusMode &&
+            activeReviewTask &&
+            isCommentableContentType(activeReviewTask.contentType) && (
             <aside className="wpanel reviewer-ppt-comments-panel">
               <div className="reviewer-ppt-comments-panel-head">
                 <strong>批注</strong>
-                <span>第 {reviewPptSlides[reviewPptPageIndex]?.page ?? reviewPptPageIndex + 1} 页</span>
+                <span>
+                  {activeReviewTask.contentType === 'ppt'
+                    ? `第 ${reviewPptSlides[reviewPptPageIndex]?.page ?? reviewPptPageIndex + 1} 页`
+                    : TEAM_CONTENT_LABELS[activeReviewTask.contentType]}
+                </span>
               </div>
               <div className="reviewer-ppt-comment-list reviewer-ppt-comment-list-expanded">
-                {(reviewPptNotes[reviewPptPageIndex] || []).length > 0 ? (
-                  (reviewPptNotes[reviewPptPageIndex] || []).map((note) => (
+                {(reviewPptNotes[
+                  activeReviewTask.contentType === 'ppt' ? reviewPptPageIndex : 0
+                ] || []).length > 0 ? (
+                  (reviewPptNotes[
+                    activeReviewTask.contentType === 'ppt' ? reviewPptPageIndex : 0
+                  ] || []).map((note) => (
                     <div key={note.id} className="reviewer-ppt-comment">
                       <strong>{note.authorName}</strong>
                       {note.content ? <span>{note.content}</span> : null}
@@ -6565,7 +6604,13 @@ export default function App() {
                     </div>
                   ))
                 ) : (
-                  <div className="reviewer-ppt-comments-empty">当前页面暂无批注</div>
+                  <div className="reviewer-ppt-comments-empty">
+                    {activeReviewTask.contentType === 'visual'
+                      ? '当前图片暂无批注'
+                      : activeReviewTask.contentType === 'rich-text'
+                        ? '当前图文暂无批注'
+                        : '当前页面暂无批注'}
+                  </div>
                 )}
               </div>
               <div className="reviewer-ppt-comment-compose">
@@ -6607,7 +6652,13 @@ export default function App() {
                     className="reviewer-ppt-comment-input"
                     value={reviewPptNoteDraft}
                     onChange={(event) => setReviewPptNoteDraft(event.target.value)}
-                    placeholder="针对当前页面添加批注…"
+                    placeholder={
+                      activeReviewTask.contentType === 'visual'
+                        ? '针对当前图片添加批注…'
+                        : activeReviewTask.contentType === 'rich-text'
+                          ? '针对当前图文添加批注…'
+                          : '针对当前页面添加批注…'
+                    }
                   />
                   <button
                     type="button"
@@ -6619,12 +6670,15 @@ export default function App() {
                       if ((!content && !imageUrl) || !activeReviewTaskId) return;
                       const task = getReviewTask(activeReviewTaskId);
                       if (!task) return;
+                      const isPaged = activeReviewTask.contentType === 'ppt';
+                      const pageIndex = isPaged ? reviewPptPageIndex : 0;
                       const now = Date.now();
                       const note: PptReviewComment = {
                         id: `ppt_comment_${now}_${Math.random().toString(36).slice(2, 8)}`,
-                        pageIndex: reviewPptPageIndex,
-                        pageNumber:
-                          reviewPptSlides[reviewPptPageIndex]?.page ?? reviewPptPageIndex + 1,
+                        pageIndex,
+                        pageNumber: isPaged
+                          ? reviewPptSlides[reviewPptPageIndex]?.page ?? reviewPptPageIndex + 1
+                          : 1,
                         authorRole: userRole,
                         authorName: ROLE_PROFILES[userRole].name,
                         content,
@@ -6640,7 +6694,7 @@ export default function App() {
                       });
                       setReviewPptNotes((prev) => ({
                         ...prev,
-                        [reviewPptPageIndex]: [...(prev[reviewPptPageIndex] || []), note],
+                        [pageIndex]: [...(prev[pageIndex] || []), note],
                       }));
                       setReviewPptNoteDraft('');
                       setReviewPptNoteImageDraft(null);

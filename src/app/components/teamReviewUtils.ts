@@ -95,15 +95,14 @@ export function buildTeamReviewPayload(
       const picked = ctx.generatedImages
         .map((_, i) => i)
         .filter((i) => ctx.selectedImages[i]);
-      const indices = picked.length > 0 ? picked : [];
-      if (indices.length === 0) return null;
+      const indices = picked.length > 0 ? picked : ctx.generatedImages.map((_, i) => i);
       const copyRef = ctx.getCopyBody();
       return {
         title: `配图 ${indices.map((i) => i + 1).join('、')}`,
         body: [
-          `已勾选 ${indices.length}/${ctx.generatedImages.length} 张配图/海报提交团队审阅（第 ${indices.map((i) => i + 1).join('、')} 张）。`,
+          `已提交 ${indices.length}/${ctx.generatedImages.length} 张配图/海报给团队审阅（第 ${indices.map((i) => i + 1).join('、')} 张）。`,
           copyRef ? `关联文案：\n${copyRef.slice(0, 800)}` : '',
-          '请团队从画面视觉、文案层级、品牌元素与合规表述（避免疗效承诺）方面提出修改意见。',
+          '请团队从画面视觉、文案层级、品牌元素与合规表述（避免疗效承诺）方面提出修改意见，并可直接添加批注。',
         ]
           .filter(Boolean)
           .join('\n\n'),

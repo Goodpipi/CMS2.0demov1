@@ -46,6 +46,18 @@ export function reviewerTabsForContentType(
   }
 }
 
+export function isCommentableContentType(
+  type: TeamContentType | undefined | null
+): type is 'ppt' | 'visual' | 'rich-text' {
+  return type === 'ppt' || type === 'visual' || type === 'rich-text';
+}
+
+export function reviewCommentScopeLabel(type: TeamContentType, pageNumber = 1): string {
+  if (type === 'visual') return '图片';
+  if (type === 'rich-text') return '图文';
+  return `第 ${pageNumber} 页`;
+}
+
 const STORAGE_KEY = 'acp_review_tasks_v1';
 
 export function loadReviewTasks(): ReviewTask[] {
