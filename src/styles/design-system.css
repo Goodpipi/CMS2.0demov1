@@ -443,11 +443,18 @@ textarea,
   }
 
   .home-inspire-action-art {
-    display: none;
+    transform: translate(8px, 6px) scale(0.78);
+    transform-origin: right bottom;
+  }
+
+  .home-inspire-action:hover .home-inspire-action-art {
+    opacity: 1;
+    transform: translate(0, 0) scale(0.82);
+    transform-origin: right bottom;
   }
 
   .home-inspire-action:hover .home-inspire-action-body {
-    max-width: 100%;
+    max-width: calc(100% - 82px);
   }
 
   .home-inspire-action-cta {
