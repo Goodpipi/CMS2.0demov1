@@ -300,7 +300,7 @@ export function AssetLibraryPage({ onNotify, onBack }: AssetLibraryPageProps) {
               <LibraryBig className="h-5 w-5" />
             </span>
             <div>
-              <h2 className="text-[28px] font-semibold tracking-tight text-foreground">素材库</h2>
+              <h2 className="text-[28px] font-semibold tracking-tight text-foreground">视觉素材库</h2>
               <p className="mt-0.5 text-[12.5px] text-muted-foreground">统一管理创作模板与品牌视觉元素</p>
             </div>
           </div>

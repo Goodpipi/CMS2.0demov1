@@ -51,8 +51,7 @@ interface SelectableSvgPreviewProps {
 }
 
 function isLockedBackground(el: Element): boolean {
-  const tag = el.tagName.toLowerCase();
-  return el.getAttribute('data-edit-id') === 'el-bg' || tag === 'image';
+  return el.getAttribute('data-edit-id') === 'el-bg';
 }
 
 export const SelectableSvgPreview = forwardRef<

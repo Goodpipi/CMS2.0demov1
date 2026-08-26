@@ -112,7 +112,7 @@ export function prepareEditableSvg(svgString: string): { svg: string; elements: 
         tag,
         label,
         isText,
-        isBackground: id === 'el-bg' || tag === 'image',
+        isBackground: id === 'el-bg',
       });
     }
     Array.from(el.children).forEach(walk);
@@ -343,13 +343,15 @@ export function collectElementList(container: HTMLElement): SvgElementInfo[] {
     const textPreview = isText ? (el.textContent || '').trim().slice(0, 24) : '';
     const label = isText
       ? `文本: ${textPreview || '(空)'}`
-      : `${tag} #${id.replace('el-', '')}`;
+      : tag === 'image'
+        ? `图片 #${id.replace('el-', '')}`
+        : `${tag} #${id.replace('el-', '')}`;
     elements.push({
       id,
       tag,
       label,
       isText,
-      isBackground: id === 'el-bg' || tag === 'image',
+      isBackground: id === 'el-bg',
     });
   });
   return elements;
@@ -471,6 +473,52 @@ export function createInsertShape(
     tag,
     label: tag === 'text' ? '文本: 新文字' : `${tag} #${id.replace('el-', '')}`,
     isText: tag === 'text',
+    isBackground: false,
+  };
+}
+
+export function createInsertImage(
+  svg: SVGSVGElement,
+  href: string,
+  id: string,
+  naturalSize: { width: number; height: number }
+): SvgElementInfo {
+  const ns = 'http://www.w3.org/2000/svg';
+  const xlink = 'http://www.w3.org/1999/xlink';
+  if (!svg.getAttribute('xmlns:xlink')) {
+    svg.setAttribute('xmlns:xlink', xlink);
+  }
+  const vb = svg.viewBox?.baseVal;
+  const canvasW = vb && vb.width > 0 ? vb.width : svg.clientWidth || 900;
+  const canvasH = vb && vb.height > 0 ? vb.height : svg.clientHeight || 560;
+  const ratio = naturalSize.width > 0 && naturalSize.height > 0
+    ? naturalSize.width / naturalSize.height
+    : 4 / 3;
+  const maxW = canvasW * 0.4;
+  const maxH = canvasH * 0.4;
+  let w = maxW;
+  let h = w / ratio;
+  if (h > maxH) {
+    h = maxH;
+    w = h * ratio;
+  }
+  const x = (canvasW - w) / 2;
+  const y = (canvasH - h) / 2;
+  const el = svg.ownerDocument.createElementNS(ns, 'image');
+  el.setAttribute('x', String(Math.round(x)));
+  el.setAttribute('y', String(Math.round(y)));
+  el.setAttribute('width', String(Math.round(w)));
+  el.setAttribute('height', String(Math.round(h)));
+  el.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+  el.setAttribute('href', href);
+  el.setAttributeNS(xlink, 'href', href);
+  el.setAttribute('data-edit-id', id);
+  svg.appendChild(el);
+  return {
+    id,
+    tag: 'image',
+    label: `图片 #${id.replace('el-', '')}`,
+    isText: false,
     isBackground: false,
   };
 }

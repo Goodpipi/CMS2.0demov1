@@ -14,8 +14,7 @@ export function BrandLogo({ className, onClick }: BrandLogoProps) {
       <span className="brand-logo-divider" aria-hidden />
       <span className="brand-logo-copy">
         <span className="brand-logo-title">
-          <span className="brand-logo-title-dark">拜意达</span>{' '}
-          <span className="brand-logo-title-gradient">Baidea</span>
+          <span className="brand-logo-title-gradient">Bayidea</span>
         </span>
         <span className="brand-logo-zh">智能内容生成平台</span>
         <span className="brand-logo-en">AI-POWERED CONTENT STUDIO</span>
@@ -29,7 +28,7 @@ export function BrandLogo({ className, onClick }: BrandLogoProps) {
         type="button"
         className={cn('brand-logo', className)}
         onClick={onClick}
-        aria-label="拜意达 Baidea 首页"
+        aria-label="Bayidea 首页"
       >
         {content}
       </button>
@@ -37,7 +36,7 @@ export function BrandLogo({ className, onClick }: BrandLogoProps) {
   }
 
   return (
-    <div className={cn('brand-logo', className)} aria-label="拜意达 Baidea">
+    <div className={cn('brand-logo', className)} aria-label="Bayidea">
       {content}
     </div>
   );

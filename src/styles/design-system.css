@@ -339,3 +339,250 @@ textarea,
   font-weight: 600 !important;
   color: #64748b !important;
 }
+
+/* Compact density: 13.3" Mac Retina CSS ~1280x800, and other short/narrow viewports */
+@media (max-width: 1366px), (max-height: 860px) {
+  :root {
+    --app-header-height: 64px;
+  }
+
+  .app-global-header {
+    height: var(--app-header-height);
+    min-height: var(--app-header-height);
+    padding: 0 20px;
+    gap: 12px;
+  }
+
+  .app-screen-body {
+    padding-left: 16px;
+    padding-right: 16px;
+    padding-bottom: 12px;
+  }
+
+  /* —— Home —— */
+  .home-task-dashboard.home-inspire-layout {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
+    padding-top: 40px;
+    padding-bottom: 12px;
+  }
+
+  .home-inspire-head {
+    flex: 0 0 auto;
+  }
+
+  .home-inspire-head h2 {
+    font-size: 26px;
+  }
+
+  .home-inspire-head p {
+    margin-top: 6px;
+    font-size: 12.5px;
+    line-height: 1.45;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .home-inspire-grid {
+    flex: 1 1 auto;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1.55fr) minmax(220px, 0.85fr);
+    gap: 12px;
+    margin-top: 12px;
+  }
+
+  .home-inspire-left {
+    min-height: 0;
+    height: 100%;
+    gap: 8px;
+  }
+
+  .home-inspire-hero {
+    min-height: 120px;
+    padding: 14px 16px 12px;
+    gap: 12px;
+  }
+
+  .home-inspire-actions {
+    grid-template-rows: repeat(3, minmax(96px, 1fr));
+    gap: 8px;
+  }
+
+  .home-inspire-action {
+    padding: 10px 12px 12px;
+    border-radius: 16px;
+  }
+
+  .home-inspire-action-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
+  }
+
+  .home-inspire-action-body {
+    margin-top: 6px;
+    gap: 4px;
+    padding-right: 4px;
+  }
+
+  .home-inspire-action strong {
+    font-size: 14px;
+  }
+
+  .home-inspire-action-desc {
+    font-size: 11.5px;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .home-inspire-action-art {
+    display: none;
+  }
+
+  .home-inspire-action:hover .home-inspire-action-body {
+    max-width: 100%;
+  }
+
+  .home-inspire-action-cta {
+    padding-top: 4px;
+    font-size: 12px;
+  }
+
+  .home-history-sidebar.open {
+    width: 232px;
+  }
+
+  .home-task-section.home-inspire-history {
+    padding: 8px 10px;
+  }
+
+  /* —— Workspace —— */
+  .workspace {
+    grid-template-columns: minmax(196px, 16fr) minmax(0, 58fr) minmax(260px, 26fr);
+    gap: 8px;
+    padding: 8px;
+    overflow: hidden;
+  }
+
+  .workspace.context-collapsed {
+    grid-template-columns: 56px minmax(0, 58fr) minmax(260px, 26fr);
+  }
+
+  .context-sidebar-head,
+  .right-head-title-row,
+  .chat-head {
+    height: 44px;
+    min-height: 44px;
+    max-height: 44px;
+    padding: 0 12px;
+  }
+
+  .workspace-preview-toolbar {
+    padding: 8px 10px 2px 12px;
+    gap: 8px;
+  }
+
+  .tabs-list .tab,
+  .right-head .tabs button,
+  .tab {
+    font-size: 12px;
+  }
+
+  .ppt-design-fit-panel > .content-submit-actions .btn,
+  .content-submit-actions .btn {
+    font-size: 12px;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .group-head,
+  .source {
+    font-size: 12px;
+    padding: 8px 10px;
+  }
+
+  /* —— Visual editor —— */
+  .visual-editor-layout {
+    grid-template-columns: 220px minmax(0, 1fr) 240px;
+    gap: 8px;
+  }
+
+  .visual-editor-layout > .visual-editor-side,
+  .visual-editor-layout > .visual-editor-props {
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .visual-editor-main {
+    padding: 12px 14px;
+  }
+
+  .visual-editor-props {
+    max-height: none;
+  }
+
+  .visual-editor-element-ai-input {
+    min-height: 64px;
+  }
+
+  /* —— Modals / drawer —— */
+  .drawer {
+    inset: calc(var(--app-header-height) + 8px) 8px 8px;
+    padding: 10px;
+  }
+
+  .modal,
+  .image-template-modal,
+  .material-picker-modal,
+  .reference-asset-preview-modal,
+  .terminology-editor-modal,
+  .terminology-import-modal,
+  .material-detail-modal,
+  .confirm-modal {
+    max-height: min(90vh, 90dvh);
+  }
+
+  /* —— Knowledge / asset libraries —— */
+  .library-page {
+    gap: 12px;
+  }
+
+  .lib-page-title {
+    font-size: 22px;
+  }
+
+  .lib-layout {
+    grid-template-columns: 232px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .lib-grid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 10px;
+    padding: 12px;
+  }
+
+  .lib-page-header {
+    gap: 12px;
+  }
+
+  .screen-full .page {
+    padding: 16px 16px 20px;
+  }
+
+  .screen-full h2 {
+    font-size: 22px;
+  }
+
+  .creator-ppt-preview-card {
+    height: min(760px, calc(100vh - 180px), calc(100dvh - 180px));
+  }
+}
+

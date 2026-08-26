@@ -8,6 +8,7 @@ import type {
   PptOutline,
   PptDesignVersion,
   GeneratedImageMeta,
+  ContentBrief,
 } from '@/types/content';
 import type {
   HotInsightReport,
@@ -28,6 +29,7 @@ export type TabKey =
   | 'video-render'
   | 'ppt-outline'
   | 'ppt-design'
+  | 'brief'
   | 'submit';
 
 export interface ChatMessage {
@@ -58,6 +60,7 @@ export interface SessionAppState {
   videoRender: boolean;
   pptOutline: boolean;
   pptDesign: boolean;
+  brief: boolean;
   submit: boolean;
 }
 
@@ -74,6 +77,7 @@ export interface SessionWorkspace {
   pptVersions: PptDesignVersion[];
   selectedPptVersionId: string | null;
   selectedPptTemplateId: string | null;
+  contentBrief?: ContentBrief | null;
   richTextContent?: string;
   generatedImages: string[];
   generatedImageMeta?: GeneratedImageMeta[];

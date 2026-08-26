@@ -178,6 +178,8 @@ export const HCP_PPT_OUTLINE_01: PptOutline = {
           title: '封面：G1-2期T2D相关患者的肾脏保护价值',
           bullets: ['明确沟通对象为G1-2期T2D相关患者', '突出肾脏保护价值主线', '采用红白专业医学会议视觉'],
           speakerNotes: '用于开场建立主题和沟通边界。',
+          visualSuggestion: '红白会议封面：主标题居中，副标题点明 G1-2 期沟通对象。',
+          references: ['中华肾脏病杂志, 2024. 早期筛查路径真实世界研究.'],
         },
         {
           id: 'hcp-p2',

@@ -32,6 +32,7 @@ import type {
   PptSlide,
   PptDesignVersion,
   GeneratedImageMeta,
+  ContentBrief,
 } from '@/types/content';
 import {
   applyTabForModificationTarget,
@@ -76,6 +77,12 @@ import { buildVideoPosterDataUrl } from '@/app/components/videoUtils';
 import { VisualEditor } from '@/app/components/VisualEditor';
 import { parseSvgFromDataUrl } from '@/app/components/svgEditorUtils';
 import { PptOutlineEditor, PptOutlineGenerateFooter } from '@/app/components/PptOutlineEditor';
+import { ContentBriefPanel } from '@/app/components/ContentBriefPanel';
+import {
+  formatContentBriefText,
+  generateContentBrief,
+  isGenerateBriefIntent,
+} from '@/lib/contentBrief';
 import {
   pptTemplateIdFromTitle,
   PPT_BUILTIN_TEMPLATES,
@@ -89,7 +96,7 @@ import { MaterialContentPreview } from '@/app/components/MaterialContentPreview'
 import { ContextMaterialsPanel } from '@/app/components/ContextMaterialsPanel';
 import { CreationMethodModal } from '@/app/components/CreationMethodModal';
 import type { LibraryItem } from '@/types/library';
-import { materialAttachmentPill } from '@/lib/libraryUtils';
+import { materialAttachmentPill, isMaterialUsable } from '@/lib/libraryUtils';
 import { assignCopyTopicTitles, ensureCopyCount, groupCopiesByTopic } from '@/lib/copyUtils';
 import { groupImagesByCopy } from '@/lib/imageUtils';
 import { buildPreviewFieldsFromTitle } from '@/lib/materialContent';
@@ -99,6 +106,7 @@ import {
   parseScenario,
   slideToPreviewUrl,
   ensureSlideSpeakerNotes,
+  insertCenteredImageIntoSlide,
 } from '@/app/components/pptUtils';
 import { RoleSwitcher } from '@/app/components/RoleSwitcher';
 import { BrandLogo } from '@/app/components/BrandLogo';
@@ -185,15 +193,18 @@ import {
   BookMarked,
   Database,
   ExternalLink,
-  FileText,
   FolderOpen,
   History,
   Image as ImageIcon,
   ImagePlus,
+  LayoutGrid,
   Library as LibraryIcon,
+  Lightbulb,
   Eraser,
+  Megaphone,
   MessageSquare,
   Mic,
+  Microscope,
   Paintbrush,
   Plus,
   Presentation,
@@ -201,6 +212,7 @@ import {
   Sparkles,
   Square,
   Star,
+  Stethoscope,
   Upload,
   Video,
   X,
@@ -238,7 +250,7 @@ import type {
   TabKey,
 } from '@/types/session';
 
-const cats = ['热点洞察', '合规手册', '参考知识', '品牌briefing', '渠道特色'];
+const cats = ['热点洞察', '合规手册', '参考知识', '品牌策略', 'Brief', '模板', '品牌元素'];
 const HOME_TASK_PAGE_SIZE = 7;
 
 const HOME_WORKFLOW_ACTIONS: {
@@ -247,39 +259,55 @@ const HOME_WORKFLOW_ACTIONS: {
   intent: HomeEntryIntent;
   prompt: string;
   Icon: typeof Presentation;
-  art: 'ppt' | 'article' | 'image' | 'text';
+  art: 'case' | 'promo' | 'evidence' | 'poster' | 'insight' | 'more';
 }[] = [
   {
-    title: '生成演示文稿',
-    description: '上传资料后，AI 自动梳理结构并生成可编辑 PPT，支持继续优化与团队审阅。',
+    title: '病例内容',
+    description: '围绕真实诊疗场景梳理病例叙事，生成可用于科室沟通的结构化内容。',
     intent: 'ppt',
-    prompt: '从资料生成演示文稿',
-    Icon: Presentation,
-    art: 'ppt',
+    prompt: '生成病例内容',
+    Icon: Stethoscope,
+    art: 'case',
   },
   {
-    title: '生成长图文',
-    description: '结合品牌与知识素材，生成可编辑长图文，便于渠道分发与团队审阅。',
+    title: '医学与推广内容',
+    description: '结合品牌与合规要求，生成面向医生或公众的医学传播与推广素材。',
     intent: 'copy',
-    prompt: '生成长图文',
-    Icon: BookMarked,
-    art: 'article',
+    prompt: '生成医学与推广内容',
+    Icon: Megaphone,
+    art: 'promo',
   },
   {
-    title: '生成图片',
-    description: '根据主题与品牌规范生成配图、海报与图卡。',
+    title: '学术证据解读',
+    description: '把研究数据与关键结论转译为清晰、可引用的学术解读内容。',
+    intent: 'ppt',
+    prompt: '生成学术证据解读',
+    Icon: Microscope,
+    art: 'evidence',
+  },
+  {
+    title: '会议海报',
+    description: '按会议场景生成可编辑海报，突出主题、数据与视觉层次。',
     intent: 'visual',
-    prompt: '',
+    prompt: '生成会议海报',
     Icon: ImageIcon,
-    art: 'image',
+    art: 'poster',
   },
   {
-    title: '生成文本',
-    description: '面向公众或 HCP 渠道，快速产出合规文本内容。',
-    intent: 'copy',
-    prompt: '生成文本',
-    Icon: FileText,
-    art: 'text',
+    title: '话题洞察',
+    description: '基于素材与渠道趋势，提炼可执行的话题方向与内容机会。',
+    intent: 'insight',
+    prompt: '基于素材生成话题洞察',
+    Icon: Lightbulb,
+    art: 'insight',
+  },
+  {
+    title: '更多内容',
+    description: '不限定形式，从空白任务开始，按你的描述自由生成各类内容。',
+    intent: 'general',
+    prompt: '',
+    Icon: LayoutGrid,
+    art: 'more',
   },
 ];
 
@@ -287,12 +315,14 @@ const initialLibrary: LibraryItem[] = [
   { id: 1, cat: '热点洞察', title: '小红书肾脏健康热点观察 2026-05', meta: 'CMS洞察 · 热点词/互动趋势', cms: true, def: true, addedAt: Date.now() - 9 * 86400000, validUntil: '2026-11-30' },
   { id: 2, cat: '合规手册', title: '公众渠道疾病教育合规手册', meta: 'Word · 全局资料 · 最新版', cms: false, def: true, addedAt: Date.now() - 8 * 86400000 },
   { id: 3, cat: '参考知识', title: '肾脏健康疾病教育参考知识包', meta: 'PDF/Excel · 12条知识点', cms: false, def: true, addedAt: Date.now() - 7 * 86400000 },
-  { id: 4, cat: '品牌briefing', title: '2026 品牌沟通 Briefing', meta: 'PDF · 2.4MB · 本地上传', cms: false, def: true, addedAt: Date.now() - 6 * 86400000 },
-  { id: 5, cat: '渠道特色', title: '小红书渠道表达与视觉偏好', meta: '上传资料 · 风格案例 15 个', cms: false, def: true, addedAt: Date.now() - 5 * 86400000 },
+  { id: 4, cat: 'Brief', title: '2026 品牌沟通 Briefing', meta: 'PDF · 2.4MB · 本地上传', cms: false, def: true, addedAt: Date.now() - 6 * 86400000 },
+  { id: 5, cat: '品牌策略', title: '心肾品牌策略要点 2026', meta: 'PPT · 品牌策略主线', cms: false, def: true, addedAt: Date.now() - 5 * 86400000 },
   { id: 6, cat: '参考知识', title: 'Approved Claims Library', meta: 'CMS · Approved · 可追溯', cms: true, def: true, addedAt: Date.now() - 4 * 86400000, validUntil: '2027-04-30' },
-  { id: 7, cat: '渠道特色', title: 'Bayer Blue-Green Visual Kit 2026', meta: 'CMS · Brand Kit · Approved', cms: true, def: true, addedAt: Date.now() - 3 * 86400000, validUntil: '2026-12-31' },
+  { id: 7, cat: '品牌元素', title: 'Bayer Blue-Green Visual Kit 2026', meta: 'CMS · Brand Kit · Approved', cms: true, def: true, addedAt: Date.now() - 3 * 86400000, validUntil: '2026-09-12' },
   { id: 8, cat: '参考知识', title: '患者教育手册:慢性肾病风险认知', meta: 'CMS · Approved · 2026-04-12', cms: true, def: false, addedAt: Date.now() - 2 * 86400000, validUntil: '2027-03-31' },
   { id: 9, cat: '热点洞察', title: '公众平台高互动标题样本', meta: '本地上传 · 20条样本', cms: false, def: false, addedAt: Date.now() - 86400000 },
+  { id: 10, cat: '模板', title: '医学价值沟通 PPT 模板', meta: 'PPT 模板 · 16:9 · 24 页', cms: false, def: true, addedAt: Date.now() - 12 * 3600000 },
+  { id: 11, cat: '参考知识', title: '2025 肾病科普素材包（已过期）', meta: 'CMS · Approved · 已过期', cms: true, def: true, addedAt: Date.now() - 40 * 86400000, validUntil: '2026-06-30' },
 ];
 
 const tabNames = {
@@ -307,6 +337,7 @@ const tabNames = {
   'video-render': '视频生成',
   'ppt-outline': 'PPT大纲',
   'ppt-design': 'PPT生成',
+  brief: 'Brief',
   submit: 'Veeva提交',
 };
 
@@ -353,6 +384,7 @@ const emptyWorkspaceState = (): AppState => ({
   videoRender: false,
   pptOutline: false,
   pptDesign: false,
+  brief: false,
   submit: false,
 });
 
@@ -386,7 +418,9 @@ export default function App() {
   const [hotInsightReport, setHotInsightReport] = useState<HotInsightReport | null>(null);
   const [recommendedTopics, setRecommendedTopics] = useState<TopicRecommendationItem[]>([]);
   const [literatureResults, setLiteratureResults] = useState<LiteratureArticle[]>([]);
+  const [literatureSearching, setLiteratureSearching] = useState(false);
   const [addedLiteratureIds, setAddedLiteratureIds] = useState<string[]>([]);
+  const [contentBrief, setContentBrief] = useState<ContentBrief | null>(null);
   const [topicInsightReportText, setTopicInsightReportText] = useState('');
   const [copies, setCopies] = useState<CopyItem[]>([]);
   const [teamResult, setTeamResult] = useState<TeamResult | null>(null);
@@ -520,6 +554,7 @@ export default function App() {
 
   const feedRef = useRef<HTMLDivElement>(null);
   const workspaceFileInputRef = useRef<HTMLInputElement>(null);
+  const pptImportInputRef = useRef<HTMLInputElement>(null);
   const stateRef = useRef(state);
   const pptWizardRef = useRef(pptWizard);
   const videoWizardRef = useRef(videoWizard);
@@ -547,6 +582,7 @@ export default function App() {
       pptVersions,
       selectedPptVersionId,
       selectedPptTemplateId,
+      contentBrief,
       richTextContent,
       generatedImages,
       generatedImageMeta,
@@ -579,6 +615,7 @@ export default function App() {
       pptVersions,
       selectedPptVersionId,
       selectedPptTemplateId,
+      contentBrief,
       richTextContent,
       generatedImages,
       generatedImageMeta,
@@ -662,6 +699,7 @@ export default function App() {
       topicRecommendation: legacy.topicRecommendation ?? false,
       literature: legacy.literature ?? false,
       richText: legacy.richText ?? false,
+      brief: legacy.brief ?? false,
       active: normalizedActive,
     };
     setState(normalizedState);
@@ -676,6 +714,7 @@ export default function App() {
     setPptVersions(w.pptVersions);
     setSelectedPptVersionId(w.selectedPptVersionId);
     setSelectedPptTemplateId(w.selectedPptTemplateId ?? null);
+    setContentBrief(w.contentBrief ?? null);
     setRichTextContent(w.richTextContent ?? '');
     setGeneratedImages(w.generatedImages);
     setGeneratedImageMeta(w.generatedImageMeta ?? w.generatedImages?.map((_, i) => ({
@@ -843,7 +882,7 @@ export default function App() {
         .map((m) => m.html.replace(/<[^>]+>/g, ''))
         .join('\n');
       const mats = library
-        .filter((m) => m.referenced ?? m.def)
+        .filter((m) => isMaterialUsable(m))
         .map((m) => `[${m.cat}] ${m.title}`)
         .join('\n');
       const brief = [userNote, recentUser, mats ? `引用素材：\n${mats}` : '']
@@ -1408,6 +1447,7 @@ export default function App() {
     setRecommendedTopics([]);
     setLiteratureResults([]);
     setAddedLiteratureIds([]);
+    setContentBrief(null);
     setSelectedTopics([]);
     setSelectedCopies([]);
     setCopyRevisions([]);
@@ -1527,8 +1567,8 @@ export default function App() {
     ]);
   };
 
-  const runLiteratureSearch = (query: string) => {
-    const results = searchLiteratureMock(query);
+  const runLiteratureSearch = (query: string, opts?: { reshuffle?: boolean; silent?: boolean }) => {
+    const results = searchLiteratureMock(query, { reshuffle: opts?.reshuffle });
     setLiteratureResults(results);
     setState((prev) => ({
       ...prev,
@@ -1536,16 +1576,60 @@ export default function App() {
       active: 'literature',
       literature: true,
     }));
-    const freeCount = results.filter((item) => item.access === 'free').length;
-    const paidCount = results.length - freeCount;
+    if (opts?.silent) return;
+    const sources = [...new Set(results.map((item) => item.source))].join('、');
     const basedOnAttachments =
       attachments.length > 0
         ? `已结合当前 ${attachments.length} 个附件完成文献检索`
         : '已根据检索意图完成文献检索';
     addMsg(
       'ai',
-      `${basedOnAttachments}，共推荐 <strong>${results.length}</strong> 篇英文医药文献（免费 ${freeCount} · 付费 ${paidCount}）。请在中间「推荐文献」中查看摘要，并将合适文献添加到当前任务。`,
+      `${basedOnAttachments}，来源覆盖 <strong>${sources}</strong>，共推荐 <strong>${results.length}</strong> 篇文献。请在中间「推荐文献」中查看刊物、年份、标题、摘要与来源，并将合适文献添加到当前任务。`,
       '文献检索'
+    );
+  };
+
+  const GENERATED_BRIEF_ID = -4100;
+
+  const syncBriefToLibrary = (brief: ContentBrief) => {
+    const text = formatContentBriefText(brief);
+    const item: LibraryItem = {
+      id: GENERATED_BRIEF_ID,
+      cat: 'Brief',
+      title: '任务 Brief',
+      meta: '由洞察或提示词生成 · 可编辑',
+      cms: false,
+      def: false,
+      referenced: true,
+      addedAt: Date.now(),
+      contentType: 'text',
+      contentText: text,
+    };
+    setLibrary((prev) => [item, ...prev.filter((entry) => entry.id !== GENERATED_BRIEF_ID)]);
+  };
+
+  const runGenerateBrief = (userNote = '') => {
+    const analysis = analyzeBrief(getRecentUserContext(userNote));
+    const brief = generateContentBrief({
+      userPrompt: userNote || getRecentUserContext(),
+      insightText: topicInsightReportText || insightSummary,
+      analysis,
+    });
+    setContentBrief(brief);
+    syncBriefToLibrary(brief);
+    setState((prev) => ({
+      ...prev,
+      tabs: prev.tabs.includes('brief') ? prev.tabs : [...prev.tabs, 'brief'],
+      active: 'brief',
+      brief: true,
+    }));
+    addMsg(
+      'ai',
+      topicInsightReportText.trim()
+        ? '已基于当前话题洞察报告生成 Brief。请点击「Brief」标签查看，支持在线编辑与一键复制。'
+        : '已根据你的提示词生成 Brief。请点击「Brief」标签查看，支持在线编辑与一键复制。',
+      'Brief',
+      ['查看 Brief', '生成PPT大纲', '检索文献']
     );
   };
 
@@ -1578,7 +1662,7 @@ export default function App() {
       id: now,
       cat: '参考知识',
       title: article.title,
-      meta: `${article.publisher} · ${article.year} · ${article.access === 'free' ? 'Open access' : 'Paid'}`,
+      meta: `${article.publisher} · ${article.year} · ${article.source}`,
       cms: false,
       def: false,
       referenced: true,
@@ -1590,7 +1674,7 @@ export default function App() {
         '',
         article.abstract,
         '',
-        `Source: ${article.sourceUrl}`,
+        `Source: ${article.source} · ${article.sourceUrl}`,
       ].join('\n'),
     };
     setLibrary((prev) => [item, ...prev]);
@@ -1601,6 +1685,20 @@ export default function App() {
   const runWorkspaceMockCommand = (text: string): boolean => {
     if (/检索文献|搜索文献|文献检索|search\s*literature|find\s*papers/i.test(text)) {
       runLiteratureSearch(text);
+      return true;
+    }
+
+    if (isGenerateBriefIntent(text) || text.trim() === '查看 Brief') {
+      if (text.trim() === '查看 Brief' && contentBrief) {
+        setState((prev) => ({
+          ...prev,
+          tabs: prev.tabs.includes('brief') ? prev.tabs : [...prev.tabs, 'brief'],
+          active: 'brief',
+          brief: true,
+        }));
+        return true;
+      }
+      runGenerateBrief(text);
       return true;
     }
 
@@ -3163,6 +3261,7 @@ export default function App() {
     }
     if (runDemoScenarioScript(text, { addUserMessage: true })) return;
     addMsg('user', text, selectedModel);
+    if (runWorkspaceMockCommand(text)) return;
 
     const activeTab = stateRef.current.active;
     const wizard = pptWizardRef.current;
@@ -3857,6 +3956,67 @@ export default function App() {
     setShowModal(true);
   };
 
+  const importLocalPptVersion = (file: File) => {
+    const isPpt = /\.pptx?$/i.test(file.name);
+    if (!isPpt) {
+      toast('请选择 PPT 或 PPTX 文件');
+      return;
+    }
+    const sourceSlides =
+      pptResult?.slides?.length
+        ? pptResult.slides
+        : pptVersions.find((version) => version.id === selectedPptVersionId)?.slides ||
+          pptVersions[0]?.slides ||
+          WORKSPACE_MOCK_PPT.slides;
+    const slides = sourceSlides.map((slide, index) => ({
+      ...slide,
+      title: index === 0 ? file.name.replace(/\.(pptx?)$/i, '') : slide.title,
+    }));
+    const fileUrl = URL.createObjectURL(file);
+    const currentId = selectedPptVersionId || pptVersions[0]?.id;
+    if (currentId && pptVersions.length) {
+      setPptVersions((prev) =>
+        prev.map((version) =>
+          version.id === currentId
+            ? {
+                ...version,
+                name: `${file.name.replace(/\.(pptx?)$/i, '')}（本地导入）`,
+                styleTag: '本地版本',
+                description: `已用本地文件「${file.name}」覆盖当前在线版本`,
+                slides,
+                fileName: file.name,
+                fileUrl,
+              }
+            : version
+        )
+      );
+      setSelectedPptVersionId(currentId);
+    } else {
+      const imported = {
+        id: `imported-${Date.now()}`,
+        name: `${file.name.replace(/\.(pptx?)$/i, '')}（本地导入）`,
+        styleTag: '本地版本',
+        description: `已用本地文件「${file.name}」覆盖当前在线版本`,
+        slides,
+        fileName: file.name,
+        fileUrl,
+      };
+      setPptVersions([imported]);
+      setSelectedPptVersionId(imported.id);
+    }
+    setPptResult({
+      title: file.name.replace(/\.(pptx?)$/i, '') || pptResult?.title || WORKSPACE_MOCK_PPT_OUTLINE.title,
+      slides,
+    });
+    setState((prev) => ({
+      ...prev,
+      tabs: prev.tabs.includes('ppt-design') ? prev.tabs : [...prev.tabs, 'ppt-design'],
+      active: 'ppt-design',
+      pptDesign: true,
+    }));
+    toast(`已用「${file.name}」覆盖当前在线版本`);
+  };
+
   const openVisualEditor = (src: string, target: EditorTarget, initialSvg?: string) => {
     let svg = initialSvg?.trim() || undefined;
     if (!svg && src.startsWith('data:image/svg+xml')) {
@@ -4544,7 +4704,7 @@ export default function App() {
   const referencedTemplateItems = useMemo(
     () =>
       library.filter(
-        (item) => (item.referenced ?? item.def) && ['参考模板', '模板'].includes(item.cat)
+        (item) => isMaterialUsable(item) && ['参考模板', '模板'].includes(item.cat)
       ),
     [library]
   );
@@ -4709,6 +4869,15 @@ export default function App() {
   const runningModificationTaskCount = (showingVisualTasks ? visualModificationTasks : pptModificationTasks).filter(
     (task) => task.status === 'running'
   ).length;
+  const hasGeneratedPpt =
+    Boolean(pptResult?.slides?.length) || pptVersions.some((version) => version.slides?.length);
+  const showVersionTasksTab = hasGeneratedPpt || showingVisualTasks;
+
+  useEffect(() => {
+    if (!showVersionTasksTab && creatorRightTab === 'tasks') {
+      setCreatorRightTab('ai');
+    }
+  }, [showVersionTasksTab, creatorRightTab]);
 
   const openModificationTaskDetail = useCallback(
     (task: ModificationTask) => {
@@ -4850,6 +5019,43 @@ export default function App() {
     setCreatorRightTab('tasks');
     setRollbackConfirm(null);
   }, [restoreImageVersionFromTask, restorePageVersionFromTask, rollbackConfirm, toast]);
+
+  const insertChatImageIntoCurrentPpt = useCallback(
+    (imageUrl: string) => {
+      if (!imageUrl) return;
+      const sourceSlides =
+        pptResult?.slides?.length
+          ? pptResult.slides
+          : pptVersions.find((version) => version.id === selectedPptVersionId)?.slides ||
+            pptVersions[0]?.slides ||
+            [];
+      if (!sourceSlides.length) {
+        toast('请先生成 PPT，再将图片插入页面');
+        return;
+      }
+      const pageIndex = Math.min(creatorPptPageIndex, sourceSlides.length - 1);
+      const nextSlides = sourceSlides.map((slide, index) =>
+        index === pageIndex ? insertCenteredImageIntoSlide(slide, imageUrl) : slide
+      );
+      setPptResult((prev) => ({ title: prev?.title, slides: nextSlides }));
+      setPptVersions((prev) =>
+        prev.map((version) => {
+          if (selectedPptVersionId && version.id !== selectedPptVersionId) return version;
+          if (!version.slides?.length) return version;
+          return { ...version, slides: nextSlides };
+        })
+      );
+      setState((prev) => ({
+        ...prev,
+        tabs: prev.tabs.includes('ppt-design') ? prev.tabs : [...prev.tabs, 'ppt-design'],
+        active: 'ppt-design',
+        pptDesign: true,
+      }));
+      setPptPageVersionEpoch((n) => n + 1);
+      toast(`已将图片插入第 ${pageIndex + 1} 页中心`);
+    },
+    [creatorPptPageIndex, pptResult, pptVersions, selectedPptVersionId, toast]
+  );
 
   const handleSpeakerNotesChange = useCallback(
     (pageIndex: number, notes: string) => {
@@ -5159,7 +5365,7 @@ export default function App() {
 
       {/* Home Screen */}
       <section className={`screen home-screen ${currentScreen === 'home' ? 'active' : ''}`}>
-        <div className={`relative z-10 min-h-0 px-6 pb-6 lg:px-10 ${!isReviewerRole(userRole) ? 'h-[calc(100vh-88px)]' : 'min-h-[calc(100vh-88px)]'}`}>
+        <div className={`app-screen-body relative z-10 min-h-0 px-6 pb-6 lg:px-10${isReviewerRole(userRole) ? ' is-reviewer' : ''}`}>
             <main className="relative min-h-0 min-w-0 flex-1">
               <div className="absolute right-0 top-0 z-20 flex items-center gap-2 animate-fade-up">
                 <button
@@ -5170,7 +5376,7 @@ export default function App() {
                   <span className="grid h-5 w-5 place-items-center rounded-md bg-gradient-to-br from-[#54B9F9] to-[#3BA6E8] shadow-[0_3px_8px_-2px_rgba(59,150,210,0.5)] ring-1 ring-white/40">
                     <Database className="h-3 w-3 text-white" strokeWidth={2.5} />
                   </span>
-                  知识库
+                  参考知识库
                 </button>
                 <button
                   type="button"
@@ -5180,7 +5386,7 @@ export default function App() {
                   <span className="grid h-5 w-5 place-items-center rounded-md bg-gradient-to-br from-[#8AD329] to-[#54B9F9] shadow-[0_3px_8px_-2px_rgba(120,180,40,0.45)] ring-1 ring-white/40">
                     <LibraryIcon className="h-3 w-3 text-white" strokeWidth={2.5} />
                   </span>
-                  素材库
+                  视觉素材库
                 </button>
                 <button
                   type="button"
@@ -5223,7 +5429,7 @@ export default function App() {
                   <header className="home-inspire-head relative z-10 animate-fade-up">
                     <h2 className="text-gradient animate-gradient-pan">今天你有什么灵感？</h2>
                     <p>
-                      无论是话题洞察、生成图片，还是生成 PPT，一切需求，新建任务即可开始。
+                      无论是病例内容、会议海报，还是话题洞察，一切需求，新建任务即可开始。
                     </p>
                   </header>
 
@@ -5234,7 +5440,7 @@ export default function App() {
                           <button
                             key={title}
                             type="button"
-                            className="home-inspire-action home-task-card"
+                            className={`home-inspire-action home-task-card art-${art}`}
                             onClick={() => newTask(prompt, intent)}
                           >
                             <span className="home-inspire-action-icon">
@@ -5250,54 +5456,76 @@ export default function App() {
                               </span>
                             </div>
                             <div className={`home-inspire-action-art art-${art}`} aria-hidden="true">
-                              {art === 'ppt' && (
-                                <div className="home-inspire-deco is-ppt">
+                              {art === 'case' && (
+                                <div className="home-inspire-deco is-case">
+                                  <div className="home-inspire-deco-back" />
+                                  <div className="home-inspire-deco-front">
+                                    <span className="deco-case-clip" />
+                                    <span className="deco-line w-80" />
+                                    <span className="deco-line w-65" />
+                                    <span className="deco-pulse" />
+                                  </div>
+                                </div>
+                              )}
+                              {art === 'promo' && (
+                                <div className="home-inspire-deco is-promo">
+                                  <div className="home-inspire-deco-back" />
+                                  <div className="home-inspire-deco-front">
+                                    <span className="deco-promo-badge" />
+                                    <span className="deco-line w-95" />
+                                    <span className="deco-line w-70" />
+                                    <span className="deco-line w-85" />
+                                  </div>
+                                </div>
+                              )}
+                              {art === 'evidence' && (
+                                <div className="home-inspire-deco is-evidence">
                                   <div className="home-inspire-deco-back" />
                                   <div className="home-inspire-deco-front">
                                     <span className="deco-ppt-rule is-accent" />
-                                    <span className="deco-ppt-rule is-muted" />
                                     <div className="deco-ppt-chart">
-                                      <i style={{ height: '46%' }} />
-                                      <i style={{ height: '72%' }} />
-                                      <i style={{ height: '58%' }} />
-                                      <i style={{ height: '88%' }} />
+                                      <i style={{ height: '38%' }} />
+                                      <i style={{ height: '64%' }} />
+                                      <i style={{ height: '52%' }} />
+                                      <i style={{ height: '86%' }} />
                                     </div>
                                   </div>
                                 </div>
                               )}
-                              {art === 'article' && (
-                                <div className="home-inspire-deco is-article">
+                              {art === 'poster' && (
+                                <div className="home-inspire-deco is-poster">
                                   <div className="home-inspire-deco-back" />
                                   <div className="home-inspire-deco-front">
-                                    <span className="deco-article-thumb" />
-                                    <span className="deco-line w-80" />
-                                    <span className="deco-line w-95" />
-                                    <span className="deco-line w-70" />
-                                  </div>
-                                </div>
-                              )}
-                              {art === 'image' && (
-                                <div className="home-inspire-deco is-image">
-                                  <div className="home-inspire-deco-back" />
-                                  <div className="home-inspire-deco-front">
-                                    <div className="deco-landscape">
+                                    <div className="deco-landscape is-poster">
                                       <span className="deco-sun" />
+                                      <span className="deco-poster-band" />
                                       <span className="deco-peak is-far" />
                                       <span className="deco-peak is-near" />
                                     </div>
                                   </div>
                                 </div>
                               )}
-                              {art === 'text' && (
-                                <div className="home-inspire-deco is-text">
+                              {art === 'insight' && (
+                                <div className="home-inspire-deco is-insight">
                                   <div className="home-inspire-deco-back" />
                                   <div className="home-inspire-deco-front">
-                                    <span className="deco-quote" aria-hidden>
-                                      “
-                                    </span>
-                                    <span className="deco-line w-85" />
-                                    <span className="deco-line w-95" />
-                                    <span className="deco-line w-65" />
+                                    <span className="deco-spark is-a" />
+                                    <span className="deco-spark is-b" />
+                                    <span className="deco-trend" />
+                                    <span className="deco-line w-70" />
+                                  </div>
+                                </div>
+                              )}
+                              {art === 'more' && (
+                                <div className="home-inspire-deco is-more">
+                                  <div className="home-inspire-deco-back" />
+                                  <div className="home-inspire-deco-front">
+                                    <div className="deco-tiles">
+                                      <i />
+                                      <i />
+                                      <i />
+                                      <i />
+                                    </div>
                                   </div>
                                 </div>
                               )}
@@ -5446,7 +5674,7 @@ export default function App() {
                   <Database className="h-5 w-5" />
                 </span>
                 <div>
-                  <h2 className="text-[28px] font-semibold tracking-tight text-foreground">知识库</h2>
+                  <h2 className="text-[28px] font-semibold tracking-tight text-foreground">参考知识库</h2>
                   <p className="mt-0.5 max-w-xl text-[12.5px] text-muted-foreground">
                     管理品牌知识、合规手册与 CMS 内容，支持多选后一键带入新对话。
                   </p>
@@ -5554,7 +5782,7 @@ export default function App() {
                 </div>
                 <p className="text-[13px] font-semibold text-foreground">暂无匹配的知识</p>
                 <p className="mt-1.5 max-w-xs text-[11.5px] leading-relaxed text-muted-foreground">
-                  上传本地文件，或从 CMS 搜索已审批内容加入知识库。
+                  上传本地文件，或从 CMS 搜索已审批内容加入参考知识库。
                 </p>
                 <div className="mt-4 flex gap-2">
                   <button
@@ -5747,6 +5975,7 @@ export default function App() {
               >
                 对话
               </button>
+              {showVersionTasksTab && (
               <button
                 type="button"
                 role="tab"
@@ -5759,6 +5988,7 @@ export default function App() {
                   <span>{runningModificationTaskCount}</span>
                 )}
               </button>
+              )}
               {hasCompletedContentReview && (
                 <button
                   type="button"
@@ -5811,19 +6041,30 @@ export default function App() {
                     {msg.imageUrl && (
                       <div className="chat-generated-image">
                         <img src={msg.imageUrl} alt={msg.imageTitle || 'AI 生成图片'} />
-                        <button
-                          type="button"
-                          className="btn soft"
-                          onClick={() =>
-                            openMockImageInPreview(
-                              msg.imageUrl || WORKSPACE_MOCK_IMAGE.dataUrl,
-                              msg.imageTitle || WORKSPACE_MOCK_IMAGE.title,
-                              msg.imageAssetKey as VisualAssetKey | undefined
-                            )
-                          }
-                        >
-                          {msg.imageActionLabel || '修改此图片'}
-                        </button>
+                        <div className="chat-generated-image-actions">
+                          <button
+                            type="button"
+                            className="btn soft"
+                            onClick={() =>
+                              openMockImageInPreview(
+                                msg.imageUrl || WORKSPACE_MOCK_IMAGE.dataUrl,
+                                msg.imageTitle || WORKSPACE_MOCK_IMAGE.title,
+                                msg.imageAssetKey as VisualAssetKey | undefined
+                              )
+                            }
+                          >
+                            {msg.imageActionLabel || '修改此图片'}
+                          </button>
+                          {hasGeneratedPpt && (
+                            <button
+                              type="button"
+                              className="btn primary"
+                              onClick={() => insertChatImageIntoCurrentPpt(msg.imageUrl || '')}
+                            >
+                              一键插入
+                            </button>
+                          )}
+                        </div>
                       </div>
                     )}
                     {msg.quick && msg.quick.length > 0 && (
@@ -6434,8 +6675,23 @@ export default function App() {
             hotInsightReport={hotInsightReport}
             recommendedTopics={recommendedTopics}
             literatureResults={literatureResults}
+            literatureSearching={literatureSearching}
             addedLiteratureIds={addedLiteratureIds}
             onAddLiteratureToTask={addLiteratureToTask}
+            onResearchLiterature={() => {
+              setLiteratureSearching(true);
+              window.setTimeout(() => {
+                runLiteratureSearch(getRecentUserContext('重新检索文献'), { reshuffle: true, silent: true });
+                setLiteratureSearching(false);
+                toast('已重新检索文献');
+              }, 480);
+            }}
+            contentBrief={contentBrief}
+            onContentBriefChange={(next) => {
+              setContentBrief(next);
+              syncBriefToLibrary(next);
+            }}
+            onImportLocalPpt={() => pptImportInputRef.current?.click()}
             taskTitle={taskTitle}
             onDownloadInsightReport={() => {
               if (!hotInsightReport) {
@@ -6763,6 +7019,19 @@ export default function App() {
         onChange={(event) => {
           const file = event.currentTarget.files?.[0];
           if (file) handleCreationFileSelected(file);
+          event.currentTarget.value = '';
+        }}
+      />
+      <input
+        ref={pptImportInputRef}
+        type="file"
+        className="hidden"
+        accept=".ppt,.pptx,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        aria-hidden
+        tabIndex={-1}
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          if (file) importLocalPptVersion(file);
           event.currentTarget.value = '';
         }}
       />
@@ -7289,6 +7558,11 @@ function WorkspaceRightPanel({
   copyRevisionBase,
   onSaveCopyReview,
   onOpenPptSlideEditor,
+  literatureSearching,
+  onResearchLiterature,
+  contentBrief,
+  onContentBriefChange,
+  onImportLocalPpt,
 }: {
   state: AppState;
   setState: React.Dispatch<React.SetStateAction<AppState>>;
@@ -7374,8 +7648,13 @@ function WorkspaceRightPanel({
   hotInsightReport: HotInsightReport | null;
   recommendedTopics: TopicRecommendationItem[];
   literatureResults: LiteratureArticle[];
+  literatureSearching?: boolean;
   addedLiteratureIds: string[];
   onAddLiteratureToTask: (article: LiteratureArticle) => void;
+  onResearchLiterature?: () => void;
+  contentBrief?: ContentBrief | null;
+  onContentBriefChange?: (brief: ContentBrief) => void;
+  onImportLocalPpt?: () => void;
   taskTitle: string;
   onDownloadInsightReport: () => void;
   onStartVisualFlow: () => void;
@@ -7801,24 +8080,36 @@ function WorkspaceRightPanel({
             <div className="detail-card">
               <h4>推荐文献</h4>
               <div className="small">
-                在对话区输入「检索文献」即可在此查看推荐的英文医药文献；添加附件后也可一并作为检索上下文。
+                在对话区输入「检索文献」即可从 PubMed、CMS、万方医学、CNKI 查看推荐文献。
               </div>
             </div>
           );
         }
         return (
           <div className="workspace-surface-panel literature-panel">
+            <div className="literature-panel-head">
+              <div>
+                <h4>推荐文献</h4>
+                <div className="small">刊物、年份、标题、摘要与来源</div>
+              </div>
+              <button
+                type="button"
+                className="btn primary"
+                disabled={literatureSearching}
+                onClick={() => onResearchLiterature?.()}
+              >
+                {literatureSearching ? '检索中…' : '重新检索文献'}
+              </button>
+            </div>
             <div className="literature-list">
               {literatureResults.map((article) => {
                 const added = addedLiteratureIds.includes(article.id);
                 return (
                   <article key={article.id} className="literature-card">
                     <div className="literature-card-top">
-                      <span className={`literature-access-tag ${article.access}`}>
-                        {article.access === 'free' ? 'Free access' : 'Paid'}
-                      </span>
-                      <span className="literature-meta">
-                        {article.publisher} · {article.year}
+                      <span className="literature-source-tag">{article.source}</span>
+                      <span className="literature-journal">
+                        {article.journalAbbr || article.publisher} · {article.year}
                       </span>
                     </div>
                     <h5>{article.title}</h5>
@@ -7868,6 +8159,35 @@ function WorkspaceRightPanel({
               })}
             </div>
           </div>
+        );
+
+      case 'brief':
+        if (!contentBrief) {
+          return (
+            <div className="detail-card">
+              <h4>Brief</h4>
+              <div className="small">
+                在对话中输入「生成 Brief」，可基于话题洞察报告或提示词生成内容 Brief。
+              </div>
+              <button type="button" className="btn primary" style={{ marginTop: 12 }} onClick={() => fillQuick('生成 Brief')}>
+                生成 Brief
+              </button>
+            </div>
+          );
+        }
+        return (
+          <ContentBriefPanel
+            brief={contentBrief}
+            onChange={(next) => onContentBriefChange?.(next)}
+            onCopy={async () => {
+              try {
+                await navigator.clipboard.writeText(formatContentBriefText(contentBrief));
+                toast('Brief 已复制');
+              } catch {
+                toast('复制失败，请手动选择文本复制');
+              }
+            }}
+          />
         );
 
       case 'copy':
@@ -8481,6 +8801,14 @@ function WorkspaceRightPanel({
               >
                 前往 PPT 大纲
               </button>
+              <button
+                type="button"
+                className="btn"
+                style={{ marginTop: 8 }}
+                onClick={() => onImportLocalPpt?.()}
+              >
+                导入本地版本
+              </button>
             </div>
           );
         }
@@ -8694,7 +9022,7 @@ function WorkspaceRightPanel({
                     <div className="creator-ppt-slide-canvas">
                       <SelectableSvgPreview
                         ref={pptPreviewRef}
-                        key={`${creatorActiveSlide.page}-${creatorActivePageIndex}-${slideVersionId}-${(creatorActiveSlide.svg || creatorActiveSlide.imageUrl || '').slice(0, 48)}`}
+                        key={`${creatorActiveSlide.page}-${creatorActivePageIndex}-${slideVersionId}-${pptPageVersionEpoch}-${(creatorActiveSlide.svg || creatorActiveSlide.imageUrl || '').length}`}
                         svgMarkup={creatorActiveSlide.svg}
                         imageSrc={slideToPreviewUrl(creatorActiveSlide)}
                         selectedId={viewingHistoricalVersion ? null : workspaceElementId}
@@ -8770,6 +9098,9 @@ function WorkspaceRightPanel({
               </div>
             )}
             <div className="content-submit-actions">
+              <button type="button" className="btn soft" onClick={() => onImportLocalPpt?.()}>
+                导入本地版本
+              </button>
               <button type="button" className="btn soft" onClick={exportAllPptPages}>
                 一键导出全部页面
               </button>
@@ -8869,7 +9200,13 @@ function WorkspaceRightPanel({
                 </button>
             )) : null}
           </div>
-          {!reviewerMode && state.active !== 'literature' && state.active !== 'visual' && (state.active || previewFile) && (
+          {!reviewerMode &&
+            state.active !== 'literature' &&
+            state.active !== 'visual' &&
+            state.active !== 'insight' &&
+            state.active !== 'ppt-outline' &&
+            state.active !== 'brief' &&
+            (state.active || previewFile) && (
             <div className="preview-history-control">
               <button
                 type="button"

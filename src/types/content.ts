@@ -78,6 +78,20 @@ export interface PptOutlinePage {
   title: string;
   bullets: string[];
   speakerNotes?: string;
+  /** 页面可视化建议 */
+  visualSuggestion?: string;
+  /** 当前页面参考文献 */
+  references?: string[];
+}
+
+export interface ContentBrief {
+  audience: string;
+  scenario: string;
+  format: string;
+  goal: string;
+  keyMessage: string;
+  length: string;
+  notes: string;
 }
 
 export interface PptOutlineChapter {

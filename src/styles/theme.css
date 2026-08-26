@@ -205,6 +205,8 @@
 /* —— Global app header + brand logo —— */
 :root {
   --app-header-height: 88px;
+  --app-viewport-height: calc(100vh - var(--app-header-height));
+  --app-viewport-height: calc(100dvh - var(--app-header-height));
 }
 
 .app-global-header {
@@ -352,6 +354,7 @@
 body {
   margin: 0;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   color: var(--text);
   background:
@@ -457,8 +460,17 @@ button, input, textarea, select {
 
 .screen {
   display: none;
-  height: calc(100vh - 56px);
+  height: var(--app-viewport-height);
   overflow: hidden;
+}
+
+.app-screen-body {
+  height: var(--app-viewport-height);
+}
+
+.app-screen-body.is-reviewer {
+  height: auto;
+  min-height: var(--app-viewport-height);
 }
 
 .screen.active {
@@ -654,11 +666,11 @@ button, input, textarea, select {
 .home-inspire-actions {
   display: grid;
   flex: 1 1 auto;
-  min-height: max(100%, 460px);
+  min-height: 0;
   height: 100%;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-rows: 1fr 1fr;
-  gap: 14px;
+  grid-template-rows: repeat(3, minmax(132px, 1fr));
+  gap: 12px;
 }
 
 .home-inspire-action {
@@ -670,7 +682,7 @@ button, input, textarea, select {
   flex-direction: column;
   align-items: flex-start;
   gap: 0;
-  padding: 18px 18px 20px;
+  padding: 14px 16px 16px;
   text-align: left;
   cursor: pointer;
   isolation: isolate;
@@ -728,6 +740,31 @@ button, input, textarea, select {
   transition: background .22s ease, color .22s ease, box-shadow .22s ease;
 }
 
+.home-inspire-action.art-case .home-inspire-action-icon {
+  background: linear-gradient(135deg, #54B9F9, #3BA6E8);
+  box-shadow: 0 8px 16px -8px rgba(59, 150, 210, .32);
+}
+
+.home-inspire-action.art-promo .home-inspire-action-icon {
+  background: linear-gradient(135deg, #8AD329, #54B9F9);
+}
+
+.home-inspire-action.art-evidence .home-inspire-action-icon {
+  background: linear-gradient(135deg, #3BA6E8, #6FBD1F);
+}
+
+.home-inspire-action.art-poster .home-inspire-action-icon {
+  background: linear-gradient(135deg, #54B9F9, #8AD329);
+}
+
+.home-inspire-action.art-insight .home-inspire-action-icon {
+  background: linear-gradient(135deg, #8AD329, #6FBD1F);
+}
+
+.home-inspire-action.art-more .home-inspire-action-icon {
+  background: linear-gradient(135deg, #6FBD1F, #3BA6E8);
+}
+
 .home-inspire-action-arrow {
   position: absolute;
   top: 16px;
@@ -740,7 +777,7 @@ button, input, textarea, select {
 
 .home-inspire-action strong {
   color: #162238;
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 760;
   letter-spacing: -0.02em;
   line-height: 1.25;
@@ -770,11 +807,11 @@ button, input, textarea, select {
 
 .home-inspire-action-art {
   position: absolute;
-  right: 6px;
-  bottom: 12px;
+  right: 4px;
+  bottom: 8px;
   z-index: 1;
-  width: 138px;
-  height: 112px;
+  width: 118px;
+  height: 96px;
   pointer-events: none;
   opacity: 0;
   transform: translate(10px, 8px) scale(.92);
@@ -998,6 +1035,221 @@ button, input, textarea, select {
   opacity: .85;
 }
 
+/* 病例：竖向病历卡 + 脉搏线 */
+.home-inspire-deco.is-case .home-inspire-deco-back {
+  top: 10px;
+  left: 8px;
+  width: 56px;
+  height: 78px;
+  transform: rotate(-7deg);
+}
+
+.home-inspire-deco.is-case .home-inspire-deco-front {
+  right: 10px;
+  bottom: 2px;
+  width: 68px;
+  height: 86px;
+  gap: 6px;
+  padding: 12px 9px 10px;
+  transform: rotate(5deg);
+}
+
+.deco-case-clip {
+  display: block;
+  width: 22px;
+  height: 6px;
+  margin: -4px auto 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #54B9F9, #8AD329);
+}
+
+.deco-pulse {
+  display: block;
+  height: 16px;
+  margin-top: 2px;
+  background:
+    linear-gradient(#54B9F9, #54B9F9) 0 50% / 18% 2px no-repeat,
+    linear-gradient(#8AD329, #8AD329) 22% 30% / 12% 10px no-repeat,
+    linear-gradient(#54B9F9, #54B9F9) 38% 70% / 14% 12px no-repeat,
+    linear-gradient(#8AD329, #8AD329) 58% 40% / 10% 8px no-repeat,
+    linear-gradient(#54B9F9, #54B9F9) 78% 50% / 22% 2px no-repeat;
+  border-radius: 2px;
+}
+
+/* 医学推广：横卡 + 色条徽章 */
+.home-inspire-deco.is-promo .home-inspire-deco-back {
+  top: 14px;
+  left: 0;
+  width: 84px;
+  height: 62px;
+  transform: rotate(-8deg);
+}
+
+.home-inspire-deco.is-promo .home-inspire-deco-front {
+  right: 4px;
+  bottom: 4px;
+  width: 96px;
+  height: 72px;
+  gap: 6px;
+  padding: 10px 10px 8px;
+  transform: rotate(6deg);
+}
+
+.deco-promo-badge {
+  display: block;
+  width: 36px;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #8AD329, #54B9F9);
+}
+
+/* 学术证据：横卡 + 柱状图 */
+.home-inspire-deco.is-evidence .home-inspire-deco-back {
+  top: 12px;
+  left: 0;
+  width: 84px;
+  height: 62px;
+  transform: rotate(-8deg);
+}
+
+.home-inspire-deco.is-evidence .home-inspire-deco-front {
+  right: 4px;
+  bottom: 2px;
+  width: 96px;
+  height: 74px;
+  gap: 6px;
+  padding: 10px 10px 8px;
+  transform: rotate(6deg);
+}
+
+/* 会议海报：竖向画面卡 */
+.home-inspire-deco.is-poster .home-inspire-deco-back {
+  top: 6px;
+  left: 14px;
+  width: 52px;
+  height: 80px;
+  transform: rotate(-6deg);
+}
+
+.home-inspire-deco.is-poster .home-inspire-deco-front {
+  right: 10px;
+  bottom: 0;
+  width: 58px;
+  height: 86px;
+  padding: 0;
+  overflow: hidden;
+  transform: rotate(5deg);
+}
+
+.deco-landscape.is-poster {
+  background: linear-gradient(180deg, #c8ebff 0%, #7ec8f0 48%, #54B9F9 100%);
+}
+
+.deco-poster-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 10px;
+  height: 10px;
+  background: linear-gradient(90deg, rgba(138, 211, 41, .92), rgba(84, 185, 249, .85));
+}
+
+/* 话题洞察：闪光点 + 趋势弧 */
+.home-inspire-deco.is-insight .home-inspire-deco-back {
+  top: 14px;
+  left: 2px;
+  width: 84px;
+  height: 62px;
+  transform: rotate(-7deg);
+}
+
+.home-inspire-deco.is-insight .home-inspire-deco-front {
+  right: 4px;
+  bottom: 4px;
+  width: 96px;
+  height: 72px;
+  gap: 6px;
+  padding: 12px 10px 10px;
+  transform: rotate(6deg);
+}
+
+.deco-spark {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #8AD329;
+  box-shadow: 0 0 0 3px rgba(138, 211, 41, .22);
+}
+
+.deco-spark.is-a {
+  top: 10px;
+  right: 12px;
+}
+
+.deco-spark.is-b {
+  top: 22px;
+  right: 28px;
+  width: 6px;
+  height: 6px;
+  background: #54B9F9;
+  box-shadow: 0 0 0 3px rgba(84, 185, 249, .2);
+}
+
+.deco-trend {
+  display: block;
+  height: 22px;
+  margin-top: 8px;
+  border-radius: 8px;
+  background:
+    linear-gradient(transparent 60%, rgba(84, 185, 249, .18) 60%),
+    linear-gradient(105deg, transparent 0 18%, #54B9F9 18% 22%, transparent 22% 40%, #8AD329 40% 44%, transparent 44% 62%, #54B9F9 62% 66%, transparent 66%);
+}
+
+/* 更多内容：四宫格 */
+.home-inspire-deco.is-more .home-inspire-deco-back {
+  top: 14px;
+  left: 4px;
+  width: 78px;
+  height: 62px;
+  transform: rotate(-8deg);
+}
+
+.home-inspire-deco.is-more .home-inspire-deco-front {
+  right: 6px;
+  bottom: 4px;
+  width: 86px;
+  height: 72px;
+  padding: 10px;
+  transform: rotate(5deg);
+}
+
+.deco-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+}
+
+.deco-tiles i {
+  display: block;
+  border-radius: 7px;
+  background: linear-gradient(180deg, #54B9F9 0%, #3BA6E8 120%);
+}
+
+.deco-tiles i:nth-child(2) {
+  background: linear-gradient(180deg, #9FE04A 0%, #8AD329 120%);
+}
+
+.deco-tiles i:nth-child(3) {
+  background: linear-gradient(180deg, #8AD329 0%, #54B9F9 120%);
+}
+
+.deco-tiles i:nth-child(4) {
+  background: linear-gradient(180deg, #d9effc 0%, #54B9F9 140%);
+}
+
 .home-inspire-action:hover,
 .home-inspire-action.home-task-card:hover {
   z-index: 2;
@@ -1048,7 +1300,7 @@ button, input, textarea, select {
 }
 
 .home-inspire-action:hover .home-inspire-action-body {
-  max-width: calc(100% - 112px);
+  max-width: calc(100% - 100px);
   padding-right: 0;
 }
 
@@ -4108,7 +4360,16 @@ button, input, textarea, select {
 }
 
 .chat-generated-image .btn {
-  width: 100%;
+  width: auto;
+}
+
+.chat-generated-image-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.chat-generated-image-actions .btn {
+  flex: 1;
 }
 
 .image-preview-stage {
@@ -5323,10 +5584,12 @@ textarea {
 
 .workspace-file-preview .material-preview-frame {
   max-height: calc(100vh - 300px);
+  max-height: calc(100dvh - 300px);
 }
 
 .workspace-file-preview .material-preview-pdf {
   height: calc(100vh - 300px);
+  height: calc(100dvh - 300px);
   min-height: 420px;
 }
 
@@ -5366,6 +5629,7 @@ textarea {
   display: block;
   width: 100%;
   max-height: calc(100vh - 300px);
+  max-height: calc(100dvh - 300px);
   object-fit: contain;
   user-select: none;
 }
@@ -5913,6 +6177,8 @@ textarea {
   border-radius: 24px;
   box-shadow: 0 24px 80px rgba(0, 0, 0, .22);
   width: min(640px, 92vw);
+  max-height: min(90vh, 90dvh);
+  overflow: auto;
   padding: 18px;
 }
 
@@ -5926,7 +6192,7 @@ textarea {
 
 .image-template-modal {
   width: min(1080px, 96vw);
-  max-height: 90vh;
+  max-height: min(90vh, 90dvh);
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -6108,11 +6374,13 @@ textarea {
 
 @media (max-width: 1150px) {
   .workspace {
-    grid-template-columns: minmax(0, 18fr) minmax(0, 55fr) minmax(0, 27fr);
+    grid-template-columns: minmax(196px, 16fr) minmax(0, 58fr) minmax(260px, 26fr);
+    gap: 8px;
+    padding: 8px;
   }
 
   .workspace.context-collapsed {
-    grid-template-columns: 56px minmax(0, 55fr) minmax(0, 27fr);
+    grid-template-columns: 56px minmax(0, 58fr) minmax(260px, 26fr);
   }
 
   .hero {
@@ -6456,6 +6724,7 @@ textarea {
 
 .visual-editor-props {
   max-height: calc(100vh - 120px);
+  max-height: calc(100dvh - 120px);
   overflow: auto;
 }
 
@@ -6618,7 +6887,7 @@ textarea {
 
 .material-picker-modal {
   width: min(520px, 94vw);
-  max-height: 85vh;
+  max-height: min(90vh, 90dvh);
   overflow: auto;
 }
 
@@ -6628,12 +6897,13 @@ textarea {
 
 .picker-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 12px;
 }
 
 .picker-tab {
-  flex: 1;
+  flex: 1 1 88px;
   border: 1px solid var(--line);
   background: #fff;
   border-radius: 12px;
@@ -6775,7 +7045,7 @@ textarea {
 
 .reference-asset-preview-modal {
   width: min(620px, calc(100vw - 40px));
-  max-height: min(720px, calc(100vh - 48px));
+  max-height: min(720px, 90vh, 90dvh);
   overflow: auto;
   padding: 18px;
   border: 1px solid rgba(205, 223, 237, .95);
@@ -6912,13 +7182,15 @@ textarea {
 }
 
 .ppt-outline-inline .ppt-pages {
-  margin-left: 36px;
+  margin-left: 50px;
 }
 
 .ppt-outline-inline .ppt-chapter-num {
-  width: 28px;
+  width: auto;
+  min-width: 48px;
   height: 28px;
-  font-size: 13px;
+  padding: 0 7px;
+  font-size: 11px;
   background: linear-gradient(135deg, var(--blue), var(--blue2));
 }
 
@@ -7143,15 +7415,19 @@ textarea {
 }
 
 .ppt-chapter-num {
-  width: 32px;
+  width: auto;
+  min-width: 52px;
   height: 32px;
+  padding: 0 8px;
   border-radius: 10px;
   background: linear-gradient(135deg, #7c3aed, #a855f7);
   color: #fff;
   font-weight: 600;
   display: grid;
   place-items: center;
-  font-size: 14px;
+  font-size: 12px;
+  letter-spacing: 0;
+  white-space: nowrap;
   flex-shrink: 0;
 }
 
@@ -7162,7 +7438,7 @@ textarea {
 }
 
 .ppt-pages {
-  margin-left: 42px;
+  margin-left: 58px;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -7206,15 +7482,91 @@ textarea {
   padding: 6px 10px;
 }
 
-.ppt-page-bullets {
+.ppt-page-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.ppt-page-field > span {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.ppt-page-meta-input {
   width: 100%;
-  min-height: 96px;
+  background: #f6f9fc;
+  color: #536a80;
+}
+
+.ppt-page-visual,
+.ppt-page-refs {
+  width: 100%;
+  min-height: 64px;
   border: 1px solid #e4edf5;
   border-radius: 10px;
   padding: 8px 10px;
   font-size: 13px;
   line-height: 1.55;
   resize: vertical;
+}
+
+.content-brief-panel {
+  gap: 16px;
+  padding: 20px 22px;
+}
+
+.content-brief-fields {
+  display: grid;
+  gap: 12px;
+}
+
+.content-brief-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.content-brief-field > span {
+  font-size: 12px;
+  font-weight: 700;
+  color: #18334d;
+}
+
+.content-brief-textarea {
+  min-height: 64px;
+  resize: vertical;
+}
+
+.content-brief-hint {
+  margin: 0;
+}
+
+.literature-source-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(84, 185, 249, .12);
+  color: #0b66b3;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.literature-journal {
+  color: #536a80;
+  font-size: 12px;
+}
+
+.visual-editor-marquee {
+  position: absolute;
+  z-index: 6;
+  border: 1.5px solid #54B9F9;
+  background: rgba(84, 185, 249, .16);
+  pointer-events: none;
 }
 
 .ppt-add-page,
@@ -8578,6 +8930,7 @@ textarea {
 .reviewer-ppt-stage {
   display: flex;
   min-height: calc(100vh - 210px);
+  min-height: calc(100dvh - 210px);
   flex-direction: column;
 }
 
@@ -8611,6 +8964,7 @@ textarea {
   display: block;
   width: min(100%, 1100px);
   max-height: calc(100vh - 260px);
+  max-height: calc(100dvh - 260px);
   object-fit: contain;
   box-shadow: 0 12px 32px rgba(16, 35, 55, .2);
 }
@@ -8762,7 +9116,7 @@ textarea {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  height: min(760px, calc(100vh - 220px));
+  height: min(760px, calc(100vh - 220px), calc(100dvh - 220px));
   margin-top: 8px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, .82);
@@ -9342,14 +9696,20 @@ textarea {
 }
 
 .ppt-design-fit-panel > .content-submit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
   margin-top: 0;
 }
 
 .ppt-design-fit-panel > .content-submit-actions .btn {
-  min-height: 34px;
-  padding-top: 6px;
-  padding-bottom: 6px;
-  font-size: 12.5px;
+  width: auto;
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 12px;
 }
 
 .ppt-slide-grid {
@@ -9535,10 +9895,12 @@ textarea {
   font-weight: 700;
 }
 
-.terminology-lang {
-  white-space: nowrap;
-  color: #1f4d70;
-  font-weight: 650;
+.terminology-en {
+  font-weight: 700;
+}
+
+.terminology-zh {
+  color: var(--text);
 }
 
 .terminology-domain {

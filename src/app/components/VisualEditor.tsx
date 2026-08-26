@@ -12,11 +12,13 @@ import {
   Trash2,
   Type,
   Undo2,
+  Image as ImageIcon,
 } from 'lucide-react';
 import {
   applyElementProps,
   clientToSvgPoint,
   collectElementList,
+  createInsertImage,
   createInsertShape,
   deleteElementById,
   duplicateElementById,
@@ -32,6 +34,7 @@ import {
   type InsertShapeType,
   type SvgElementInfo,
 } from './svgEditorUtils';
+import { ConfirmModal } from '@/app/components/ConfirmModal';
 
 export type EditMode = 'brush' | 'drag';
 export type BrushTool = 'brush' | 'eraser';
@@ -79,8 +82,7 @@ const TEXT_ONLY_TOOLS = SHAPE_TOOLS.filter((tool) => tool.type === 'text');
 
 function isLockedBackgroundElement(el: Element | null): boolean {
   if (!el) return false;
-  const tag = el.tagName.toLowerCase();
-  return el.getAttribute('data-edit-id') === 'el-bg' || tag === 'image';
+  return el.getAttribute('data-edit-id') === 'el-bg';
 }
 
 interface VisualEditorProps {
@@ -153,6 +155,9 @@ export function VisualEditor({
   const [loadFailed, setLoadFailed] = useState(false);
   const [elementList, setElementList] = useState<SvgElementInfo[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [marquee, setMarquee] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [discardOpen, setDiscardOpen] = useState(false);
   const [props, setProps] = useState<ElementProps | null>(null);
   const [insertTool, setInsertTool] = useState<InsertShapeType | null>(null);
 
@@ -164,28 +169,31 @@ export function VisualEditor({
   const svgHostRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const drawing = useRef(false);
   const strokeHistory = useRef<ImageData[]>([]);
   const editHistory = useRef<string[]>([]);
   const editHistoryIndex = useRef(-1);
   const dragRef = useRef<{
-    id: string;
+    ids: string[];
     startX: number;
     startY: number;
-    origTx: number;
-    origTy: number;
+    orig: Record<string, { x: number; y: number }>;
     scale: number;
   } | null>(null);
+  const savedSvgRef = useRef('');
 
   const loadSvg = useCallback((raw: string, resetHistory = true) => {
     const { svg, elements } = prepareEditableSvg(raw);
     setSvgHtml(svg);
     setElementList(elements);
     setSelectedId(null);
+    setSelectedIds([]);
     setProps(null);
     if (resetHistory) {
       editHistory.current = [svg];
       editHistoryIndex.current = 0;
+      savedSvgRef.current = svg;
       setHistoryTick((t) => t + 1);
     }
   }, []);
@@ -223,6 +231,7 @@ export function VisualEditor({
     setSvgHtml(next);
     setElementList(elements);
     setSelectedId(null);
+    setSelectedIds([]);
     setProps(null);
     setHistoryTick((t) => t + 1);
   }, []);
@@ -236,6 +245,7 @@ export function VisualEditor({
     setSvgHtml(next);
     setElementList(elements);
     setSelectedId(null);
+    setSelectedIds([]);
     setProps(null);
     setHistoryTick((t) => t + 1);
   }, []);
@@ -288,18 +298,49 @@ export function VisualEditor({
     return serializeSvgFromContainer(svgHostRef.current);
   }, [svgHtml]);
 
-  const selectElement = useCallback((id: string) => {
+  const applySelectionClasses = useCallback((ids: string[]) => {
     const host = svgHostRef.current;
     if (!host) return;
-    const el = host.querySelector(`[data-edit-id="${id}"]`);
-    if (!el) return;
-
     host.querySelectorAll('.svg-edit-selected').forEach((n) => n.classList.remove('svg-edit-selected'));
-    el.classList.add('svg-edit-selected');
-    setSelectedId(id);
-    setInsertTool(null);
-    setProps(propsFromElement(readElementProps(el)));
+    ids.forEach((id) => {
+      host.querySelector(`[data-edit-id="${id}"]`)?.classList.add('svg-edit-selected');
+    });
   }, []);
+
+  const selectElements = useCallback(
+    (ids: string[], primary?: string) => {
+      const next = ids.filter(Boolean);
+      setSelectedIds(next);
+      const focus = primary && next.includes(primary) ? primary : next[next.length - 1] || null;
+      setSelectedId(focus);
+      applySelectionClasses(next);
+      setInsertTool(null);
+      if (!focus || !svgHostRef.current) {
+        setProps(null);
+        return;
+      }
+      const el = svgHostRef.current.querySelector(`[data-edit-id="${focus}"]`);
+      if (el) setProps(propsFromElement(readElementProps(el)));
+    },
+    [applySelectionClasses]
+  );
+
+  const selectElement = useCallback(
+    (id: string, additive = false) => {
+      if (additive) {
+        const exists = selectedIds.includes(id);
+        const next = exists ? selectedIds.filter((item) => item !== id) : [...selectedIds, id];
+        selectElements(next, exists ? next[next.length - 1] : id);
+        return;
+      }
+      selectElements([id], id);
+    },
+    [selectedIds, selectElements]
+  );
+
+  useLayoutEffect(() => {
+    applySelectionClasses(selectedIds);
+  }, [svgHtml, selectedIds, applySelectionClasses]);
 
   const updateSelectedDom = useCallback(
     (patch: Partial<ElementProps>, recordHistory = false) => {
@@ -315,14 +356,19 @@ export function VisualEditor({
   );
 
   const handleDeleteSelected = useCallback(() => {
-    if (!selectedId || !svgHostRef.current) return;
-    if (selectedId === 'el-bg') return;
-    if (!deleteElementById(svgHostRef.current, selectedId)) return;
+    if (!svgHostRef.current) return;
+    const ids = (selectedIds.length ? selectedIds : selectedId ? [selectedId] : []).filter(
+      (id) => id !== 'el-bg'
+    );
+    if (!ids.length) return;
+    ids.forEach((id) => deleteElementById(svgHostRef.current!, id));
     setSelectedId(null);
+    setSelectedIds([]);
     setProps(null);
+    applySelectionClasses([]);
     refreshElements();
     pushEditHistory();
-  }, [selectedId, refreshElements, pushEditHistory]);
+  }, [selectedId, selectedIds, applySelectionClasses, refreshElements, pushEditHistory]);
 
   const handleDuplicateSelected = useCallback(() => {
     if (!selectedId || !svgHostRef.current) return;
@@ -358,6 +404,36 @@ export function VisualEditor({
     [insertTool, refreshElements, pushEditHistory, selectElement]
   );
 
+  const handleInsertLocalImage = useCallback(
+    (file: File) => {
+      if (!file.type.startsWith('image/') || !svgHostRef.current) return;
+      const svg = svgHostRef.current.querySelector('svg');
+      if (!svg) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = String(reader.result || '');
+        if (!dataUrl) return;
+        const probe = new window.Image();
+        probe.onload = () => {
+          const host = svgHostRef.current;
+          const liveSvg = host?.querySelector('svg');
+          if (!host || !liveSvg) return;
+          const id = nextEditId(host);
+          createInsertImage(liveSvg, dataUrl, id, {
+            width: probe.naturalWidth || 800,
+            height: probe.naturalHeight || 600,
+          });
+          refreshElements();
+          pushEditHistory();
+          selectElement(id);
+        };
+        probe.src = dataUrl;
+      };
+      reader.readAsDataURL(file);
+    },
+    [refreshElements, pushEditHistory, selectElement]
+  );
+
   useEffect(() => {
     const host = svgHostRef.current;
     const stage = stageRef.current;
@@ -371,10 +447,58 @@ export function VisualEditor({
     });
 
     const onStageDown = (e: PointerEvent) => {
-      if (!insertTool) return;
-      if ((e.target as Element).closest('[data-edit-id]')) return;
+      if (insertTool) {
+        if ((e.target as Element).closest('[data-edit-id]')) return;
+        e.preventDefault();
+        handleInsertAtPoint(e.clientX, e.clientY);
+        return;
+      }
+      const hit = (e.target as Element).closest('[data-edit-id]') as SVGElement | null;
+      if (hit && host.contains(hit) && !isLockedBackgroundElement(hit)) return;
       e.preventDefault();
-      handleInsertAtPoint(e.clientX, e.clientY);
+      const stageRect = stage.getBoundingClientRect();
+      const startX = e.clientX - stageRect.left;
+      const startY = e.clientY - stageRect.top;
+      setMarquee({ x: startX, y: startY, w: 0, h: 0 });
+      const onMove = (ev: PointerEvent) => {
+        const x = ev.clientX - stageRect.left;
+        const y = ev.clientY - stageRect.top;
+        setMarquee({
+          x: Math.min(startX, x),
+          y: Math.min(startY, y),
+          w: Math.abs(x - startX),
+          h: Math.abs(y - startY),
+        });
+      };
+      const onUp = (ev: PointerEvent) => {
+        stage.removeEventListener('pointermove', onMove);
+        stage.removeEventListener('pointerup', onUp);
+        const endX = ev.clientX - stageRect.left;
+        const endY = ev.clientY - stageRect.top;
+        const box = {
+          left: stageRect.left + Math.min(startX, endX),
+          top: stageRect.top + Math.min(startY, endY),
+          right: stageRect.left + Math.max(startX, endX),
+          bottom: stageRect.top + Math.max(startY, endY),
+        };
+        setMarquee(null);
+        if (Math.abs(endX - startX) < 4 && Math.abs(endY - startY) < 4) {
+          if (!(ev.shiftKey || ev.ctrlKey || ev.metaKey)) selectElements([]);
+          return;
+        }
+        const picked: string[] = [];
+        host.querySelectorAll('[data-edit-id]').forEach((node) => {
+          if (isLockedBackgroundElement(node)) return;
+          const r = node.getBoundingClientRect();
+          if (r.left < box.right && r.right > box.left && r.top < box.bottom && r.bottom > box.top) {
+            const id = node.getAttribute('data-edit-id');
+            if (id) picked.push(id);
+          }
+        });
+        selectElements(picked);
+      };
+      stage.addEventListener('pointermove', onMove);
+      stage.addEventListener('pointerup', onUp);
     };
 
     const onDown = (e: PointerEvent) => {
@@ -385,27 +509,49 @@ export function VisualEditor({
       e.preventDefault();
       e.stopPropagation();
       const id = el.getAttribute('data-edit-id')!;
-      selectElement(id);
+      const additive = e.shiftKey || e.ctrlKey || e.metaKey;
+      let movingIds = selectedIds.includes(id) ? selectedIds : [id];
+      if (additive) {
+        const exists = selectedIds.includes(id);
+        movingIds = exists ? selectedIds.filter((item) => item !== id) : [...selectedIds, id];
+        selectElement(id, true);
+      } else if (!selectedIds.includes(id)) {
+        selectElement(id);
+        movingIds = [id];
+      }
+      movingIds = movingIds.filter((item) => item !== 'el-bg');
       const svg = host.querySelector('svg');
       if (!svg || !stage) return;
       const vb = svg.getAttribute('viewBox')?.split(/\s+/).map(Number) || [0, 0, 900, 560];
       const scale = stage.getBoundingClientRect().width / (vb[2] || 900);
-      const { x: tx, y: ty } = getTranslate(el);
+      const orig: Record<string, { x: number; y: number }> = {};
+      movingIds.forEach((itemId) => {
+        const node = host.querySelector(`[data-edit-id="${itemId}"]`);
+        if (node) orig[itemId] = getTranslate(node);
+      });
       let moved = false;
-      dragRef.current = { id, startX: e.clientX, startY: e.clientY, origTx: tx, origTy: ty, scale };
+      dragRef.current = { ids: movingIds, startX: e.clientX, startY: e.clientY, orig, scale };
       el.setPointerCapture(e.pointerId);
 
       const onMove = (ev: PointerEvent) => {
         const d = dragRef.current;
-        if (!d || d.id !== id) return;
+        if (!d) return;
         moved = true;
         const dx = (ev.clientX - d.startX) / d.scale;
         const dy = (ev.clientY - d.startY) / d.scale;
-        setTranslate(el, d.origTx + dx, d.origTy + dy);
-        const p = readElementProps(el);
-        setProps((prev) =>
-          prev ? propsFromElement({ ...p, x: p.x, y: p.y }) : null
-        );
+        d.ids.forEach((itemId) => {
+          const node = host.querySelector(`[data-edit-id="${itemId}"]`);
+          const start = d.orig[itemId];
+          if (!node || !start) return;
+          setTranslate(node, start.x + dx, start.y + dy);
+        });
+        if (selectedId) {
+          const focus = host.querySelector(`[data-edit-id="${selectedId}"]`);
+          if (focus) {
+            const p = readElementProps(focus);
+            setProps((prev) => (prev ? propsFromElement({ ...p, x: p.x, y: p.y }) : null));
+          }
+        }
       };
       const onUp = () => {
         dragRef.current = null;
@@ -425,7 +571,7 @@ export function VisualEditor({
       stage.removeEventListener('pointerdown', onStageDown);
       host.removeEventListener('pointerdown', onDown);
     };
-  }, [mode, svgHtml, selectElement, insertTool, handleInsertAtPoint, pushEditHistory]);
+  }, [mode, svgHtml, selectElement, selectElements, selectedIds, selectedId, insertTool, handleInsertAtPoint, pushEditHistory]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -433,7 +579,7 @@ export function VisualEditor({
       const tag = (e.target as HTMLElement)?.tagName?.toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
 
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && (selectedId || selectedIds.length)) {
         e.preventDefault();
         handleDeleteSelected();
       }
@@ -452,7 +598,7 @@ export function VisualEditor({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [mode, selectedId, handleDeleteSelected, handleDuplicateSelected, undoEdit, redoEdit]);
+  }, [mode, selectedId, selectedIds, handleDeleteSelected, handleDuplicateSelected, undoEdit, redoEdit]);
 
   useEffect(() => {
     if (mode === 'drag' && elementList[0] && !insertTool) selectElement(elementList[0].id);
@@ -579,7 +725,17 @@ export function VisualEditor({
 
   const handleSaveDrag = () => {
     const svg = getCurrentSvg();
+    savedSvgRef.current = svg;
     onUpdate(svgToDataUrl(svg), svg);
+    onClose();
+  };
+
+  const requestClose = () => {
+    const dirty = editHistoryIndex.current > 0;
+    if (dirty) {
+      setDiscardOpen(true);
+      return;
+    }
     onClose();
   };
 
@@ -645,11 +801,11 @@ export function VisualEditor({
               {insertTool
                 ? `插入模式：在画布空白处点击添加「${insertTools.find((s) => s.type === insertTool)?.label}」`
                 : allowShapes
-                  ? '选中元素后可拖拽、改属性；或使用下方工具插入新形状。'
-                  : '选中元素后可拖拽、改属性；也可插入文字。'}
+                  ? '选中元素后可拖拽、改属性；或使用下方工具插入形状与图片。'
+                  : '选中元素后可拖拽、改属性；也可插入文字或图片。'}
             </div>
 
-            <h4 className="props-subtitle">{allowShapes ? '插入形状' : '插入文字'}</h4>
+            <h4 className="props-subtitle">插入</h4>
             <div className="visual-editor-shape-grid">
               {insertTools.map(({ type, label, Icon }) => (
                 <button
@@ -663,6 +819,29 @@ export function VisualEditor({
                   {label}
                 </button>
               ))}
+              <button
+                type="button"
+                className="visual-editor-shape-btn"
+                title="插入本地图片"
+                onClick={() => {
+                  setInsertTool(null);
+                  imageInputRef.current?.click();
+                }}
+              >
+                <ImageIcon className="h-3.5 w-3.5" strokeWidth={2.2} />
+                图片
+              </button>
+              <input
+                ref={imageInputRef}
+                type="file"
+                hidden
+                accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,image/svg+xml"
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  if (file) handleInsertLocalImage(file);
+                  event.currentTarget.value = '';
+                }}
+              />
             </div>
 
             <h4 className="props-subtitle">元素操作</h4>
@@ -734,7 +913,7 @@ export function VisualEditor({
                 <button
                   key={el.id}
                   type="button"
-                  className={`element-list-item ${selectedId === el.id ? 'active' : ''}`}
+                  className={`element-list-item ${selectedIds.includes(el.id) ? 'active' : ''}`}
                   onClick={() => selectElement(el.id)}
                 >
                   {el.label}
@@ -1012,6 +1191,12 @@ export function VisualEditor({
             ) : (
               <div className="visual-editor-load-hint">正在加载配图…</div>
             )}
+            {marquee && marquee.w + marquee.h > 2 && (
+              <div
+                className="visual-editor-marquee"
+                style={{ left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h }}
+              />
+            )}
           </div>
           {allowBrush && <canvas
             ref={canvasRef}
@@ -1051,10 +1236,23 @@ export function VisualEditor({
             保存精调并返回
           </button>
         )}
-        <button className="btn" style={{ width: '100%', marginTop: 8 }} onClick={onClose}>
+        <button className="btn" style={{ width: '100%', marginTop: 8 }} onClick={requestClose}>
           返回
         </button>
       </aside>
+      <ConfirmModal
+        open={discardOpen}
+        title="修改尚未保存"
+        message="当前修改并未保存。确认后将返回工作台，本次修改不生效。"
+        confirmLabel="确认返回"
+        cancelLabel="继续编辑"
+        danger
+        onConfirm={() => {
+          setDiscardOpen(false);
+          onClose();
+        }}
+        onCancel={() => setDiscardOpen(false)}
+      />
     </div>
   );
 }

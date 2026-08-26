@@ -174,7 +174,7 @@ export function PptOutlineEditor({
         {
           id,
           title: '新章节',
-          pages: [{ id: genId('pg'), title: '新页面', bullets: ['要点 1'] }],
+          pages: [{ id: genId('pg'), title: '新页面', bullets: ['要点 1'], visualSuggestion: '要点列表配合示意图，避免信息过载。', references: [] }],
         },
       ],
     });
@@ -188,7 +188,7 @@ export function PptOutlineEditor({
         ch.id === chId
           ? {
               ...ch,
-              pages: [...ch.pages, { id: genId('pg'), title: '新页面', bullets: ['要点 1'] }],
+              pages: [...ch.pages, { id: genId('pg'), title: '新页面', bullets: ['要点 1'], visualSuggestion: '要点列表配合示意图，避免信息过载。', references: [] }],
             }
           : ch
       ),
@@ -321,7 +321,7 @@ export function PptOutlineEditor({
                 >
                   <DragHandle label="拖拽排序章节" />
                 </span>
-                <span className="ppt-chapter-num">{chIdx + 1}</span>
+                <span className="ppt-chapter-num">第{chIdx + 1}章</span>
                 <input
                   className="ppt-chapter-title input"
                   value={ch.title}
@@ -379,16 +379,45 @@ export function PptOutlineEditor({
                             <DeleteButton title="删除页面" onClick={() => removePage(ch.id, pg.id)} />
                           )}
                         </div>
-                        <textarea
-                          className="ppt-page-bullets"
-                          value={pg.bullets.join('\n')}
-                          placeholder="每行一条要点"
-                          onChange={(e) =>
-                            updatePage(ch.id, pg.id, {
-                              bullets: e.target.value.split('\n').filter(Boolean),
-                            })
-                          }
-                        />
+                        <label className="ppt-page-field">
+                          <span>章节标题</span>
+                          <input className="input ppt-page-meta-input" value={ch.title} readOnly />
+                        </label>
+                        <label className="ppt-page-field">
+                          <span>页面核心内容</span>
+                          <textarea
+                            className="ppt-page-bullets"
+                            value={pg.bullets.join('\n')}
+                            placeholder="每行一条核心内容"
+                            onChange={(e) =>
+                              updatePage(ch.id, pg.id, {
+                                bullets: e.target.value.split('\n').filter(Boolean),
+                              })
+                            }
+                          />
+                        </label>
+                        <label className="ppt-page-field">
+                          <span>页面可视化建议</span>
+                          <textarea
+                            className="ppt-page-visual"
+                            value={pg.visualSuggestion || ''}
+                            placeholder="版式、图表或配图建议"
+                            onChange={(e) => updatePage(ch.id, pg.id, { visualSuggestion: e.target.value })}
+                          />
+                        </label>
+                        <label className="ppt-page-field">
+                          <span>当前页面参考文献</span>
+                          <textarea
+                            className="ppt-page-refs"
+                            value={(pg.references || []).join('\n')}
+                            placeholder="每行一条文献"
+                            onChange={(e) =>
+                              updatePage(ch.id, pg.id, {
+                                references: e.target.value.split('\n').filter(Boolean),
+                              })
+                            }
+                          />
+                        </label>
                       </div>
                     </div>
                   );

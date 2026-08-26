@@ -300,7 +300,6 @@ function DemoHotInsightReportPanel({
 
         <div className="demo-topic-list">
           {report.topics.map((topic, i) => {
-            const score = Math.max(82, 96 - i * 3);
             return (
               <label
                 key={topic.title}
@@ -329,7 +328,6 @@ function DemoHotInsightReportPanel({
                   <div className="demo-topic-head">
                     <span className="demo-priority-badge">P{i === 0 ? '0' : i}</span>
                     <strong>{topic.title}</strong>
-                    <span className="demo-fit-badge">契合度 {score}%</span>
                   </div>
                   <p>
                     {topic.audience} / {topic.channel} · {topic.source}

@@ -40,7 +40,13 @@ export function normalizeOutline(
     scenario?: string;
     chapters?: {
       title: string;
-      pages?: { title: string; bullets?: string[]; speakerNotes?: string }[];
+      pages?: {
+        title: string;
+        bullets?: string[];
+        speakerNotes?: string;
+        visualSuggestion?: string;
+        references?: string[];
+      }[];
     }[];
   },
   audience: string,
@@ -54,6 +60,10 @@ export function normalizeOutline(
       title: p.title || '未命名页面',
       bullets: p.bullets?.length ? p.bullets : ['待补充要点'],
       speakerNotes: p.speakerNotes,
+      visualSuggestion:
+        p.visualSuggestion ||
+        `围绕「${p.title || '本页主题'}」做要点列表 + 示意图，保持品牌蓝绿配色与充足留白。`,
+      references: p.references?.length ? p.references : [],
     })),
   }));
 
@@ -61,13 +71,19 @@ export function normalizeOutline(
     chapters.push({
       id: genId('ch'),
       title: '主要内容',
-      pages: [{ id: genId('pg'), title: '封面', bullets: ['标题', '副标题'] }],
+          pages: [{ id: genId('pg'), title: '封面', bullets: ['标题', '副标题'], visualSuggestion: '封面大标题 + 品牌色条，右下角合规提示。', references: [] }],
     });
   }
 
   chapters.forEach((ch) => {
     if (!ch.pages.length) {
-      ch.pages.push({ id: genId('pg'), title: '新页面', bullets: ['要点 1'] });
+      ch.pages.push({
+        id: genId('pg'),
+        title: '新页面',
+        bullets: ['要点 1'],
+        visualSuggestion: '要点列表配合示意图，避免信息过载。',
+        references: [],
+      });
     }
   });
 
@@ -218,6 +234,40 @@ function escSvgText(s: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function escSvgAttr(s: string): string {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;');
+}
+
+function slideBaseSvg(slide: PptSlide): string {
+  if (slide.svg?.trim()) return slide.svg.trim();
+  const bg = slide.imageUrl?.trim();
+  if (bg) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1600 900">
+      <image href="${escSvgAttr(bg)}" xlink:href="${escSvgAttr(bg)}" x="0" y="0" width="1600" height="900" preserveAspectRatio="xMidYMid slice"/>
+    </svg>`;
+  }
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900">
+    <rect width="1600" height="900" fill="#f4f8fc"/>
+  </svg>`;
+}
+
+/** 将对话生成的图片插入到幻灯片中心 */
+export function insertCenteredImageIntoSlide(slide: PptSlide, imageUrl: string): PptSlide {
+  const src = escSvgAttr(imageUrl);
+  const overlay = `<image id="chat-insert-${Date.now()}" href="${src}" xlink:href="${src}" x="512" y="243" width="576" height="414" preserveAspectRatio="xMidYMid meet"/>`;
+  let base = slideBaseSvg(slide);
+  if (!/xmlns:xlink=/.test(base)) {
+    base = base.replace(/<svg\b/, '<svg xmlns:xlink="http://www.w3.org/1999/xlink"');
+  }
+  const svg = /<\/svg>\s*$/i.test(base)
+    ? base.replace(/<\/svg>\s*$/i, `${overlay}</svg>`)
+    : `${base}${overlay}`;
+  return { ...slide, svg, imageUrl: undefined };
 }
 
 /** 将幻灯片转为可预览/编辑的 data URL */

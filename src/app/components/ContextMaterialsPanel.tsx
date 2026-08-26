@@ -1,5 +1,11 @@
 import type { LibraryItem } from '@/types/library';
-import { formatMaterialAddedTime } from '@/lib/libraryUtils';
+import {
+  filterMaterialsByGroup,
+  isMaterialExpired,
+  isMaterialExpiringSoon,
+  materialFormatLabel,
+  materialSourceLabel,
+} from '@/lib/libraryUtils';
 import { BookMarked, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 
@@ -11,6 +17,7 @@ interface ContextMaterialsPanelProps {
 }
 
 function toneClasses(item: LibraryItem) {
+  if (isMaterialExpired(item)) return 'from-[#9aa7b5] to-[#7d8a97]';
   if (item.cms) return 'from-[#8AD329] to-[#6FBD1F]';
   return 'from-[#54B9F9] to-[#3BA6E8]';
 }
@@ -19,20 +26,28 @@ function MaterialSourceRow({
   item,
   onPreview,
   onRemove,
-  showAddedTime = false,
 }: {
   item: LibraryItem;
   onPreview: (item: LibraryItem) => void;
   onRemove: (item: LibraryItem) => void;
-  showAddedTime?: boolean;
 }) {
+  const expired = isMaterialExpired(item);
+  const expiring = isMaterialExpiringSoon(item);
+
   return (
-    <div className="group flex w-full items-start gap-1 rounded-xl border border-transparent p-1.5 transition hover:border-border/60 hover:bg-background/80 hover:shadow-soft">
+    <div
+      className={cn(
+        'group flex w-full items-start gap-1 rounded-xl border border-transparent p-1.5 transition',
+        expired
+          ? 'opacity-55 grayscale-[.35]'
+          : 'hover:border-border/60 hover:bg-background/80 hover:shadow-soft'
+      )}
+    >
       <button
         type="button"
         className="flex min-w-0 flex-1 items-start gap-2 text-left"
         onClick={() => onPreview(item)}
-        title="点击查看详情"
+        title={expired ? '该文件已过期，生成内容时将不会参考' : '点击查看详情'}
       >
       <span
         className={cn(
@@ -51,12 +66,17 @@ function MaterialSourceRow({
             </span>
           )}
         </div>
-        <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{item.meta}</div>
-        {showAddedTime && (
-          <div className="mt-0.5 text-[10px] text-muted-foreground/70">
-            {formatMaterialAddedTime(item.addedAt)}
-          </div>
-        )}
+        <div className="mt-0.5 text-[10px] leading-[1.45] text-muted-foreground">
+          {[
+            materialFormatLabel(item),
+            materialSourceLabel(item),
+            item.cms && item.validUntil && !expired ? `有效期至 ${item.validUntil}` : null,
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+          {expiring && <span className="text-destructive"> · 即将过期</span>}
+          {expired && <span className="text-destructive"> · 已过期</span>}
+        </div>
       </div>
       <ChevronRight className="mt-1 h-3 w-3 text-muted-foreground opacity-0 transition group-hover:opacity-60" />
       </button>
@@ -130,6 +150,14 @@ function AssetSection({
   );
 }
 
+const SECTIONS: { title: string; groupId: 'knowledge' | 'strategy' | 'brief' | 'template' | 'brand'; category: string }[] = [
+  { title: '参考知识', groupId: 'knowledge', category: '参考知识' },
+  { title: '品牌策略', groupId: 'strategy', category: '品牌策略' },
+  { title: 'Brief', groupId: 'brief', category: 'Brief' },
+  { title: '模板', groupId: 'template', category: '模板' },
+  { title: '品牌元素', groupId: 'brand', category: '品牌元素' },
+];
+
 export function ContextMaterialsPanel({
   library,
   onOpenPicker,
@@ -137,44 +165,33 @@ export function ContextMaterialsPanel({
   onRemove,
 }: ContextMaterialsPanelProps) {
   const referencedMaterials = library.filter((item) => item.referenced ?? item.def);
-  const knowledgeItems = referencedMaterials.filter(
-    (item) => !['参考模板', '模板', '品牌元素'].includes(item.cat)
-  );
-  const templateItems = referencedMaterials.filter((item) => ['参考模板', '模板'].includes(item.cat));
-  const brandItems = referencedMaterials.filter((item) => item.cat === '品牌元素');
+  const defaultItems = library.filter((item) => item.def && item.referenced !== false);
 
   return (
     <div className="space-y-2">
       <AssetSection
-        title="参考知识"
-        badge={knowledgeItems.length}
-        items={knowledgeItems}
-        addable
-        category="参考知识"
-        onOpenPicker={onOpenPicker}
+        title="默认素材"
+        badge={defaultItems.length}
+        items={defaultItems}
         onPreview={onPreview}
         onRemove={onRemove}
       />
-      <AssetSection
-        title="模板"
-        badge={templateItems.length}
-        items={templateItems}
-        addable
-        category="模板"
-        onOpenPicker={onOpenPicker}
-        onPreview={onPreview}
-        onRemove={onRemove}
-      />
-      <AssetSection
-        title="品牌元素"
-        badge={brandItems.length}
-        items={brandItems}
-        addable
-        category="品牌元素"
-        onOpenPicker={onOpenPicker}
-        onPreview={onPreview}
-        onRemove={onRemove}
-      />
+      {SECTIONS.map((section) => {
+        const items = filterMaterialsByGroup(referencedMaterials, section.groupId);
+        return (
+          <AssetSection
+            key={section.groupId}
+            title={section.title}
+            badge={items.length}
+            items={items}
+            addable
+            category={section.category}
+            onOpenPicker={onOpenPicker}
+            onPreview={onPreview}
+            onRemove={onRemove}
+          />
+        );
+      })}
     </div>
   );
 }

@@ -1,37 +1,18 @@
 import type { LibraryItem } from '@/types/library';
-import { formatMaterialAddedTime } from '@/lib/libraryUtils';
+import {
+  formatMaterialAddedTime,
+  isMaterialExpired,
+  isMaterialExpiringSoon,
+  materialFormatLabel,
+  materialSourceLabel,
+} from '@/lib/libraryUtils';
 import { Check, FileText, Star, Trash2 } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 
-export function materialFileKind(item: LibraryItem): {
-  label: string;
-  tone: 'cms' | 'pdf' | 'doc' | 'image' | 'file';
-} {
-  if (item.cms) return { label: 'CMS', tone: 'cms' };
-  const name = (item.fileName || item.title || '').toLowerCase();
-  if (item.contentType === 'image' || /\.(png|jpe?g|gif|webp|svg)$/.test(name)) {
-    return { label: 'IMG', tone: 'image' };
-  }
-  if (item.contentType === 'pdf' || name.endsWith('.pdf')) {
-    return { label: 'PDF', tone: 'pdf' };
-  }
-  if (/\.(docx?|pptx?|xlsx?)$/.test(name)) {
-    return { label: 'DOC', tone: 'doc' };
-  }
-  return { label: 'FILE', tone: 'file' };
-}
-
-function toneGradient(tone: 'cms' | 'pdf' | 'doc' | 'image' | 'file') {
-  if (tone === 'cms') return 'from-[#8AD329] to-[#6FBD1F]';
-  if (tone === 'image') return 'from-[#54B9F9] via-[#6FBD1F] to-[#8AD329]';
+function toneGradient(item: LibraryItem) {
+  if (isMaterialExpired(item)) return 'from-[#9aa7b5] to-[#7d8a97]';
+  if (item.cms) return 'from-[#8AD329] to-[#6FBD1F]';
   return 'from-[#54B9F9] to-[#3BA6E8]';
-}
-
-function sourceBadge(item: LibraryItem) {
-  if (item.cms) {
-    return { label: 'CMS', className: 'bg-[#8AD329]/15 text-[#4f8f14] border-[#8AD329]/30' };
-  }
-  return { label: 'FILE', className: 'bg-[#54B9F9]/15 text-[#2d5a8a] border-[#54B9F9]/30' };
 }
 
 interface LibraryMaterialCardProps {
@@ -51,18 +32,14 @@ export function LibraryMaterialCard({
   onPreview,
   onDelete,
 }: LibraryMaterialCardProps) {
-  const kind = materialFileKind(item);
-  const badge = sourceBadge(item);
-  const cmsExpired =
-    item.cms && item.validUntil
-      ? new Date(`${item.validUntil}T23:59:59`).getTime() < Date.now()
-      : false;
+  const expired = isMaterialExpired(item);
+  const expiring = isMaterialExpiringSoon(item);
 
   return (
     <article
       className={cn(
         'group relative overflow-hidden rounded-2xl glass-card glass-hover p-3.5 transition',
-        'hover:-translate-y-0.5 hover:shadow-glow',
+        expired ? 'opacity-55 grayscale-[.35]' : 'hover:-translate-y-0.5 hover:shadow-glow',
         selected
           ? 'border-[#54B9F9] ring-2 ring-[#54B9F9]/30'
           : 'border-border/60 hover:border-primary/40'
@@ -82,32 +59,22 @@ export function LibraryMaterialCard({
       )}
 
       <div className="relative z-10 mb-2.5 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleSelect();
-            }}
-            className={cn(
-              'grid h-5 w-5 place-items-center rounded-md border transition',
-              selected
-                ? 'border-[#54B9F9] bg-gradient-to-br from-[#54B9F9] to-[#3BA6E8] text-white shadow-[0_3px_8px_-2px_rgba(59, 150, 210,0.5)]'
-                : 'border-border bg-background hover:border-primary'
-            )}
-            aria-label={`选择素材 ${item.title}`}
-          >
-            {selected && <Check className="h-3 w-3" strokeWidth={3.5} />}
-          </button>
-          <span
-            className={cn(
-              'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-bold tracking-wide',
-              badge.className
-            )}
-          >
-            {badge.label}
-          </span>
-        </div>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleSelect();
+          }}
+          className={cn(
+            'grid h-5 w-5 place-items-center rounded-md border transition',
+            selected
+              ? 'border-[#54B9F9] bg-gradient-to-br from-[#54B9F9] to-[#3BA6E8] text-white shadow-[0_3px_8px_-2px_rgba(59, 150, 210,0.5)]'
+              : 'border-border bg-background hover:border-primary'
+          )}
+          aria-label={`选择素材 ${item.title}`}
+        >
+          {selected && <Check className="h-3 w-3" strokeWidth={3.5} />}
+        </button>
         <div className="flex items-center gap-0.5">
           <button
             type="button"
@@ -142,51 +109,26 @@ export function LibraryMaterialCard({
         <span
           className={cn(
             'grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br shadow-[0_4px_10px_-2px_rgba(59, 150, 210,0.4)] ring-1 ring-white/40',
-            toneGradient(kind.tone)
+            toneGradient(item)
           )}
         >
           <FileText className="h-4 w-4 text-white" strokeWidth={2.4} />
         </span>
         <div className="min-w-0 flex-1">
           <h4 className="line-clamp-2 text-[13px] font-semibold leading-tight text-foreground">{item.title}</h4>
-          <p className="mt-1 truncate text-[11px] text-muted-foreground">{item.meta}</p>
-        </div>
-      </div>
-
-      <div className="relative z-10 mt-3 flex items-center justify-between border-t border-border/40 pt-2.5">
-        <div className="flex flex-wrap gap-1">
-          <span
-            className={cn(
-              'rounded-md px-1.5 py-0.5 text-[10px] font-medium',
-              item.cms
-                ? 'border border-[#8AD329]/30 bg-[#8AD329]/10 text-[#4f8f14]'
-                : 'border border-[#54B9F9]/30 bg-[#54B9F9]/10 text-[#2d5a8a]'
-            )}
-          >
-            {item.cms ? 'CMS' : '本地上传'}
-          </span>
-          {item.def && (
-            <span className="rounded-md border border-[#FFB547]/30 bg-[#FFB547]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#a16207]">
-              默认
-            </span>
-          )}
-          {item.cms && item.validUntil && (
-            <span
-              className={cn(
-                'rounded-md border px-1.5 py-0.5 text-[10px] font-medium',
-                cmsExpired
-                  ? 'border-destructive/30 bg-destructive/10 text-destructive'
-                  : 'border-[#6FBD1F]/25 bg-[#6FBD1F]/10 text-[#4f8f14]'
-              )}
-              title={`CMS 内容有效期至 ${item.validUntil}`}
-            >
-              {cmsExpired ? '已过期' : `有效期至 ${item.validUntil}`}
+          <dl className="mt-1.5 space-y-0.5 text-[11px] leading-[1.45] text-muted-foreground">
+            <div>格式：{materialFormatLabel(item)}</div>
+            <div>来源：{materialSourceLabel(item)}</div>
+            {item.cms && item.validUntil && !expired && <div>有效期至 {item.validUntil}</div>}
+            {expired && <div className="text-destructive">已过期</div>}
+            <div>添加于 {formatMaterialAddedTime(item.addedAt)}</div>
+          </dl>
+          {expiring && (
+            <span className="mt-1.5 inline-flex rounded-full border border-destructive/40 bg-destructive px-1.5 py-0.5 text-[10px] font-semibold text-white">
+              即将过期
             </span>
           )}
         </div>
-        <span className="shrink-0 text-[10px] text-muted-foreground/80">
-          {formatMaterialAddedTime(item.addedAt)}
-        </span>
       </div>
     </article>
   );

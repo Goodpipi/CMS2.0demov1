@@ -1,5 +1,94 @@
 import type { LibraryItem } from '@/types/library';
 
+export const MATERIAL_GROUP_DEFS = [
+  {
+    id: 'knowledge',
+    title: '参考知识',
+    cats: ['参考知识', '热点洞察', '合规手册'],
+  },
+  {
+    id: 'strategy',
+    title: '品牌策略',
+    cats: ['品牌策略'],
+  },
+  {
+    id: 'brief',
+    title: 'Brief',
+    cats: ['Brief', '品牌briefing'],
+  },
+  {
+    id: 'template',
+    title: '模板',
+    cats: ['模板', '参考模板'],
+  },
+  {
+    id: 'brand',
+    title: '品牌元素',
+    cats: ['品牌元素'],
+  },
+] as const;
+
+export type MaterialGroupId = (typeof MATERIAL_GROUP_DEFS)[number]['id'];
+
+export function materialGroupIdForCat(cat: string): MaterialGroupId {
+  const match = MATERIAL_GROUP_DEFS.find((group) => (group.cats as readonly string[]).includes(cat));
+  return match?.id ?? 'knowledge';
+}
+
+export function filterMaterialsByGroup(items: LibraryItem[], groupId: MaterialGroupId): LibraryItem[] {
+  const group = MATERIAL_GROUP_DEFS.find((item) => item.id === groupId);
+  if (!group) return [];
+  return items.filter((item) => (group.cats as readonly string[]).includes(item.cat));
+}
+
+const EXPIRING_SOON_DAYS = 30;
+
+type MaterialExpiryFields = {
+  cms?: boolean;
+  validUntil?: string | null;
+  referenced?: boolean;
+  def?: boolean;
+};
+
+function validUntilTime(item: MaterialExpiryFields): number | null {
+  if (!item.validUntil) return null;
+  const ts = new Date(`${item.validUntil}T23:59:59`).getTime();
+  return Number.isNaN(ts) ? null : ts;
+}
+
+export function isMaterialExpired(item: MaterialExpiryFields): boolean {
+  if (!item.cms) return false;
+  const ts = validUntilTime(item);
+  return ts != null && ts < Date.now();
+}
+
+export function isMaterialExpiringSoon(item: MaterialExpiryFields): boolean {
+  if (!item.cms || isMaterialExpired(item)) return false;
+  const ts = validUntilTime(item);
+  if (ts == null) return false;
+  return ts - Date.now() <= EXPIRING_SOON_DAYS * 86400000;
+}
+
+export function isMaterialUsable(item: MaterialExpiryFields): boolean {
+  return (item.referenced ?? item.def) === true && !isMaterialExpired(item);
+}
+
+export function materialFormatLabel(item: LibraryItem): string {
+  const name = `${item.fileName || ''} ${item.title} ${item.meta}`.toLowerCase();
+  if (item.contentType === 'image' || /\.(png|jpe?g|gif|webp|svg)\b/.test(name) || /\bimg\b|\bpng\b|\bjpg\b/.test(name)) {
+    return '图片';
+  }
+  if (item.contentType === 'pdf' || name.includes('.pdf') || /\bpdf\b/.test(name)) return 'PDF';
+  if (/\.(pptx?)\b/.test(name) || /\bppt\b/.test(name)) return 'PPT';
+  if (/\.(xlsx?)\b/.test(name) || /\bexcel\b/.test(name)) return 'Excel';
+  if (/\.(docx?)\b/.test(name) || /\bword\b/.test(name)) return 'Word';
+  return '文件';
+}
+
+export function materialSourceLabel(item: LibraryItem): string {
+  return item.cms ? 'CMS' : '本地';
+}
+
 const RECENT_LIMIT = 3;
 
 export function materialAttachmentPill(item: {
@@ -40,9 +129,9 @@ export function materialPreviewSummary(item: LibraryItem): string {
 export function materialPreviewBody(item: LibraryItem): string {
   const lines = [
     `分类：${item.cat}`,
-    `来源：${item.cms ? 'CMS 已连接素材库' : '本地上传'}`,
+    `来源：${item.cms ? 'CMS 已连接参考知识库' : '本地上传'}`,
     `元信息：${item.meta}`,
-    item.def ? '状态：已设为默认素材，新建任务会自动带出' : '状态：候选素材，可在素材库中设为默认',
+    item.def ? '状态：已设为默认素材，新建任务会自动带出' : '状态：候选素材，可在参考知识库中设为默认',
     `添加时间：${formatMaterialAddedTime(item.addedAt)}`,
   ];
   if (item.fileName) lines.splice(2, 0, `文件名：${item.fileName}`);

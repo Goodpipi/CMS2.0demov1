@@ -65,11 +65,15 @@ export function detectHomeIntent(text: string): HomeEntryIntent | 'unknown' {
   const t = text.trim();
   if (!t) return 'general';
   if (/veeva|审批|提交包/i.test(t)) return 'general';
+  if (/病例/.test(t)) return 'ppt';
+  if (/海报|会议视觉/i.test(t)) return 'visual';
+  if (/学术|证据|文献解读/.test(t)) return 'ppt';
+  if (/推广|医学传播/.test(t)) return 'copy';
   if (/ppt|幻灯片|演示文稿|课件/i.test(t)) return 'ppt';
   if (/视频|分镜|口播|短视频/i.test(t)) return 'video';
   if (/洞察|热点|话题分析|趋势/i.test(t)) return 'insight';
   if (/文案|撰写|稿子|科普文/i.test(t)) return 'copy';
-  if (/图片|配图|海报|封面|视觉|插画/i.test(text)) return 'visual';
+  if (/图片|配图|封面|视觉|插画/i.test(text)) return 'visual';
   return 'unknown';
 }
 

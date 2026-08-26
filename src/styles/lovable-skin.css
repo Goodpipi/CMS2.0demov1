@@ -6,6 +6,7 @@
 body {
   background: var(--gradient-bg) !important;
   min-height: 100vh;
+  min-height: 100dvh;
   font-feature-settings: 'cv11', 'ss01', 'ss03';
 }
 
@@ -57,7 +58,7 @@ body {
 .workspace {
   gap: 20px;
   padding: 0 24px 24px;
-  height: calc(100vh - var(--app-header-height, 88px));
+  height: var(--app-viewport-height);
 }
 
 .wpanel {
@@ -667,11 +668,12 @@ body {
 
 /* —— Screen visibility (unchanged behavior) —— */
 .screen {
-  height: calc(100vh - var(--app-header-height, 88px));
+  height: var(--app-viewport-height);
 }
 
 .screen.screen-full {
   height: 100vh;
+  height: 100dvh;
 }
 
 .home-page {
@@ -970,6 +972,7 @@ body {
 /* —— Home history sidebar: mirror context / 引用素材 —— */
 .home-history-sidebar.wpanel.context-sidebar {
   height: calc(100vh - 7rem);
+  height: calc(100dvh - 7rem);
   min-height: 0;
 }
 

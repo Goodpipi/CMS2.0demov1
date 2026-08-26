@@ -182,6 +182,19 @@ export function mergeTerminologyEntries(
   return { entries, added, updated };
 }
 
+/** 将术语拆成英文 / 中文对照，便于列表展示 */
+export function bilingualSides(entry: TerminologyEntry): { en: string; zh: string } {
+  const src = (entry.sourceLang || '').toLowerCase();
+  const tgt = (entry.targetLang || '').toLowerCase();
+  const sourceIsEn = src.startsWith('en');
+  const targetIsEn = tgt.startsWith('en');
+  if (sourceIsEn && !targetIsEn) return { en: entry.source, zh: entry.target };
+  if (targetIsEn || src.startsWith('zh') || src === 'cn') {
+    return { en: entry.target, zh: entry.source };
+  }
+  return { en: entry.source, zh: entry.target };
+}
+
 /** 拼成可注入 AI 提示词的术语表文本 */
 export function formatTerminologyForPrompt(entries: TerminologyEntry[]): string {
   if (!entries.length) return '';

@@ -393,6 +393,7 @@ export function applyTabForModificationTarget(
     videoRender: boolean;
     pptOutline: boolean;
     pptDesign: boolean;
+    brief: boolean;
     submit: boolean;
   },
   targetTab: TabKey
@@ -409,6 +410,7 @@ export function applyTabForModificationTarget(
     'video-render': 'videoRender',
     'ppt-outline': 'pptOutline',
     'ppt-design': 'pptDesign',
+    brief: 'brief',
     submit: 'submit',
   };
   const flag = flagMap[targetTab];

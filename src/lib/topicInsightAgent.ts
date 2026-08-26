@@ -1,5 +1,6 @@
 import type { LibraryItem, TopicItem } from '@/types/content';
 import { isInsightQuickAction } from '@/app/components/conversationGuide';
+import { isMaterialUsable } from '@/lib/libraryUtils';
 
 export const HOT_INSIGHT_CATEGORY = '热点洞察';
 export const BRAND_NAME = '品牌';
@@ -44,13 +45,11 @@ export interface TopicRecommendationItem {
 }
 
 export function getTaskHotInsightMaterials(materials: LibraryItem[]): LibraryItem[] {
-  return materials.filter(
-    (m) => m.cat === HOT_INSIGHT_CATEGORY && (m.referenced ?? m.def)
-  );
+  return materials.filter((m) => m.cat === HOT_INSIGHT_CATEGORY && isMaterialUsable(m));
 }
 
 export function getTaskMaterials(materials: LibraryItem[]): LibraryItem[] {
-  return materials.filter((m) => m.referenced ?? m.def);
+  return materials.filter((m) => isMaterialUsable(m));
 }
 
 export function isTopicInsightAgentIntent(text: string): boolean {
@@ -95,7 +94,7 @@ export function buildHotInsightReport(params: {
 }): HotInsightReport {
   const { hotMaterials, allMaterials, userNote, apiTopics, apiSummary } = params;
   const defaultMaterials = allMaterials
-    .filter((m) => m.def && !hotMaterials.some((h) => h.id === m.id))
+    .filter((m) => m.def && !isMaterialExpired(m) && !hotMaterials.some((h) => h.id === m.id))
     .map((m) => m.title);
 
   return {
@@ -126,11 +125,9 @@ export function buildTopicRecommendations(params: {
   apiTopics: TopicItem[];
 }): TopicRecommendationItem[] {
   const { materials, userNote, apiTopics } = params;
-  const briefing = materials.find(
-    (m) => m.cat === '品牌briefing' && (m.referenced ?? m.def)
-  );
+  const briefing = materials.find((m) => (m.cat === 'Brief' || m.cat === '品牌briefing') && isMaterialUsable(m));
   const channelMat = materials.find(
-    (m) => m.cat === '渠道特色' && (m.referenced ?? m.def)
+    (m) => (m.cat === '品牌策略' || m.cat === '渠道特色') && isMaterialUsable(m)
   );
 
   return apiTopics.map((topic, index) => ({

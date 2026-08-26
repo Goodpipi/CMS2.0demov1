@@ -4,7 +4,7 @@ export const FIGMA_CAPTURE_FILE_KEY = '0yc9rH5KOYzbJIlRYZ7W6j';
 export const FIGMA_CAPTURE_PAGES = [
   { id: 'home-ops', label: '01-首页（运营）' },
   { id: 'home-reviewer', label: '02-首页（审阅者）' },
-  { id: 'library', label: '03-素材库' },
+  { id: 'library', label: '03-参考知识库' },
   { id: 'workspace-copy', label: '04-工作台-文案' },
   { id: 'workspace-visual', label: '05-工作台-配图' },
   { id: 'workspace-team', label: '06-工作台-团队修改' },

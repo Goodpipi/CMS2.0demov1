@@ -11,6 +11,7 @@ import type {
   PptDesignVersion,
   PosterResult,
 } from '@/types/content';
+import { isMaterialUsable } from '@/lib/libraryUtils';
 const API_BASE = '/api';
 const CLIENT_TIMEOUT_MS = 120_000;
 const API_CONNECT_RETRIES = 4;
@@ -121,7 +122,7 @@ export async function waitForApiHealth(maxAttempts = 12, intervalMs = 400): Prom
 
 export function generateInsight(materials: LibraryItem[], userNote?: string, seedTopics?: TopicItem[]) {
   return post<{ topics: TopicItem[]; summary: string }>('/generate/insight', {
-    materials: materials.filter((m) => m.referenced ?? m.def),
+    materials: materials.filter((m) => isMaterialUsable(m)),
     userNote,
     seedTopics: seedTopics?.length ? seedTopics : undefined,
   });
@@ -134,7 +135,7 @@ export function generateCopy(
   copiesPerTopic?: number
 ) {
   return post<{ copies: CopyItem[] }>('/generate/copy', {
-    materials: materials.filter((m) => m.referenced ?? m.def),
+    materials: materials.filter((m) => isMaterialUsable(m)),
     topics,
     userNote,
     copiesPerTopic: copiesPerTopic ?? 3,
@@ -173,7 +174,7 @@ export function generatePptOutline(params: {
   userNote?: string;
 }) {
   return post<PptOutline>('/generate/ppt-outline', {
-    materials: params.materials.filter((m) => m.referenced ?? m.def),
+    materials: params.materials.filter((m) => isMaterialUsable(m)),
     brief: params.brief,
     audience: params.audience,
     scenario: params.scenario,
@@ -223,7 +224,7 @@ export function chat(
   message: string
 ) {
   return post<{ reply: string }>('/chat', {
-    materials: materials.filter((m) => m.referenced ?? m.def),
+    materials: materials.filter((m) => isMaterialUsable(m)),
     history,
     message,
   });
