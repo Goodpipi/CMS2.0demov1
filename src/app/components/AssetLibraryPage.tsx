@@ -16,7 +16,6 @@ import {
   ShieldCheck,
   Sparkles,
   Stethoscope,
-  Trash2,
   Upload,
 } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
@@ -271,18 +270,6 @@ export function AssetLibraryPage({ onNotify, onBack }: AssetLibraryPageProps) {
     onNotify(`品牌元素「${title}」上传成功`);
   };
 
-  const deleteTemplate = (asset: TemplateAsset) => {
-    if (asset.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(asset.previewUrl);
-    setTemplateAssets((prev) => prev.filter((item) => item.id !== asset.id));
-    onNotify(`已删除模板「${asset.title}」`);
-  };
-
-  const deleteBrandAsset = (asset: BrandAsset) => {
-    if (asset.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(asset.previewUrl);
-    setBrandAssets((prev) => prev.filter((item) => item.id !== asset.id));
-    onNotify(`已删除品牌元素「${asset.title}」`);
-  };
-
   return (
     <div className="page relative z-10 px-6 pb-8 lg:px-10">
       <button
@@ -408,17 +395,6 @@ export function AssetLibraryPage({ onNotify, onBack }: AssetLibraryPageProps) {
                   </div>
                   <h3 className="text-[13.5px] font-semibold text-foreground">{asset.title}</h3>
                   <p className="mt-1 min-h-9 text-[11px] leading-[1.55] text-muted-foreground">{asset.description}</p>
-                  <div className="mt-3 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => deleteTemplate(asset)}
-                      className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-border/70 bg-white/75 text-muted-foreground transition hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
-                      title="删除模板"
-                      aria-label={`删除模板 ${asset.title}`}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
                 </div>
               </article>
             ))}
@@ -453,17 +429,6 @@ export function AssetLibraryPage({ onNotify, onBack }: AssetLibraryPageProps) {
                   </div>
                   <h3 className="text-[13.5px] font-semibold text-foreground">{asset.title}</h3>
                   <p className="mt-1 min-h-9 text-[11px] leading-[1.55] text-muted-foreground">{asset.description}</p>
-                  <div className="mt-3 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => deleteBrandAsset(asset)}
-                      className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-border/70 bg-white/75 text-muted-foreground transition hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
-                      title="删除品牌元素"
-                      aria-label={`删除品牌元素 ${asset.title}`}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
                 </div>
               </article>
             ))}

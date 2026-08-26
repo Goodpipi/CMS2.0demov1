@@ -380,10 +380,6 @@ export function PptOutlineEditor({
                           )}
                         </div>
                         <label className="ppt-page-field">
-                          <span>章节标题</span>
-                          <input className="input ppt-page-meta-input" value={ch.title} readOnly />
-                        </label>
-                        <label className="ppt-page-field">
                           <span>页面核心内容</span>
                           <textarea
                             className="ppt-page-bullets"

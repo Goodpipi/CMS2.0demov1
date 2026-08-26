@@ -7495,12 +7495,6 @@ textarea {
   color: var(--muted);
 }
 
-.ppt-page-meta-input {
-  width: 100%;
-  background: #f6f9fc;
-  color: #536a80;
-}
-
 .ppt-page-visual,
 .ppt-page-refs {
   width: 100%;
@@ -7521,6 +7515,9 @@ textarea {
 .content-brief-fields {
   display: grid;
   gap: 12px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .content-brief-field {
@@ -10092,6 +10089,16 @@ textarea {
     0 24px 52px -28px rgba(84, 185, 249, .18),
     0 8px 22px -14px rgba(138, 211, 41, .1),
     inset 0 1px 0 rgba(255, 255, 255, .85);
+}
+
+.workspace-surface-panel.content-brief-panel {
+  overflow: hidden;
+  padding-bottom: 16px;
+}
+
+.content-brief-hint {
+  flex: 0 0 auto;
+  padding-bottom: 4px;
 }
 
 .topic-insight-preview-panel {

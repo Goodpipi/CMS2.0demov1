@@ -24,10 +24,12 @@ function toneClasses(item: LibraryItem) {
 
 function MaterialSourceRow({
   item,
+  showDefaultTag,
   onPreview,
   onRemove,
 }: {
   item: LibraryItem;
+  showDefaultTag?: boolean;
   onPreview: (item: LibraryItem) => void;
   onRemove: (item: LibraryItem) => void;
 }) {
@@ -60,7 +62,7 @@ function MaterialSourceRow({
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-1.5">
           <div className="min-w-0 flex-1 truncate text-[12px] font-medium text-foreground">{item.title}</div>
-          {item.def && (
+          {showDefaultTag && item.def && (
             <span className="shrink-0 rounded-full border border-[#FFB547]/35 bg-[#FFB547]/12 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-[#9a6207]">
               默认
             </span>
@@ -98,6 +100,7 @@ function AssetSection({
   badge,
   items,
   addable,
+  showDefaultTag,
   onOpenPicker,
   onPreview,
   onRemove,
@@ -107,6 +110,7 @@ function AssetSection({
   badge?: number;
   items: LibraryItem[];
   addable?: boolean;
+  showDefaultTag?: boolean;
   onOpenPicker?: (cat: string) => void;
   onPreview: (item: LibraryItem) => void;
   onRemove: (item: LibraryItem) => void;
@@ -138,7 +142,13 @@ function AssetSection({
       <div className="space-y-1">
         {items.length > 0 ? (
           items.map((item) => (
-            <MaterialSourceRow key={item.id} item={item} onPreview={onPreview} onRemove={onRemove} />
+            <MaterialSourceRow
+              key={item.id}
+              item={item}
+              showDefaultTag={showDefaultTag}
+              onPreview={onPreview}
+              onRemove={onRemove}
+            />
           ))
         ) : (
           <div className="rounded-lg border border-dashed border-border/80 bg-white/70 px-2 py-3 text-center text-[11px] text-muted-foreground">
@@ -173,6 +183,7 @@ export function ContextMaterialsPanel({
         title="默认素材"
         badge={defaultItems.length}
         items={defaultItems}
+        showDefaultTag
         onPreview={onPreview}
         onRemove={onRemove}
       />
