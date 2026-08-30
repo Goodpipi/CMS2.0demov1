@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360">
+  <rect width="640" height="360" rx="16" fill="#fff6f4"/>
+  <text x="28" y="36" font-family="Microsoft YaHei, PingFang SC, Arial, sans-serif" font-size="18" font-weight="700" fill="#8a2430">血小板聚集与抗栓机制</text>
+  <text x="28" y="58" font-family="Arial, sans-serif" font-size="11" fill="#a06870">Platelet aggregation cascade</text>
+
+  <path d="M36 250 C120 210 200 270 300 236 C380 210 460 262 604 230" fill="none" stroke="#f4c4b8" stroke-width="42" stroke-linecap="round"/>
+  <path d="M36 250 C120 210 200 270 300 236 C380 210 460 262 604 230" fill="none" stroke="#d45454" stroke-width="16" stroke-linecap="round"/>
+  <path d="M210 228 C230 200 250 198 268 214" fill="none" stroke="#8a2430" stroke-width="8" stroke-linecap="round"/>
+  <text x="188" y="196" font-size="11" fill="#8a2430" font-family="Microsoft YaHei, Arial, sans-serif">血管损伤</text>
+
+  <ellipse cx="248" cy="168" rx="16" ry="10" fill="#e36b6b"/>
+  <ellipse cx="278" cy="186" rx="16" ry="10" fill="#c94444"/>
+  <ellipse cx="262" cy="204" rx="16" ry="10" fill="#d45454"/>
+  <ellipse cx="296" cy="172" rx="14" ry="9" fill="#ef8888"/>
+  <text x="268" y="148" text-anchor="middle" font-size="12" font-weight="700" fill="#8a2430" font-family="Arial, sans-serif">Platelets</text>
+
+  <path d="M312 186 H368" stroke="#c94444" stroke-width="3" marker-end="url(#arrowR)"/>
+  <rect x="376" y="166" width="92" height="40" rx="10" fill="#c94444"/>
+  <text x="422" y="191" text-anchor="middle" font-size="13" fill="#fff" font-family="Microsoft YaHei, Arial, sans-serif">纤维蛋白网</text>
+
+  <rect x="88" y="86" width="120" height="44" rx="12" fill="#0d7a62"/>
+  <text x="148" y="113" text-anchor="middle" font-size="13" font-weight="700" fill="#fff" font-family="Microsoft YaHei, Arial, sans-serif">抗栓药物</text>
+  <path d="M208 108 L248 168" stroke="#0d7a62" stroke-width="3" stroke-dasharray="5 4" marker-end="url(#arrowG2)"/>
+  <text x="226" y="132" font-size="11" fill="#0d7a62" font-family="Microsoft YaHei, Arial, sans-serif">抑制聚集</text>
+
+  <rect x="488" y="86" width="120" height="72" rx="12" fill="#8a2430"/>
+  <text x="548" y="116" text-anchor="middle" font-size="14" font-weight="700" fill="#fff" font-family="Microsoft YaHei, Arial, sans-serif">血栓风险</text>
+  <text x="548" y="138" text-anchor="middle" font-size="12" fill="#ffd6d6" font-family="Microsoft YaHei, Arial, sans-serif">下降</text>
+
+  <defs>
+    <marker id="arrowR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10z" fill="#c94444"/>
+    </marker>
+    <marker id="arrowG2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10z" fill="#0d7a62"/>
+    </marker>
+  </defs>
+</svg>

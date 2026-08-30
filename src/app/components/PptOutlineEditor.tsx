@@ -1,14 +1,21 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { PptOutline, PptOutlineChapter, PptOutlinePage } from '@/types/content';
 import {
+  ensureOutlineDeckStructure,
   genId,
+  isContentSection,
+  isStructuralSection,
+  isTitleOnlyPage,
+  makeOutlinePage,
   moveChapterInOutline,
   movePageInOutline,
   outlinePageCount,
   removeChapterFromOutline,
   removePageFromOutline,
+  syncOutlineSectionMeta,
 } from './pptUtils';
-import { PPT_BUILTIN_TEMPLATES, type PptBuiltinTemplate } from './pptTemplates';
+import { PPT_BUILTIN_TEMPLATES, isBlankPptTemplate, type PptBuiltinTemplate } from './pptTemplates';
+import { PptTemplatePickerModal, PptTemplateThumb } from './PptTemplatePickerModal';
 
 interface PptOutlineEditorProps {
   outline: PptOutline;
@@ -17,7 +24,7 @@ interface PptOutlineEditorProps {
   onRegenerateOutline: () => void;
   selectedTemplateId: string | null;
   templates?: PptBuiltinTemplate[];
-  templateSource?: 'referenced' | 'recommended';
+  moreTemplates?: PptBuiltinTemplate[];
   onSelectTemplate: (templateId: string | null) => void;
   isGenerating?: boolean;
   /** 医学部 / 市场部审阅：仅编辑大纲，不触发生成 */
@@ -41,30 +48,25 @@ export function PptOutlineGenerateFooter({
   templates?: PptBuiltinTemplate[];
   onGenerateDesigns: (mode: 'template' | 'no-template') => void;
 }) {
+  const selected = templates.find((item) => item.id === selectedTemplateId);
   return (
     <footer className="ppt-outline-foot ppt-outline-generate-foot">
       <div className="ppt-generate-actions">
         <button
           type="button"
-          className="btn ppt-generate-btn ppt-generate-btn-alt"
-          disabled={isGenerating}
-          onClick={() => onGenerateDesigns('no-template')}
-        >
-          {isGenerating ? '生成中…' : '不选用模板直接生成'}
-        </button>
-        <button
-          type="button"
           className="btn ppt-generate-btn primary"
           disabled={isGenerating || !selectedTemplateId}
-          onClick={() => onGenerateDesigns('template')}
+          onClick={() => onGenerateDesigns(isBlankPptTemplate(selected) ? 'no-template' : 'template')}
         >
           {isGenerating ? '生成中…' : '按模板生成 PPT'}
         </button>
       </div>
       <div className="small ppt-generate-hint">
-        {selectedTemplateId
-          ? `已选「${templates.find((t) => t.id === selectedTemplateId)?.name}」· 将按该模板生成`
-          : '请先在上方选择模板，或点击「不选用模板直接生成」'}
+        {selected
+          ? isBlankPptTemplate(selected)
+            ? '已选「空白模板」· 将按大纲结构直接生成'
+            : `已选「${selected.name}」· 将按该模板生成`
+          : '请先在上方选择一套模板，或点击「选择更多模板」'}
       </div>
     </footer>
   );
@@ -107,7 +109,7 @@ export function PptOutlineEditor({
   onRegenerateOutline,
   selectedTemplateId,
   templates = PPT_BUILTIN_TEMPLATES,
-  templateSource = 'recommended',
+  moreTemplates = PPT_BUILTIN_TEMPLATES,
   onSelectTemplate,
   isGenerating = false,
   reviewerMode = false,
@@ -122,8 +124,21 @@ export function PptOutlineEditor({
   const [dropChapterId, setDropChapterId] = useState<string | null>(null);
   const [dropPageKey, setDropPageKey] = useState<string | null>(null);
   const [collapsedChapters, setCollapsedChapters] = useState<Record<string, boolean>>({});
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  useEffect(() => {
+    const next = ensureOutlineDeckStructure(outline);
+    if (next !== outline) onChange(next);
+  }, [outline, onChange]);
 
   const isChapterExpanded = (chapterId: string) => collapsedChapters[chapterId] !== true;
+
+  const sectionBadge = (chapter: PptOutlineChapter, contentIndex: number) => {
+    if (chapter.kind === 'cover') return '封面';
+    if (chapter.kind === 'toc') return '目录';
+    if (chapter.kind === 'back') return '封底';
+    return `节 ${contentIndex + 1}`;
+  };
 
   const toggleChapter = (chapterId: string) => {
     setCollapsedChapters((prev) => ({
@@ -145,10 +160,12 @@ export function PptOutlineEditor({
   }, [outline.chapters]);
 
   const updateChapter = (chId: string, patch: Partial<PptOutlineChapter>) => {
-    onChange({
-      ...outline,
-      chapters: outline.chapters.map((ch) => (ch.id === chId ? { ...ch, ...patch } : ch)),
-    });
+    onChange(
+      syncOutlineSectionMeta({
+        ...outline,
+        chapters: outline.chapters.map((ch) => (ch.id === chId ? { ...ch, ...patch } : ch)),
+      })
+    );
   };
 
   const updatePage = (chId: string, pgId: string, patch: Partial<PptOutlinePage>) => {
@@ -167,28 +184,39 @@ export function PptOutlineEditor({
 
   const addChapter = () => {
     const id = genId('ch');
-    onChange({
-      ...outline,
-      chapters: [
-        ...outline.chapters,
-        {
-          id,
-          title: '新章节',
-          pages: [{ id: genId('pg'), title: '新页面', bullets: ['要点 1'], visualSuggestion: '要点列表配合示意图，避免信息过载。', references: [] }],
-        },
+    const created: PptOutlineChapter = {
+      id,
+      title: '新章节',
+      kind: 'section',
+      pages: [
+        makeOutlinePage('新章节', 'section-title'),
+        makeOutlinePage('新页面', 'content', ['要点 1'], {
+          visualSuggestion: '要点列表配合示意图，避免信息过载。',
+        }),
       ],
-    });
+    };
+    const backIdx = outline.chapters.findIndex((ch) => ch.kind === 'back');
+    const chapters = [...outline.chapters];
+    chapters.splice(backIdx >= 0 ? backIdx : chapters.length, 0, created);
+    onChange(syncOutlineSectionMeta({ ...outline, chapters }));
     setCollapsedChapters((prev) => ({ ...prev, [id]: false }));
   };
 
   const addPage = (chId: string) => {
+    const target = outline.chapters.find((ch) => ch.id === chId);
+    if (!target || isStructuralSection(target)) return;
     onChange({
       ...outline,
       chapters: outline.chapters.map((ch) =>
         ch.id === chId
           ? {
               ...ch,
-              pages: [...ch.pages, { id: genId('pg'), title: '新页面', bullets: ['要点 1'], visualSuggestion: '要点列表配合示意图，避免信息过载。', references: [] }],
+              pages: [
+                ...ch.pages,
+                makeOutlinePage('新页面', 'content', ['要点 1'], {
+                  visualSuggestion: '要点列表配合示意图，避免信息过载。',
+                }),
+              ],
             }
           : ch
       ),
@@ -269,13 +297,16 @@ export function PptOutlineEditor({
         )}
 
         <div className="ppt-outline-body">
-          {outline.chapters.map((ch, chIdx) => {
+          {outline.chapters.map((ch) => {
             const expanded = isChapterExpanded(ch.id);
+            const structural = isStructuralSection(ch);
+            const contentIndex = outline.chapters.filter(isContentSection).findIndex((item) => item.id === ch.id);
             return (
             <section
               key={ch.id}
-              className={`ppt-chapter ${expanded ? 'is-expanded' : 'is-collapsed'} ${draggingChapterId === ch.id ? 'is-dragging' : ''} ${dropChapterId === ch.id ? 'is-drop-target' : ''}`}
+              className={`ppt-chapter ${expanded ? 'is-expanded' : 'is-collapsed'} ${structural ? 'is-deck-section' : ''} ${draggingChapterId === ch.id ? 'is-dragging' : ''} ${dropChapterId === ch.id ? 'is-drop-target' : ''}`}
               onDragOver={(e) => {
+                if (structural) return;
                 e.preventDefault();
                 setDropChapterId(ch.id);
               }}
@@ -288,8 +319,8 @@ export function PptOutlineEditor({
                   className="ppt-chapter-toggle"
                   onClick={() => toggleChapter(ch.id)}
                   aria-expanded={expanded}
-                  aria-label={expanded ? '收起章节' : '展开章节'}
-                  title={expanded ? '收起章节' : '展开章节'}
+                  aria-label={expanded ? '收起节' : '展开节'}
+                  title={expanded ? '收起节' : '展开节'}
                 >
                   <svg
                     className={`ppt-chapter-chevron ${expanded ? 'is-open' : ''}`}
@@ -305,9 +336,10 @@ export function PptOutlineEditor({
                     <path d="M9 18l6-6-6-6" />
                   </svg>
                 </button>
+                {!structural && (
                 <span
                   className="ppt-drag-handle-wrap"
-                  title="拖拽排序章节"
+                  title="拖拽排序节"
                   draggable
                   onDragStart={(e) => {
                     e.dataTransfer.setData(CHAPTER_DRAG_TYPE, ch.id);
@@ -319,17 +351,18 @@ export function PptOutlineEditor({
                     setDropChapterId(null);
                   }}
                 >
-                  <DragHandle label="拖拽排序章节" />
+                  <DragHandle label="拖拽排序节" />
                 </span>
-                <span className="ppt-chapter-num">第{chIdx + 1}章</span>
+                )}
+                <span className={`ppt-chapter-num ${ch.kind ? `is-${ch.kind}` : ''}`}>{sectionBadge(ch, contentIndex)}</span>
                 <input
                   className="ppt-chapter-title input"
                   value={ch.title}
                   onChange={(e) => updateChapter(ch.id, { title: e.target.value })}
                 />
                 <span className="ppt-chapter-page-count">{ch.pages.length} 页</span>
-                {outline.chapters.length > 1 && (
-                  <DeleteButton title="删除章节" onClick={() => removeChapter(ch.id)} />
+                {isContentSection(ch) && outline.chapters.filter(isContentSection).length > 1 && (
+                  <DeleteButton title="删除节" onClick={() => removeChapter(ch.id)} />
                 )}
               </div>
 
@@ -341,8 +374,9 @@ export function PptOutlineEditor({
                   return (
                     <div
                       key={pg.id}
-                      className={`ppt-page-card ${draggingPageKey === pageKey ? 'is-dragging' : ''} ${dropPageKey === pageKey ? 'is-drop-target' : ''}`}
+                      className={`ppt-page-card ${isTitleOnlyPage(pg) || pg.kind === 'toc' ? 'is-title-slide' : ''} ${draggingPageKey === pageKey ? 'is-dragging' : ''} ${dropPageKey === pageKey ? 'is-drop-target' : ''}`}
                       onDragOver={(e) => {
+                        if (structural) return;
                         e.preventDefault();
                         e.stopPropagation();
                         setDropPageKey(pageKey);
@@ -353,6 +387,7 @@ export function PptOutlineEditor({
                       <div className="ppt-page-num">{n}</div>
                       <div className="ppt-page-body">
                         <div className="ppt-page-title-row">
+                          {!structural && (
                           <span
                             className="ppt-drag-handle-wrap ppt-drag-handle-wrap--page"
                             title="拖拽排序页面"
@@ -370,6 +405,7 @@ export function PptOutlineEditor({
                           >
                             <DragHandle label="拖拽排序页面" />
                           </span>
+                          )}
                           <input
                             className="ppt-page-title input"
                             value={pg.title}
@@ -379,6 +415,23 @@ export function PptOutlineEditor({
                             <DeleteButton title="删除页面" onClick={() => removePage(ch.id, pg.id)} />
                           )}
                         </div>
+                        {pg.kind === 'toc' && (
+                        <label className="ppt-page-field">
+                          <span>目录条目</span>
+                          <textarea
+                            className="ppt-page-bullets"
+                            value={pg.bullets.join('\n')}
+                            placeholder="每行一节"
+                            onChange={(e) =>
+                              updatePage(ch.id, pg.id, {
+                                bullets: e.target.value.split('\n').filter(Boolean),
+                              })
+                            }
+                          />
+                        </label>
+                        )}
+                        {!structural && pg.kind !== 'toc' && (
+                        <>
                         <label className="ppt-page-field">
                           <span>页面核心内容</span>
                           <textarea
@@ -414,13 +467,17 @@ export function PptOutlineEditor({
                             }
                           />
                         </label>
+                        </>
+                        )}
                       </div>
                     </div>
                   );
                 })}
+                {!structural && (
                 <button type="button" className="ppt-add-page" onClick={() => addPage(ch.id)}>
                   + 添加页面
                 </button>
+                )}
               </div>
               )}
             </section>
@@ -428,17 +485,20 @@ export function PptOutlineEditor({
           })}
 
           <button type="button" className="ppt-add-chapter" onClick={addChapter}>
-            + 添加章节
+            + 添加节
           </button>
         </div>
 
         {!reviewerMode && (
           <section className="ppt-template-section">
-            <h4 className="ppt-template-heading">选择 PPT 模板（可选）</h4>
-            <div className="small" style={{ marginBottom: 10 }}>
-              {templateSource === 'referenced'
-                ? '以下为左侧引用素材中已添加的模板。'
-                : '未添加引用模板，已根据受众、场景与内容推荐 4 个模板。'}
+            <div className="ppt-template-section-head">
+              <div>
+                <h4 className="ppt-template-heading">选择 PPT 模板</h4>
+                <div className="small">根据受众与场景推荐 4 个模板，第一个为空白模板。</div>
+              </div>
+              <button type="button" className="btn soft ppt-more-template-btn" onClick={() => setMoreOpen(true)}>
+                选择更多模板
+              </button>
             </div>
             <div className="ppt-template-grid">
               {templates.map((tpl) => (
@@ -448,18 +508,23 @@ export function PptOutlineEditor({
                   className={`ppt-template-card ${selectedTemplateId === tpl.id ? 'selected' : ''}`}
                   onClick={() => onSelectTemplate(tpl.id)}
                 >
-                  <div
-                    className="ppt-template-preview"
-                    style={{ background: tpl.gradient }}
-                  >
-                    <span className="ppt-template-accent" style={{ background: tpl.accent }} />
-                  </div>
+                  <PptTemplateThumb template={tpl} />
                   <strong>{tpl.name}</strong>
                   <div className="small">{tpl.styleTag}</div>
                   <div className="small ppt-template-desc">{tpl.description}</div>
                 </button>
               ))}
             </div>
+            <PptTemplatePickerModal
+              open={moreOpen}
+              templates={moreTemplates}
+              selectedId={selectedTemplateId}
+              onClose={() => setMoreOpen(false)}
+              onConfirm={(id) => {
+                onSelectTemplate(id);
+                setMoreOpen(false);
+              }}
+            />
           </section>
         )}
 
@@ -473,7 +538,7 @@ export function PptOutlineEditor({
               保存大纲修改
             </button>
             <div className="small">
-              仅需修改章节与页面要点，无需生成 PPT。保存后内容运营可在同一会话「PPT大纲」中查看。
+              仅需修改各节与页面要点，无需生成 PPT。保存后内容运营可在同一会话「PPT大纲」中查看。
             </div>
           </footer>
         ) : showGenerateFooter ? (

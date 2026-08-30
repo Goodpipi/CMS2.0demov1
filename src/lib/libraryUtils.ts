@@ -129,9 +129,9 @@ export function materialPreviewSummary(item: LibraryItem): string {
 export function materialPreviewBody(item: LibraryItem): string {
   const lines = [
     `分类：${item.cat}`,
-    `来源：${item.cms ? 'CMS 已连接参考知识库' : '本地上传'}`,
+    `来源：${item.cms ? 'CMS 已连接个人知识收藏' : '本地上传'}`,
     `元信息：${item.meta}`,
-    item.def ? '状态：已设为默认素材，新建任务会自动带出' : '状态：候选素材，可在参考知识库中设为默认',
+    item.def ? '状态：默认素材，新建任务会自动带出' : '状态：候选素材',
     `添加时间：${formatMaterialAddedTime(item.addedAt)}`,
   ];
   if (item.fileName) lines.splice(2, 0, `文件名：${item.fileName}`);

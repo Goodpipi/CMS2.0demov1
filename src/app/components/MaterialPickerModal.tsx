@@ -176,7 +176,7 @@ export function MaterialPickerModal({
   };
 
   const pickTemplate = (item: TemplateAsset) => {
-    const kindLabel = item.kind === 'ppt' ? 'PPT 模板' : item.kind === 'image' ? '图片模板' : '富文本模板';
+    const kindLabel = item.kind === 'ppt' ? 'PPT 模板' : '图片模板';
     onConfirm({
       title: item.title,
       meta: `${kindLabel} · ${item.ratio} · ${item.tag}`,
@@ -359,7 +359,7 @@ export function MaterialPickerModal({
                   key={item.id}
                   title={item.title}
                   subtitle={item.meta}
-                  badge={item.cms ? 'CMS' : '参考知识库'}
+                  badge={item.cms ? 'CMS' : '个人知识收藏'}
                   onPreview={() => setReferencePreview({ kind: 'knowledge', item })}
                   onAdd={() => pickKnowledge(item)}
                 />
@@ -370,7 +370,7 @@ export function MaterialPickerModal({
                   key={item.id}
                   title={item.title}
                   subtitle={item.description}
-                  badge={item.kind === 'ppt' ? 'PPT' : item.kind === 'image' ? '图片' : '富文本'}
+                  badge={item.kind === 'ppt' ? 'PPT' : '图片'}
                   onPreview={() => setReferencePreview({ kind: 'template', item })}
                   onAdd={() => pickTemplate(item)}
                 />

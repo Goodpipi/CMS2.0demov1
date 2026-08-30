@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360">
+  <rect width="640" height="360" rx="16" fill="#f4fafc"/>
+  <text x="28" y="36" font-family="Microsoft YaHei, PingFang SC, Arial, sans-serif" font-size="18" font-weight="700" fill="#0b4f6c">VEGF / VEGFR 血管新生机制</text>
+  <text x="28" y="58" font-family="Arial, sans-serif" font-size="11" fill="#5a7a88">Angiogenesis pathway</text>
+
+  <path d="M40 250 C120 210 160 290 240 250 C300 220 340 280 420 248" fill="none" stroke="#f2b8b0" stroke-width="38" stroke-linecap="round"/>
+  <path d="M40 250 C120 210 160 290 240 250 C300 220 340 280 420 248" fill="none" stroke="#e36b6b" stroke-width="18" stroke-linecap="round"/>
+  <circle cx="168" cy="236" r="7" fill="#fff"/>
+  <circle cx="292" cy="252" r="6" fill="#fff"/>
+
+  <ellipse cx="118" cy="148" rx="22" ry="14" fill="#2bb673"/>
+  <text x="118" y="152" text-anchor="middle" font-size="10" font-weight="700" fill="#fff" font-family="Arial, sans-serif">VEGF</text>
+  <path d="M118 164 L168 214" stroke="#2bb673" stroke-width="3" marker-end="url(#arrowG)"/>
+
+  <rect x="148" y="214" width="44" height="54" rx="8" fill="#1478b8"/>
+  <text x="170" y="246" text-anchor="middle" font-size="9" font-weight="700" fill="#fff" font-family="Arial, sans-serif">VEGFR</text>
+
+  <path d="M196 236 H250" stroke="#1478b8" stroke-width="3" marker-end="url(#arrowB)"/>
+  <rect x="256" y="214" width="86" height="28" rx="8" fill="#0d5f8a"/>
+  <text x="299" y="233" text-anchor="middle" font-size="11" fill="#fff" font-family="Arial, sans-serif">PI3K / AKT</text>
+  <path d="M342 228 H390" stroke="#0d5f8a" stroke-width="3" marker-end="url(#arrowB)"/>
+  <rect x="396" y="210" width="110" height="36" rx="10" fill="#103c8f"/>
+  <text x="451" y="233" text-anchor="middle" font-size="12" font-weight="700" fill="#fff" font-family="Microsoft YaHei, Arial, sans-serif">血管新生</text>
+
+  <path d="M430 248 C470 210 500 188 548 176" fill="none" stroke="#e36b6b" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="548" cy="176" r="10" fill="#e36b6b"/>
+  <circle cx="568" cy="198" r="7" fill="#f08a82"/>
+  <text x="500" y="300" font-size="12" fill="#5a7a88" font-family="Microsoft YaHei, Arial, sans-serif">内皮增殖 · 管腔出芽</text>
+
+  <defs>
+    <marker id="arrowG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10z" fill="#2bb673"/>
+    </marker>
+    <marker id="arrowB" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10z" fill="#1478b8"/>
+    </marker>
+  </defs>
+</svg>

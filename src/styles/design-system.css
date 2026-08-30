@@ -353,6 +353,14 @@ textarea,
     gap: 12px;
   }
 
+  .user-account-trigger-copy span {
+    display: none;
+  }
+
+  .user-account-panel {
+    width: 270px;
+  }
+
   .app-screen-body {
     padding-left: 16px;
     padding-right: 16px;
@@ -502,6 +510,19 @@ textarea,
     font-size: 12px;
   }
 
+  .content-flow-label {
+    max-width: 64px;
+    font-size: 10px;
+  }
+
+  .content-flow-node em {
+    display: none;
+  }
+
+  .content-flow-line {
+    width: 12px;
+  }
+
   .ppt-design-fit-panel > .content-submit-actions .btn,
   .content-submit-actions .btn {
     font-size: 12px;
@@ -548,6 +569,8 @@ textarea,
   .modal,
   .image-template-modal,
   .material-picker-modal,
+  .literature-picker-modal,
+  .ppt-more-template-modal,
   .reference-asset-preview-modal,
   .terminology-editor-modal,
   .terminology-import-modal,

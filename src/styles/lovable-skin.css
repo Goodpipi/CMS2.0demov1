@@ -502,6 +502,11 @@ body {
   overflow: auto;
 }
 
+.right-head .content-flow-nav {
+  align-items: flex-start;
+  padding-bottom: 4px;
+}
+
 .right-head .preview-history-control {
   flex: 0 0 auto;
   align-self: center;
@@ -1133,6 +1138,17 @@ body {
   background: linear-gradient(to bottom, rgba(84, 185, 249, 0.22), rgba(138, 211, 41, 0.12));
   color: #2d5a8a;
   box-shadow: inset 0 0 0 1px rgba(84, 185, 249, 0.25);
+}
+
+.visual-editor-asset-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.visual-editor-asset-row img {
+  display: block;
 }
 
 .visual-editor-tool-row {

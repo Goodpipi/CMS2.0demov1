@@ -31,6 +31,37 @@ export type InsertShapeType =
 
 export type LayerDirection = 'front' | 'back' | 'forward' | 'backward';
 
+export const EDITOR_FONT_FAMILIES = [
+  { label: '微软雅黑', value: 'Microsoft YaHei, PingFang SC, sans-serif' },
+  { label: '苹方', value: 'PingFang SC, Microsoft YaHei, sans-serif' },
+  { label: '黑体', value: 'SimHei, Heiti SC, sans-serif' },
+  { label: '宋体', value: 'SimSun, Songti SC, serif' },
+  { label: '楷体', value: 'KaiTi, STKaiti, serif' },
+  { label: 'Arial', value: 'Arial, Helvetica, sans-serif' },
+  { label: 'Times New Roman', value: 'Times New Roman, Times, serif' },
+  { label: 'Georgia', value: 'Georgia, serif' },
+  { label: 'Segoe UI', value: 'Segoe UI, sans-serif' },
+] as const;
+
+export const DEFAULT_EDITOR_FONT = EDITOR_FONT_FAMILIES[0].value;
+
+export function resolveEditorFontFamily(raw: string | null | undefined): string {
+  if (!raw) return DEFAULT_EDITOR_FONT;
+  const first = raw.split(',')[0].replace(/['"]/g, '').trim().toLowerCase();
+  const found = EDITOR_FONT_FAMILIES.find((item) => {
+    const names = item.value.split(',').map((part) => part.trim().toLowerCase());
+    return names.includes(first) || item.label.toLowerCase() === first;
+  });
+  return found?.value ?? raw.trim();
+}
+
+function readFontFamily(el: Element): string {
+  const attr = el.getAttribute('font-family');
+  if (attr) return resolveEditorFontFamily(attr);
+  const styled = el instanceof SVGElement ? getComputedStyle(el).fontFamily : '';
+  return resolveEditorFontFamily(styled);
+}
+
 function escapeXmlAttr(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -213,6 +244,7 @@ export function readElementProps(el: Element) {
   const rx = parseFloat(el.getAttribute('rx') || '0') || 0;
   const rotation = getRotation(el);
   const fontWeight = el.getAttribute('font-weight') || '400';
+  const fontFamily = readFontFamily(el);
 
   return {
     tag,
@@ -223,6 +255,7 @@ export function readElementProps(el: Element) {
     strokeWidth,
     fontSize,
     fontWeight,
+    fontFamily,
     x,
     y,
     width,
@@ -251,6 +284,7 @@ export function applyElementProps(
     rx: number;
     rotation: number;
     fontWeight: string;
+    fontFamily: string;
   }>
 ) {
   const tag = el.tagName.toLowerCase();
@@ -283,6 +317,15 @@ export function applyElementProps(
 
   if (props.fontWeight != null && (tag === 'text' || tag === 'tspan')) {
     el.setAttribute('font-weight', props.fontWeight);
+  }
+
+  if (props.fontFamily != null && (tag === 'text' || tag === 'tspan')) {
+    el.setAttribute('font-family', props.fontFamily);
+    if (tag === 'text') {
+      el.querySelectorAll('tspan').forEach((child) => {
+        child.setAttribute('font-family', props.fontFamily!);
+      });
+    }
   }
 
   if (props.opacity != null) el.setAttribute('opacity', String(props.opacity));
@@ -399,6 +442,7 @@ export function createInsertShape(
       el.setAttribute('fill', '#103C8F');
       el.setAttribute('font-size', '28');
       el.setAttribute('font-weight', '700');
+      el.setAttribute('font-family', DEFAULT_EDITOR_FONT);
       el.textContent = '新文字';
       break;
     case 'rect':

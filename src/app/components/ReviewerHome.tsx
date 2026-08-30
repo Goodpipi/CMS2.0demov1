@@ -1,56 +1,76 @@
+import { useState } from 'react';
+import type { ChatSession } from '@/types/session';
 import type { ReviewTask } from '@/types/review';
-import { formatSessionTime } from '@/lib/chatSessions';
+import { ROLE_PROFILES } from '@/types/review';
+import { formatSessionTime, deriveSessionSubtitle } from '@/lib/chatSessions';
+import { collectTaskStatusLabel } from '@/lib/reviewTasks';
+import { TEAM_CONTENT_LABELS } from '@/app/components/teamReviewUtils';
+import { ArrowRight, Presentation } from 'lucide-react';
 
 interface ReviewerHomeProps {
   tasks: ReviewTask[];
+  generateSessions: ChatSession[];
   deptLabel: string;
   onOpenTask: (taskId: string) => void;
+  onOpenSession: (sessionId: string) => void;
 }
 
-function statusLabel(status: ReviewTask['status']): string {
-  switch (status) {
-    case 'completed':
-      return '已审阅';
-    case 'in_progress':
-      return '审阅中';
-    default:
-      return '待审阅';
-  }
-}
+export function ReviewerHome({
+  tasks,
+  generateSessions,
+  deptLabel: _deptLabel,
+  onOpenTask,
+  onOpenSession,
+}: ReviewerHomeProps) {
+  const [tab, setTab] = useState<'generate' | 'collect'>('collect');
+  const items = tab === 'collect' ? tasks : generateSessions;
 
-function statusClass(status: ReviewTask['status']): string {
-  switch (status) {
-    case 'completed':
-      return 'badge green';
-    case 'in_progress':
-      return 'badge warn';
-    default:
-      return 'badge';
-  }
-}
-
-const CONTENT_LABELS: Record<ReviewTask['contentType'], string> = {
-  copy: '文案',
-  visual: '图片',
-  video: '视频',
-  ppt: 'PPT',
-};
-
-export function ReviewerHome({ tasks, deptLabel: _deptLabel, onOpenTask }: ReviewerHomeProps) {
   return (
     <div className="reviewer-home">
-      <div style={{ textAlign: 'center', marginBottom: 32 }}>
-        <h1 style={{ fontSize: 40, fontWeight: 900, margin: '0 0 12px', color: 'var(--blue)' }}>
-          内容审阅
+      <div style={{ textAlign: 'center', marginBottom: 24 }}>
+        <h1 style={{ fontSize: 36, fontWeight: 900, margin: '0 0 12px', color: 'var(--blue)' }}>
+          历史任务
         </h1>
       </div>
 
-      {tasks.length === 0 ? (
+      <div className="home-history-tabs reviewer-home-tabs" role="tablist" aria-label="历史任务类型">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'generate'}
+          className={`home-history-tab ${tab === 'generate' ? 'active' : ''}`}
+          onClick={() => setTab('generate')}
+        >
+          内容生成
+          <span>{generateSessions.length}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'collect'}
+          className={`home-history-tab ${tab === 'collect' ? 'active' : ''}`}
+          onClick={() => setTab('collect')}
+        >
+          意见收集
+          <span>{tasks.length}</span>
+        </button>
+      </div>
+
+      {items.length === 0 ? (
         <div className="detail-card" style={{ textAlign: 'center', padding: 40 }}>
-          <h4>暂无待办任务</h4>
-          <div className="small">运营提交团队审阅后，任务会出现在此列表。</div>
+          {tab === 'collect' ? (
+            <>
+              <h4>暂无意见收集任务</h4>
+              <div className="small">运营提交团队意见收集后，任务会出现在此列表。</div>
+            </>
+          ) : (
+            <>
+              <h4>暂无内容生成任务</h4>
+              <div className="small">内容运营创建任务后，可在此查看相关内容。</div>
+            </>
+          )}
         </div>
-      ) : (
+      ) : tab === 'collect' ? (
         <div className="review-task-list">
           {tasks.map((task) => (
             <button
@@ -61,16 +81,42 @@ export function ReviewerHome({ tasks, deptLabel: _deptLabel, onOpenTask }: Revie
             >
               <div className="review-task-card-head">
                 <strong>{task.title}</strong>
-                <span className={statusClass(task.status)}>{statusLabel(task.status)}</span>
+                <span className={task.status === 'completed' ? 'badge green' : task.status === 'in_progress' ? 'badge warn' : 'badge'}>
+                  {collectTaskStatusLabel(task.status)}
+                </span>
               </div>
               <div className="small" style={{ marginTop: 8 }}>
-                类型：{CONTENT_LABELS[task.contentType]} · 分配人：{task.assignerName} · 截止：
+                类型：{TEAM_CONTENT_LABELS[task.contentType]} · 分配人：{task.assignerName} ·{' '}
+                {ROLE_PROFILES[task.assigneeRole].dept} · 截止：
                 {task.deadline.replace('T', ' ')}
               </div>
               <div className="small" style={{ marginTop: 4, color: 'var(--muted)' }}>
                 更新于 {formatSessionTime(task.updatedAt)}
               </div>
             </button>
+          ))}
+        </div>
+      ) : (
+        <div className="home-task-grid home-inspire-history-list reviewer-generate-list">
+          {generateSessions.map((session) => (
+            <article key={session.id} className="home-task-card group">
+              <button
+                type="button"
+                className="home-task-card-main"
+                onClick={() => onOpenSession(session.id)}
+              >
+                <span className="home-task-card-icon">
+                  <Presentation className="h-4 w-4 text-white" strokeWidth={2.4} />
+                </span>
+                <span className="home-task-card-copy">
+                  <strong>{session.title}</strong>
+                  <span>
+                    {deriveSessionSubtitle(session)} · {formatSessionTime(session.updatedAt)}
+                  </span>
+                </span>
+                <ArrowRight className="home-task-card-arrow h-4 w-4" />
+              </button>
+            </article>
           ))}
         </div>
       )}

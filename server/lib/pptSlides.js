@@ -8,13 +8,15 @@ export function flattenOutlinePages(outline) {
   const pages = [];
   for (const ch of outline.chapters) {
     for (const p of ch.pages || []) {
+      const titleOnly = p.kind === 'cover' || p.kind === 'section-title' || p.kind === 'back';
       pages.push({
         title: p.title || '未命名页面',
-        bullets: p.bullets?.length ? p.bullets : ['要点待补充'],
+        bullets: titleOnly ? [] : p.bullets?.length ? p.bullets : p.kind === 'toc' ? [] : ['要点待补充'],
+        kind: p.kind || (titleOnly ? 'section-title' : 'content'),
       });
     }
   }
-  return pages.length ? pages : [{ title: '封面', bullets: ['可申达'] }];
+  return pages.length ? pages : [{ title: '封面', bullets: [], kind: 'cover' }];
 }
 
 function esc(s) {
@@ -37,12 +39,15 @@ export function buildSlideSvg(title, bullets, variantIndex = 0) {
   const v = VARIANTS[variantIndex % VARIANTS.length] || VARIANTS[0];
   const safeTitle = esc(title).slice(0, 36);
   const lines = (bullets || []).slice(0, 4).map((b) => esc(b).slice(0, 48));
+  const titleOnly = lines.length === 0;
   const bulletSvg = lines
     .map(
       (line, i) =>
         `<text x="56" y="${248 + i * 36}" font-size="22" fill="${v.sub}">• ${line}</text>`
     )
     .join('');
+  const titleY = titleOnly ? 270 : 160;
+  const titleSize = titleOnly ? 42 : 34;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540">
     <defs>
       <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
@@ -52,7 +57,7 @@ export function buildSlideSvg(title, bullets, variantIndex = 0) {
     <rect width="960" height="540" fill="url(#bg)"/>
     <rect x="48" y="40" width="100" height="36" rx="18" fill="${v.accent}"/>
     <text x="72" y="64" font-size="18" font-weight="700" fill="white">Bayer</text>
-    <text x="48" y="160" font-size="34" font-weight="800" fill="${v.accent}">${safeTitle}</text>
+    <text x="${titleOnly ? 480 : 48}" y="${titleY}" text-anchor="${titleOnly ? 'middle' : 'start'}" font-size="${titleSize}" font-weight="800" fill="${v.accent}">${safeTitle}</text>
     ${bulletSvg}
     <rect x="48" y="480" width="520" height="36" rx="8" fill="#fff" opacity="0.85"/>
     <text x="64" y="504" font-size="14" fill="${v.accent}">疾病教育内容｜仅供科普参考</text>
@@ -94,18 +99,24 @@ export function enrichPptDesignVersions(data, outline, options = {}) {
       const variantIndex =
         ver._variantIndex != null ? ver._variantIndex : vi;
       const aiSlides = ver.slides || [];
+      const tpl = singleVersion && templateId ? getPptTemplate(templateId) : null;
+      const slideUrls = tpl?.slideUrls || [];
       const slides = basePages.map((pg, i) => {
         const fromAi = aiSlides[i] || aiSlides.find((s) => s.page === i + 1) || {};
+        const imageUrl = (slideUrls.length ? slideUrls[i % slideUrls.length] : '') || fromAi.imageUrl;
         return {
           page: i + 1,
           title: fromAi.title || pg.title,
           bullets: fromAi.bullets?.length ? fromAi.bullets : pg.bullets,
           speakerNotes: fromAi.speakerNotes,
-          svg: buildSlideSvg(
-            fromAi.title || pg.title,
-            fromAi.bullets || pg.bullets,
-            variantIndex
-          ),
+          imageUrl,
+          svg: imageUrl
+            ? undefined
+            : buildSlideSvg(
+                fromAi.title || pg.title,
+                fromAi.bullets || pg.bullets,
+                variantIndex
+              ),
         };
       });
       const { _variantIndex, ...rest } = ver;

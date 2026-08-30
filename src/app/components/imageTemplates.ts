@@ -12,58 +12,34 @@ export interface ImageBuiltinTemplate {
 
 export const IMAGE_BUILTIN_TEMPLATES: ImageBuiltinTemplate[] = [
   {
-    id: 'xiaohongshu',
-    name: '小红书配图',
-    description: '竖版感、标题醒目，适合社交媒体',
-    styleHint: '清爽竖版构图，主标题突出，留白适中，少营销感',
-    layoutHint: '上标题、中要点、下免责声明条',
-    gradient: 'linear-gradient(145deg, #fff5f8 0%, #ffe8f0 100%)',
-    accent: '#c2185b',
+    id: 'radimetrics',
+    name: 'Radimetrics™ 智能化剂量管理平台',
+    description: '从 CT 到核药的辐射剂量管理海报，适合产品介绍与学术沟通',
+    styleHint: '科技蓝紫，信息分层清晰，强调智能化剂量管理与质控',
+    layoutHint: '上标题+三点能力说明+底部产品界面与品牌标语',
+    previewImg: '/image-templates/radimetrics.png',
+    gradient: 'linear-gradient(145deg, #eef3ff 0%, #f4eefc 100%)',
+    accent: '#5b4db8',
   },
   {
-    id: 'disease-poster',
-    name: '疾病教育海报',
-    description: '科普向、信息层次清晰',
-    styleHint: '蓝绿渐变背景，科普图标感，强调疾病教育',
-    layoutHint: '大标题+3条要点+底部合规条',
-    gradient: 'linear-gradient(145deg, #eaf7ff 0%, #f4fff0 100%)',
-    accent: '#103C8F',
+    id: 'confidence-talk',
+    name: 'CONFIDENCE周周谈',
+    description: '非奈利酮与 SGLT-2i 同步起始联合治疗的机制解析长图',
+    styleHint: '红色学术科普风，机制图示突出，适合会议与周更解读',
+    layoutHint: '刊会标识+主标题+机制流程图+指南结论条',
+    previewImg: '/image-templates/confidence-talk.png',
+    gradient: 'linear-gradient(145deg, #fff5f5 0%, #fde8e8 100%)',
+    accent: '#c62828',
   },
   {
-    id: 'health-science',
-    name: '健康科普图文',
-    description: '图文结合，适合长图拆解',
-    styleHint: '亲和浅色系，分块信息，图标点缀',
-    layoutHint: '分区卡片式排版',
-    gradient: 'linear-gradient(145deg, #e8f5e9 0%, #f1f8e9 100%)',
-    accent: '#2e7d32',
-  },
-  {
-    id: 'medical-scene',
-    name: '医疗场景图',
-    description: '专业医疗场景氛围',
-    styleHint: '偏专业蓝，医疗场景暗示，克制装饰',
-    layoutHint: '场景氛围+简短标题+合规说明',
-    gradient: 'linear-gradient(145deg, #e3f2fd 0%, #eceff1 100%)',
-    accent: '#1565c0',
-  },
-  {
-    id: 'drug-info',
-    name: '药品说明',
-    description: '说明性版式，信息准确',
-    styleHint: '规整排版，信息条块清晰，偏说明风格',
-    layoutHint: '标题+分条说明+醒目免责声明',
-    gradient: 'linear-gradient(145deg, #fafafa 0%, #eeeeee 100%)',
-    accent: '#455a64',
-  },
-  {
-    id: 'patient-care',
-    name: '患者关怀',
-    description: '温暖关怀色调',
-    styleHint: '温暖浅绿蓝，关怀语气，避免冰冷医疗感',
-    layoutHint: '柔和背景+关怀文案+就医建议',
-    gradient: 'linear-gradient(145deg, #e0f7fa 0%, #f3e5f5 100%)',
-    accent: '#00838f',
+    id: 'afib-stroke',
+    name: '房颤卒中预防科普',
+    description: '关注心房颤动、预防脑卒中的竖版患者教育长图',
+    styleHint: '紫红科普风，故事+数据结合，适合公众渠道疾病教育',
+    layoutHint: '大标题+情景插画+危害数据区',
+    previewImg: '/image-templates/afib-stroke.png',
+    gradient: 'linear-gradient(145deg, #f6eef8 0%, #f3e6f4 100%)',
+    accent: '#8e24aa',
   },
 ];
 
@@ -91,12 +67,20 @@ export function parseImageTemplateFromText(text: string): string | null {
   const byTitle = imageTemplateIdFromTitle(t);
   if (byTitle) return byTitle;
   const lower = t.toLowerCase();
-  if (lower.includes('小红书')) return 'xiaohongshu';
-  if (lower.includes('疾病教育') || lower.includes('海报')) return 'disease-poster';
-  if (lower.includes('科普图文') || lower.includes('健康科普')) return 'health-science';
-  if (lower.includes('医疗场景')) return 'medical-scene';
-  if (lower.includes('药品说明')) return 'drug-info';
-  if (lower.includes('患者关怀')) return 'patient-care';
+  if (lower.includes('radimetrics') || t.includes('剂量管理') || t.includes('核药')) {
+    return 'radimetrics';
+  }
+  if (
+    lower.includes('confidence') ||
+    t.includes('周周谈') ||
+    t.includes('非奈利酮') ||
+    /sglt/i.test(t)
+  ) {
+    return 'confidence-talk';
+  }
+  if (t.includes('房颤') || t.includes('心房颤') || t.includes('卒中') || t.includes('脑卒中')) {
+    return 'afib-stroke';
+  }
   return null;
 }
 

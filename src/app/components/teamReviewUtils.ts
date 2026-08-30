@@ -34,7 +34,7 @@ export function serializePptForTeam(outline: PptOutline | null, result: PptResul
     `PPT 大纲：${outline.title}`,
     `受众：${outline.audience} · 场景：${outline.scenario}`,
     ...outline.chapters.flatMap((ch, ci) => [
-      `第${ci + 1}章 ${ch.title}`,
+      `${ch.kind === 'cover' ? '封面' : ch.kind === 'toc' ? '目录' : ch.kind === 'back' ? '封底' : `节 ${ci + 1}`} ${ch.title}`,
       ...ch.pages.map((p) => `  - ${p.title}：${p.bullets.join('；')}`),
     ]),
   ].join('\n');
@@ -100,7 +100,7 @@ export function buildTeamReviewPayload(
       return {
         title: `配图 ${indices.map((i) => i + 1).join('、')}`,
         body: [
-          `已提交 ${indices.length}/${ctx.generatedImages.length} 张配图/海报给团队审阅（第 ${indices.map((i) => i + 1).join('、')} 张）。`,
+          `已提交 ${indices.length}/${ctx.generatedImages.length} 张配图/海报给团队意见收集（第 ${indices.map((i) => i + 1).join('、')} 张）。`,
           copyRef ? `关联文案：\n${copyRef.slice(0, 800)}` : '',
           '请团队从画面视觉、文案层级、品牌元素与合规表述（避免疗效承诺）方面提出修改意见，并可直接添加批注。',
         ]

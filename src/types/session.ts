@@ -15,7 +15,9 @@ import type {
   TopicRecommendationItem,
 } from '@/lib/topicInsightAgent';
 import type { HomeEntryContext } from '@/app/components/homeGuide';
+import type { TaskProduct } from '@/lib/products';
 import type { CopyRevision, ImageReviewStatus } from '@/types/review';
+import type { ModificationTask } from '@/lib/modificationTasks';
 
 export type TabKey =
   | 'insight'
@@ -94,6 +96,9 @@ export interface SessionWorkspace {
   selectedCopies: boolean[];
   copyRevisions: CopyRevision[];
   copyRevisionBase: string;
+  selectedProduct?: TaskProduct | null;
+  /** 用户首次内容操作锁定的流程第二步 */
+  flowEntry?: import('@/lib/contentFlow').ContentFlowEntry | null;
   entryContext: HomeEntryContext | null;
   pptWizard: {
     active: boolean;
@@ -106,6 +111,7 @@ export interface SessionWorkspace {
     active: boolean;
     pendingNote: string;
   } | null;
+  modificationTasks?: ModificationTask[];
   visualWizard: {
     active: boolean;
     step: 'count' | 'ask' | 'template';

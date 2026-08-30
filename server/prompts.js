@@ -137,9 +137,11 @@ ${brief}
 ${userNote ? `用户要求：${userNote}` : ''}
 
 要求：
-- 2-4 个章节，每章 2-4 页
+- 按 PowerPoint 节组织：先封面节、目录节，再 2-4 个内容节，最后封底节
+- 封面、目录、封底各只有 1 页
+- 每个内容节的第一页必须是章节标题页：title 与节标题相同，bullets 为空数组
+- 内容节随后再给 2-3 页正文，每页有标题和 2-4 条要点
 - 符合制药合规，疾病教育导向
-- 章节名简洁，每页有标题和 2-4 条要点
 
 只返回 JSON：
 {
@@ -148,10 +150,27 @@ ${userNote ? `用户要求：${userNote}` : ''}
   "scenario": "${scenario}",
   "chapters": [
     {
+      "title": "封面",
+      "kind": "cover",
+      "pages": [{ "title": "PPT总标题", "bullets": [], "kind": "cover" }]
+    },
+    {
+      "title": "目录",
+      "kind": "toc",
+      "pages": [{ "title": "目录", "bullets": ["节1", "节2"], "kind": "toc" }]
+    },
+    {
       "title": "章节名",
+      "kind": "section",
       "pages": [
-        { "title": "页面标题", "bullets": ["要点1", "要点2"], "speakerNotes": "备注" }
+        { "title": "章节名", "bullets": [], "kind": "section-title" },
+        { "title": "页面标题", "bullets": ["要点1", "要点2"], "kind": "content", "speakerNotes": "备注" }
       ]
+    },
+    {
+      "title": "封底",
+      "kind": "back",
+      "pages": [{ "title": "谢谢", "bullets": [], "kind": "back" }]
     }
   ]
 }`;

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360">
+  <rect width="640" height="360" rx="16" fill="#f7f5fc"/>
+  <text x="28" y="36" font-family="Microsoft YaHei, PingFang SC, Arial, sans-serif" font-size="18" font-weight="700" fill="#3d2a6e">HER2 受体二聚化与信号通路</text>
+  <text x="28" y="58" font-family="Arial, sans-serif" font-size="11" fill="#7a6d93">Receptor tyrosine kinase cascade</text>
+
+  <rect x="40" y="168" width="560" height="18" rx="9" fill="#c9b8e6"/>
+  <text x="560" y="182" text-anchor="end" font-size="10" fill="#5a4a7a" font-family="Arial, sans-serif">Membrane</text>
+
+  <ellipse cx="168" cy="118" rx="18" ry="12" fill="#7b4fd1"/>
+  <ellipse cx="248" cy="118" rx="18" ry="12" fill="#7b4fd1"/>
+  <rect x="156" y="128" width="24" height="86" rx="8" fill="#5b33b0"/>
+  <rect x="236" y="128" width="24" height="86" rx="8" fill="#5b33b0"/>
+  <rect x="152" y="208" width="32" height="36" rx="8" fill="#3d1f86"/>
+  <rect x="232" y="208" width="32" height="36" rx="8" fill="#3d1f86"/>
+  <text x="208" y="104" text-anchor="middle" font-size="12" font-weight="700" fill="#3d2a6e" font-family="Arial, sans-serif">HER2 dimer</text>
+  <path d="M180 146 H236" stroke="#3d1f86" stroke-width="4"/>
+
+  <path d="M216 244 V278" stroke="#3d1f86" stroke-width="3" marker-end="url(#arrowP)"/>
+  <rect x="150" y="286" width="132" height="32" rx="8" fill="#3d1f86"/>
+  <text x="216" y="307" text-anchor="middle" font-size="13" fill="#fff" font-family="Arial, sans-serif">Kinase activation</text>
+
+  <path d="M282 302 H340" stroke="#3d1f86" stroke-width="3" marker-end="url(#arrowP)"/>
+  <rect x="348" y="246" width="100" height="36" rx="8" fill="#6a3cc4"/>
+  <text x="398" y="269" text-anchor="middle" font-size="13" fill="#fff" font-family="Arial, sans-serif">PI3K / AKT</text>
+  <rect x="348" y="298" width="100" height="36" rx="8" fill="#8a5ae0"/>
+  <text x="398" y="321" text-anchor="middle" font-size="13" fill="#fff" font-family="Arial, sans-serif">MAPK</text>
+
+  <path d="M448 264 H500" stroke="#6a3cc4" stroke-width="3" marker-end="url(#arrowP)"/>
+  <path d="M448 316 H500" stroke="#8a5ae0" stroke-width="3" marker-end="url(#arrowP)"/>
+  <rect x="508" y="250" width="100" height="80" rx="12" fill="#2c1a5c"/>
+  <text x="558" y="284" text-anchor="middle" font-size="13" font-weight="700" fill="#fff" font-family="Microsoft YaHei, Arial, sans-serif">增殖</text>
+  <text x="558" y="308" text-anchor="middle" font-size="13" fill="#e6dcff" font-family="Microsoft YaHei, Arial, sans-serif">存活</text>
+
+  <defs>
+    <marker id="arrowP" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10z" fill="#3d1f86"/>
+    </marker>
+  </defs>
+</svg>

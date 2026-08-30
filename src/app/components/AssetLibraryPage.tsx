@@ -1,27 +1,28 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowUpRight,
-  CheckCircle2,
   ChevronLeft,
-  FileText,
   Image as ImageIcon,
   Layers3,
-  Leaf,
   LibraryBig,
-  Microscope,
   Palette,
   Presentation,
   Search,
   Shapes,
   ShieldCheck,
-  Sparkles,
-  Stethoscope,
   Upload,
+  X,
 } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
+import { BrandSwitcher } from '@/app/components/BrandSwitcher';
+import { matchesBrand, type ContentBrand } from '@/lib/brands';
+import {
+  EDITOR_PAGE_ASSET_GROUPS,
+  type EditorAssetGroup,
+} from '@/lib/editorPageAssets';
 
 type AssetTab = 'templates' | 'brand';
-export type TemplateKind = 'ppt' | 'image' | 'rich-text';
+export type TemplateKind = 'ppt' | 'image';
 
 export interface TemplateAsset {
   id: string;
@@ -33,32 +34,37 @@ export interface TemplateAsset {
   accentSoft: string;
   tag: string;
   previewUrl?: string;
+  slideUrls?: string[];
+  brand?: ContentBrand;
 }
 
 const TEMPLATE_FILTERS: { id: TemplateKind; label: string; Icon: typeof Presentation }[] = [
   { id: 'ppt', label: 'PPT 模板', Icon: Presentation },
   { id: 'image', label: '图片模板', Icon: ImageIcon },
-  { id: 'rich-text', label: '富文本模板', Icon: FileText },
 ];
 
 export const TEMPLATE_ASSETS: TemplateAsset[] = [
-  { id: 'ppt-medical', kind: 'ppt', title: '医学价值沟通', description: '适用于 HCP 拜访、科室会与医学沟通', ratio: '16:9 · 24 页', accent: '#0b66b3', accentSoft: '#dcefff', tag: 'HCP' },
-  { id: 'ppt-patient', kind: 'ppt', title: '患者教育课堂', description: '低认知负担的疾病教育与患者宣教版式', ratio: '16:9 · 18 页', accent: '#4b9b41', accentSoft: '#e8f5e5', tag: '患者教育' },
-  { id: 'ppt-congress', kind: 'ppt', title: '学术会议速递', description: '研究背景、数据解读与临床启示结构', ratio: '16:9 · 22 页', accent: '#005b8e', accentSoft: '#e0f1f7', tag: 'Congress' },
-  { id: 'ppt-training', kind: 'ppt', title: '品牌内部培训', description: '用于销售培训、知识传递与案例复盘', ratio: '16:9 · 30 页', accent: '#583b8e', accentSoft: '#eee9f7', tag: '培训' },
-  { id: 'img-social', kind: 'image', title: '社交媒体科普卡', description: '适配小红书与公众号的竖版知识卡', ratio: '3:4 · 1242×1660', accent: '#e54b66', accentSoft: '#fff0f3', tag: '社交媒体' },
-  { id: 'img-poster', kind: 'image', title: '疾病教育海报', description: '清晰分层的线下活动与数字海报模板', ratio: '4:5 · 1080×1350', accent: '#0b66b3', accentSoft: '#e6f2fb', tag: '海报' },
-  { id: 'img-data', kind: 'image', title: '临床数据图卡', description: '突出关键数据、结论与来源的证据图卡', ratio: '1:1 · 1080×1080', accent: '#00a67d', accentSoft: '#e4f7f1', tag: '数据' },
-  { id: 'img-care', kind: 'image', title: '患者关怀长图', description: '用于症状管理与就医建议的长图版式', ratio: '9:16 · 1080×1920', accent: '#4698a8', accentSoft: '#e7f4f6', tag: '关怀' },
-  { id: 'rt-wechat', kind: 'rich-text', title: '公众号疾病科普', description: '标题、导语、正文、引用与免责声明完整结构', ratio: '富文本 · 6 模块', accent: '#1677b8', accentSoft: '#e6f1f8', tag: '公众号' },
-  { id: 'rt-hcp', kind: 'rich-text', title: 'HCP 学术速递', description: '研究摘要、结果解读和临床观点版式', ratio: '富文本 · 8 模块', accent: '#315795', accentSoft: '#e9eef6', tag: '学术' },
-  { id: 'rt-faq', kind: 'rich-text', title: '患者常见问题 FAQ', description: '问答、风险提示与就医行动建议结构', ratio: '富文本 · 10 问', accent: '#4b9b41', accentSoft: '#ebf6e8', tag: 'FAQ' },
-  { id: 'rt-event', kind: 'rich-text', title: '活动回顾与纪要', description: '会议亮点、专家观点与资料下载模块', ratio: '富文本 · 7 模块', accent: '#734b99', accentSoft: '#f0ebf5', tag: '活动' },
+  { id: 'ppt-eylea-namd', kind: 'ppt', title: 'EYLEA nAMD Meta分析', description: '抗 VEGF 治疗初治 nAMD 的系统评价与 meta 分析学术版式', ratio: '16:9 · 3 页', accent: '#1b7a3c', accentSoft: '#e8f6ec', tag: 'EYLEA', previewUrl: '/ppt-templates/eylea-namd-01.png', slideUrls: ['/ppt-templates/eylea-namd-01.png', '/ppt-templates/eylea-namd-02.png', '/ppt-templates/eylea-namd-03.png'] },
+  { id: 'ppt-her2-nsclc', kind: 'ppt', title: 'HER2突变NSCLC医学汇报', description: '塞伐艾替尼治疗 HER2 突变非小细胞肺癌的医学事务汇报版式', ratio: '16:9 · 3 页', accent: '#1a4b8c', accentSoft: '#e4eefc', tag: '肿瘤', previewUrl: '/ppt-templates/her2-nsclc-01.png', slideUrls: ['/ppt-templates/her2-nsclc-01.png', '/ppt-templates/her2-nsclc-02.png', '/ppt-templates/her2-nsclc-03.png'] },
+  { id: 'ppt-pad-xarelto', kind: 'ppt', title: 'PAD抗栓指南进展', description: '从指南变迁看 PAD 抗栓治疗进展的学术沟通版式', ratio: '16:9 · 3 页', accent: '#4b2c7f', accentSoft: '#efe8f8', tag: '拜瑞妥', previewUrl: '/ppt-templates/pad-xarelto-01.png', slideUrls: ['/ppt-templates/pad-xarelto-01.png', '/ppt-templates/pad-xarelto-02.png', '/ppt-templates/pad-xarelto-03.png'] },
+  { id: 'img-radimetrics', kind: 'image', title: 'Radimetrics™ 智能化剂量管理平台', description: '从 CT 到核药的辐射剂量管理海报，适合产品介绍与学术沟通', ratio: '3:4 · 竖版海报', accent: '#5b4db8', accentSoft: '#eef3ff', tag: '产品', previewUrl: '/image-templates/radimetrics.png' },
+  { id: 'img-confidence', kind: 'image', title: 'CONFIDENCE周周谈', description: '非奈利酮与 SGLT-2i 同步起始联合治疗的机制解析长图', ratio: '9:16 · 学术长图', accent: '#c62828', accentSoft: '#fff5f5', tag: '学术', previewUrl: '/image-templates/confidence-talk.png' },
+  { id: 'img-afib', kind: 'image', title: '房颤卒中预防科普', description: '关注心房颤动、预防脑卒中的竖版患者教育长图', ratio: '9:16 · 科普长图', accent: '#8e24aa', accentSoft: '#f6eef8', tag: '科普', previewUrl: '/image-templates/afib-stroke.png' },
 ];
 
 const BRAND_SOURCE = 'https://idnet.bayer.com/en/bayer-cross-new';
-const BAYER_LOGO =
-  'https://commons.wikimedia.org/wiki/Special:Redirect/file/Logo_Bayer.svg';
+
+const BRAND_FILTER_ICONS: Record<EditorAssetGroup, typeof Palette> = {
+  logo: Palette,
+  official: ImageIcon,
+  other: Shapes,
+};
+
+const BRAND_FILTERS = EDITOR_PAGE_ASSET_GROUPS.map((group) => ({
+  id: group.id,
+  label: group.title,
+  Icon: BRAND_FILTER_ICONS[group.id],
+}));
 
 export interface BrandAsset {
   id: string;
@@ -66,26 +72,32 @@ export interface BrandAsset {
   description: string;
   format: string;
   category: string;
-  preview: 'logo' | 'reverse-logo' | 'wordmark' | 'colors' | 'code' | 'medical-icons' | 'crop-icons' | 'trust';
+  group: EditorAssetGroup;
   previewUrl?: string;
+  brand?: ContentBrand;
 }
 
-export const BRAND_ASSETS: BrandAsset[] = [
-  { id: 'bayer-cross', title: 'Bayer Cross 正色标志', description: '适用于白色或极浅色背景的主标志', format: 'SVG · PNG', category: 'Logo', preview: 'logo' },
-  { id: 'bayer-reverse', title: 'Bayer Cross 反白标志', description: '适用于深色背景，需遵循最小留白规范', format: 'SVG · PNG', category: 'Logo', preview: 'reverse-logo' },
-  { id: 'bayer-wordmark', title: 'Bayer Cross + Logotype', description: '用于受限空间、赞助墙与联合署名场景', format: 'SVG · EPS', category: 'Logo', preview: 'wordmark' },
-  { id: 'bayer-colors', title: '拜耳核心色板', description: '科学蓝、生命绿及辅助中性色的数字色值', format: 'ASE · JSON', category: 'Color', preview: 'colors' },
-  { id: 'crop-code', title: 'Crop Science Code', description: '用于作物科学传播的斜向色带视觉系统', format: 'SVG · AI', category: 'Graphic', preview: 'code' },
-  { id: 'medical-icons', title: '医学传播图标组', description: '心脏、肾脏、药物与医疗服务常用图标', format: '24 SVG', category: 'Icon', preview: 'medical-icons' },
-  { id: 'crop-icons', title: '作物科学图标组', description: '作物、生长、田间与可持续主题图标', format: '20 SVG', category: 'Icon', preview: 'crop-icons' },
-  { id: 'trust-marks', title: '可信与合规标识组', description: '审批、保护、证据与可追溯性图标', format: '16 SVG', category: 'Icon', preview: 'trust' },
-];
+export const BRAND_ASSETS: BrandAsset[] = EDITOR_PAGE_ASSET_GROUPS.flatMap((group) =>
+  group.items.map((item) => ({
+    id: item.id,
+    title: item.title,
+    description: item.meta,
+    format: item.meta,
+    category: group.title,
+    group: group.id,
+    previewUrl: item.href,
+  }))
+);
 
 export function TemplatePreview({ asset }: { asset: TemplateAsset }) {
   if (asset.previewUrl) {
     return (
-      <div className="asset-preview relative aspect-[16/9] overflow-hidden rounded-xl bg-white shadow-sm">
-        <img src={asset.previewUrl} alt={asset.title} className="h-full w-full object-cover" />
+      <div className="asset-preview relative aspect-[16/9] overflow-hidden rounded-xl bg-[#f4f7fb] shadow-sm">
+        <img
+          src={asset.previewUrl}
+          alt={asset.title}
+          className={asset.kind === 'image' ? 'h-full w-full object-contain' : 'h-full w-full object-cover'}
+        />
       </div>
     );
   }
@@ -106,135 +118,140 @@ export function TemplatePreview({ asset }: { asset: TemplateAsset }) {
     );
   }
 
-  if (asset.kind === 'image') {
-    return (
-      <div className="asset-preview relative aspect-[16/9] overflow-hidden rounded-xl" style={{ background: asset.accentSoft }}>
-        <div className="absolute -right-6 -top-9 h-32 w-32 rounded-full opacity-80" style={{ background: asset.accent }} />
-        <div className="absolute -bottom-14 right-12 h-28 w-40 rotate-[-14deg] rounded-[50%]" style={{ background: `${asset.accent}33` }} />
-        <div className="absolute left-5 top-5 rounded-full bg-white/90 px-2.5 py-1 text-[8px] font-bold" style={{ color: asset.accent }}>BAYER HEALTH</div>
-        <div className="absolute bottom-8 left-5 h-2.5 w-[43%] rounded-full" style={{ background: asset.accent }} />
-        <div className="absolute bottom-4 left-5 h-1.5 w-[58%] rounded-full bg-slate-400/35" />
-      </div>
-    );
-  }
+  return (
+    <div className="asset-preview relative aspect-[16/9] overflow-hidden rounded-xl" style={{ background: asset.accentSoft }}>
+      <div className="absolute -right-6 -top-9 h-32 w-32 rounded-full opacity-80" style={{ background: asset.accent }} />
+      <div className="absolute -bottom-14 right-12 h-28 w-40 rotate-[-14deg] rounded-[50%]" style={{ background: `${asset.accent}33` }} />
+      <div className="absolute left-5 top-5 rounded-full bg-white/90 px-2.5 py-1 text-[8px] font-bold" style={{ color: asset.accent }}>BAYER HEALTH</div>
+      <div className="absolute bottom-8 left-5 h-2.5 w-[43%] rounded-full" style={{ background: asset.accent }} />
+      <div className="absolute bottom-4 left-5 h-1.5 w-[58%] rounded-full bg-slate-400/35" />
+    </div>
+  );
+}
+
+function TemplatePreviewModal({
+  asset,
+  onClose,
+}: {
+  asset: TemplateAsset;
+  onClose: () => void;
+}) {
+  const slides = asset.slideUrls?.length ? asset.slideUrls : asset.previewUrl ? [asset.previewUrl] : [];
 
   return (
-    <div className="asset-preview relative aspect-[16/9] overflow-hidden rounded-xl bg-white p-4 shadow-sm">
-      <div className="mb-3 flex items-center gap-2">
-        <span className="h-6 w-6 rounded-lg" style={{ background: asset.accent }} />
-        <span className="h-2 w-[38%] rounded-full bg-slate-800/80" />
-      </div>
-      {[72, 90, 64].map((width, index) => (
-        <div key={width} className="mb-2 flex items-center gap-2">
-          <span className="h-1.5 w-1.5 rounded-full" style={{ background: asset.accent }} />
-          <span className="h-1.5 rounded-full bg-slate-300" style={{ width: `${width}%` }} />
-          {index === 0 && <span className="sr-only">正文段落</span>}
+    <div
+      className="modal-bg show asset-library-preview-bg"
+      role="presentation"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div
+        className="modal asset-library-preview-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="asset-library-preview-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="asset-library-preview-head">
+          <div>
+            <h3 id="asset-library-preview-title">{asset.title}</h3>
+            <p>
+              {asset.ratio} · {asset.tag}
+            </p>
+          </div>
+          <button type="button" className="literature-picker-close" onClick={onClose} aria-label="关闭预览">
+            <X className="h-4 w-4" strokeWidth={2.2} />
+          </button>
         </div>
-      ))}
-      <div className="absolute bottom-3 left-4 right-4 h-5 rounded-md" style={{ background: asset.accentSoft }} />
+        <div className="asset-library-preview-body">
+          {slides.length > 0 ? (
+            <div className={asset.kind === 'image' ? 'asset-library-preview-poster' : 'asset-library-preview-slides'}>
+              {slides.map((src, index) => (
+                <figure key={src}>
+                  <img src={src} alt={`${asset.title}${slides.length > 1 ? ` 第 ${index + 1} 页` : ''}`} />
+                  {slides.length > 1 && <figcaption>第 {index + 1} 页</figcaption>}
+                </figure>
+              ))}
+            </div>
+          ) : (
+            <TemplatePreview asset={asset} />
+          )}
+        </div>
+        <p className="asset-library-preview-desc">{asset.description}</p>
+      </div>
     </div>
   );
 }
 
 export function BrandPreview({ asset }: { asset: BrandAsset }) {
-  const kind = asset.preview;
   if (asset.previewUrl) {
-    return <img src={asset.previewUrl} alt={asset.title} className="h-full w-full object-contain p-5" />;
+    return <img src={asset.previewUrl} alt={asset.title} className="h-full w-full object-contain p-4" />;
   }
-  if (kind === 'logo') {
-    return <img src={BAYER_LOGO} alt="Bayer Cross" className="h-28 w-28 object-contain" />;
-  }
-  if (kind === 'reverse-logo') {
-    return (
-      <div className="grid h-full w-full place-items-center bg-[#103c8f]">
-        <img src={BAYER_LOGO} alt="Bayer Cross 反白应用示意" className="h-24 w-24 rounded-full bg-white p-1 object-contain" />
-      </div>
-    );
-  }
-  if (kind === 'wordmark') {
-    return (
-      <div className="flex items-center gap-4">
-        <img src={BAYER_LOGO} alt="" className="h-20 w-20 object-contain" />
-        <span className="text-3xl font-semibold tracking-[-0.04em] text-[#103c8f]">Bayer</span>
-      </div>
-    );
-  }
-  if (kind === 'colors') {
-    return (
-      <div className="flex h-full w-full">
-        <span className="flex-1 bg-[#103c8f]" />
-        <span className="flex-1 bg-[#00617f]" />
-        <span className="flex-1 bg-[#00a651]" />
-        <span className="flex-1 bg-[#66b821]" />
-        <span className="flex-1 bg-[#e7f1f6]" />
-      </div>
-    );
-  }
-  if (kind === 'code') {
-    return (
-      <div className="relative h-full w-full overflow-hidden bg-[#092e49]">
-        {['#00a651', '#66b821', '#00a0c6', '#1d71b8', '#8c65a8'].map((color, index) => (
-          <span key={color} className="absolute h-[180%] w-9 -rotate-[24deg]" style={{ background: color, left: `${18 + index * 14}%`, top: '-38%' }} />
-        ))}
-        <span className="absolute bottom-3 left-4 rounded bg-white px-2 py-1 text-[8px] font-bold text-[#103c8f]">CROP SCIENCE CODE</span>
-      </div>
-    );
-  }
-
-  const icons =
-    kind === 'medical-icons'
-      ? [Stethoscope, Microscope, Sparkles]
-      : kind === 'crop-icons'
-        ? [Leaf, Layers3, Sparkles]
-        : [ShieldCheck, CheckCircle2, Shapes];
-
   return (
-    <div className="flex items-center justify-center gap-4">
-      {icons.map((Icon, index) => (
-        <span key={index} className="grid h-14 w-14 place-items-center rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
-          <Icon className="h-6 w-6 text-[#0b66b3]" strokeWidth={1.8} />
-        </span>
-      ))}
+    <div className="grid h-full w-full place-items-center text-[11px] text-muted-foreground">
+      {asset.category}
     </div>
   );
 }
 
 interface AssetLibraryPageProps {
+  brand: ContentBrand;
+  onBrandChange: (brand: ContentBrand) => void;
   onNotify: (message: string) => void;
   onBack: () => void;
 }
 
-export function AssetLibraryPage({ onNotify, onBack }: AssetLibraryPageProps) {
+export function AssetLibraryPage({ brand, onBrandChange, onNotify, onBack }: AssetLibraryPageProps) {
   const [activeTab, setActiveTab] = useState<AssetTab>('templates');
   const [templateKind, setTemplateKind] = useState<TemplateKind>('ppt');
+  const [brandGroup, setBrandGroup] = useState<EditorAssetGroup>('logo');
   const [query, setQuery] = useState('');
   const [templateAssets, setTemplateAssets] = useState<TemplateAsset[]>(() => TEMPLATE_ASSETS);
   const [brandAssets, setBrandAssets] = useState<BrandAsset[]>(() => BRAND_ASSETS);
+  const [previewAsset, setPreviewAsset] = useState<TemplateAsset | null>(null);
   const templateUploadRef = useRef<HTMLInputElement>(null);
   const brandUploadRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!previewAsset) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPreviewAsset(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [previewAsset]);
 
   const visibleTemplates = useMemo(() => {
     const keyword = query.trim().toLowerCase();
     return templateAssets.filter(
       (asset) =>
         asset.kind === templateKind &&
+        matchesBrand(asset.brand, brand) &&
         (!keyword ||
           asset.title.toLowerCase().includes(keyword) ||
           asset.description.toLowerCase().includes(keyword) ||
-          asset.tag.toLowerCase().includes(keyword))
+          asset.tag.toLowerCase().includes(keyword) ||
+          (asset.brand || '').includes(keyword))
     );
-  }, [query, templateAssets, templateKind]);
+  }, [query, templateAssets, templateKind, brand]);
 
   const visibleBrandAssets = useMemo(() => {
     const keyword = query.trim().toLowerCase();
     return brandAssets.filter(
       (asset) =>
-        !keyword ||
-        asset.title.toLowerCase().includes(keyword) ||
-        asset.description.toLowerCase().includes(keyword) ||
-        asset.category.toLowerCase().includes(keyword)
+        asset.group === brandGroup &&
+        matchesBrand(asset.brand, brand) &&
+        (!keyword ||
+          asset.title.toLowerCase().includes(keyword) ||
+          asset.description.toLowerCase().includes(keyword) ||
+          asset.category.toLowerCase().includes(keyword) ||
+          (asset.brand || '').includes(keyword))
     );
-  }, [brandAssets, query]);
+  }, [brandAssets, brandGroup, query, brand]);
+
+  const templateCount = templateAssets.filter((asset) => matchesBrand(asset.brand, brand)).length;
+  const brandCount = brandAssets.filter((asset) => matchesBrand(asset.brand, brand)).length;
 
   const uploadTemplate = (file: File) => {
     const title = file.name.replace(/\.[^.]+$/, '');
@@ -244,11 +261,12 @@ export function AssetLibraryPage({ onNotify, onBack }: AssetLibraryPageProps) {
       kind: templateKind,
       title,
       description: `本地上传 · ${(file.size / 1024).toFixed(0)}KB`,
-      ratio: templateKind === 'ppt' ? 'PPT 文件' : templateKind === 'image' ? '图片文件' : '富文本文件',
+      ratio: templateKind === 'ppt' ? 'PPT 文件' : '图片文件',
       accent: '#54B9F9',
       accentSoft: '#eaf4ff',
       tag: '上传',
       previewUrl,
+      brand,
     };
     setTemplateAssets((prev) => [uploaded, ...prev]);
     onNotify(`模板「${title}」上传成功`);
@@ -262,9 +280,10 @@ export function AssetLibraryPage({ onNotify, onBack }: AssetLibraryPageProps) {
       title,
       description: `本地上传 · ${(file.size / 1024).toFixed(0)}KB`,
       format: extension,
-      category: file.type.startsWith('image/') ? 'Image' : 'Brand',
-      preview: 'trust',
+      category: '其他素材',
+      group: 'other',
       previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined,
+      brand,
     };
     setBrandAssets((prev) => [uploaded, ...prev]);
     onNotify(`品牌元素「${title}」上传成功`);
@@ -288,12 +307,13 @@ export function AssetLibraryPage({ onNotify, onBack }: AssetLibraryPageProps) {
             </span>
             <div>
               <h2 className="text-[28px] font-semibold tracking-tight text-foreground">视觉素材库</h2>
-              <p className="mt-0.5 text-[12.5px] text-muted-foreground">统一管理创作模板与品牌视觉元素</p>
+              <p className="mt-0.5 text-[12.5px] text-muted-foreground">正在查看「{brand}」的模板与视觉元素，通用素材会一并显示</p>
             </div>
           </div>
         </div>
-        <div className="flex w-full max-w-lg items-center gap-2">
-          <div className="relative min-w-0 flex-1">
+        <div className="flex w-full max-w-2xl flex-wrap items-center justify-end gap-2">
+          <BrandSwitcher value={brand} onChange={onBrandChange} size="page" />
+          <div className="relative min-w-[180px] flex-1">
             <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
               value={query}
@@ -337,8 +357,8 @@ export function AssetLibraryPage({ onNotify, onBack }: AssetLibraryPageProps) {
 
       <div className="mb-5 flex gap-1 rounded-2xl border border-border/70 bg-white/70 p-1.5 shadow-sm">
         {([
-          { id: 'templates' as const, label: '模板', Icon: Layers3, count: templateAssets.length },
-          { id: 'brand' as const, label: '品牌元素', Icon: Palette, count: brandAssets.length },
+          { id: 'templates' as const, label: '模板', Icon: Layers3, count: templateCount },
+          { id: 'brand' as const, label: '品牌元素', Icon: Palette, count: brandCount },
         ]).map(({ id, label, Icon, count }) => (
           <button
             key={id}
@@ -386,8 +406,23 @@ export function AssetLibraryPage({ onNotify, onBack }: AssetLibraryPageProps) {
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
             {visibleTemplates.map((asset) => (
-              <article key={asset.id} className="group rounded-2xl glass-card p-3 transition duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-glow">
-                <TemplatePreview asset={asset} />
+              <article
+                key={asset.id}
+                className="group cursor-pointer rounded-2xl glass-card p-3 transition duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-glow"
+                role="button"
+                tabIndex={0}
+                onClick={() => setPreviewAsset(asset)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    setPreviewAsset(asset);
+                  }
+                }}
+              >
+                <div className="asset-library-card-preview">
+                  <TemplatePreview asset={asset} />
+                  <span className="asset-library-card-preview-hint">点击预览</span>
+                </div>
                 <div className="px-1 pb-1 pt-3">
                   <div className="mb-1.5 flex items-center justify-between gap-2">
                     <span className="rounded-md px-2 py-0.5 text-[9.5px] font-semibold" style={{ color: asset.accent, background: asset.accentSoft }}>{asset.tag}</span>
@@ -402,6 +437,25 @@ export function AssetLibraryPage({ onNotify, onBack }: AssetLibraryPageProps) {
         </>
       ) : (
         <>
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <div className="creator-right-tabs is-inline" role="tablist" aria-label="品牌元素分类">
+              {BRAND_FILTERS.map(({ id, label, Icon }) => (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={brandGroup === id}
+                  className={brandGroup === id ? 'active' : ''}
+                  onClick={() => setBrandGroup(id)}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {label}
+                </button>
+              ))}
+            </div>
+            <span className="text-[11.5px] text-muted-foreground">{visibleBrandAssets.length} 个可用元素</span>
+          </div>
+
           <div className="glass-card-subtle mb-5 flex flex-col gap-3 rounded-2xl px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
               <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
@@ -435,6 +489,8 @@ export function AssetLibraryPage({ onNotify, onBack }: AssetLibraryPageProps) {
           </div>
         </>
       )}
+
+      {previewAsset && <TemplatePreviewModal asset={previewAsset} onClose={() => setPreviewAsset(null)} />}
 
       {((activeTab === 'templates' && visibleTemplates.length === 0) ||
         (activeTab === 'brand' && visibleBrandAssets.length === 0)) && (

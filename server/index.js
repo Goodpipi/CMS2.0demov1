@@ -214,12 +214,15 @@ app.post('/api/generate/ppt-designs', async (req, res) => {
       singleVersion: Boolean(tpl),
     });
     const versions = enriched.versions.map((v) => {
+      const coverImage = v.slides?.[0]?.imageUrl || '';
       const coverSvg = v.slides?.[0]?.svg || '';
       return {
         ...v,
-        coverDataUrl: coverSvg
-          ? `data:image/svg+xml,${encodeURIComponent(coverSvg)}`
-          : undefined,
+        coverDataUrl: coverImage
+          ? coverImage
+          : coverSvg
+            ? `data:image/svg+xml,${encodeURIComponent(coverSvg)}`
+            : undefined,
       };
     });
     sendOk(res, { versions }, { mockUsed, mockReason });
@@ -232,6 +235,14 @@ app.post('/api/generate/poster', async (req, res) => {
   try {
     const { copyBody = '', userNote = '', templateId = null } = req.body;
     const tpl = templateId ? getImageTemplate(templateId) : null;
+    if (tpl?.previewImg) {
+      sendOk(
+        res,
+        { title: tpl.name, svg: '', dataUrl: tpl.previewImg },
+        { mockUsed: true, mockReason: 'image-template' }
+      );
+      return;
+    }
     const { result: data, mockUsed, mockReason } = await runAgent(
       '',
       promptPoster(copyBody, userNote, tpl),

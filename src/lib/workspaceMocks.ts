@@ -89,13 +89,54 @@ export const WORKSPACE_MOCK_PPT_OUTLINE: PptOutline = {
   scenario: '医学沟通与内部培训',
   chapters: [
     {
+      id: 'mock-outline-cover',
+      title: '封面',
+      kind: 'cover',
+      pages: [
+        {
+          id: 'mock-page-cover',
+          title: '慢性肾脏病患者全程管理与早期干预',
+          bullets: [],
+          kind: 'cover',
+          speakerNotes: '开场出示封面标题，明确本次沟通主题。',
+          visualSuggestion: '封面大标题居中，副标题与品牌色条，右下角合规提示。',
+          references: [],
+        },
+      ],
+    },
+    {
+      id: 'mock-outline-toc',
+      title: '目录',
+      kind: 'toc',
+      pages: [
+        {
+          id: 'mock-page-toc',
+          title: '目录',
+          bullets: ['疾病负担与未满足需求', '早期识别与规范管理', '沟通建议与行动计划'],
+          kind: 'toc',
+          visualSuggestion: '目录列表，按节列出后续章节标题。',
+          references: [],
+        },
+      ],
+    },
+    {
       id: 'mock-outline-1',
       title: '疾病负担与未满足需求',
+      kind: 'section',
       pages: [
+        {
+          id: 'mock-page-1-title',
+          title: '疾病负担与未满足需求',
+          bullets: [],
+          kind: 'section-title',
+          speakerNotes: '本节开场，先点明疾病负担与未满足需求。',
+          references: [],
+        },
         {
           id: 'mock-page-1',
           title: '慢性肾脏病的疾病负担',
           bullets: ['患者数量持续增长', '早期症状不明显', '公众认知与筛查率仍需提升'],
+          kind: 'content',
           speakerNotes: '开场建立疾病教育背景，不使用绝对化或疗效承诺表述。',
           visualSuggestion: '左侧三项疾病负担要点，右侧用简易趋势图示意患者规模上升，底部保留合规脚注。',
           references: ['Lancet Diabetes Endocrinol, 2024. SGLT2 inhibitors and kidney outcomes.', '中华肾脏病杂志, 2024. 早期筛查路径真实世界研究.'],
@@ -104,6 +145,7 @@ export const WORKSPACE_MOCK_PPT_OUTLINE: PptOutline = {
           id: 'mock-page-2',
           title: '当前管理中的关键挑战',
           bullets: ['高风险人群识别不足', '长期随访依从性有限', '多学科协作仍有提升空间'],
+          kind: 'content',
           visualSuggestion: '三栏挑战卡片，每栏配小图标，避免使用绝对化疗效表述。',
           references: ['Nephrol Dial Transplant, 2023. eGFR trajectories and HCP communication.'],
         },
@@ -112,11 +154,21 @@ export const WORKSPACE_MOCK_PPT_OUTLINE: PptOutline = {
     {
       id: 'mock-outline-2',
       title: '早期识别与规范管理',
+      kind: 'section',
       pages: [
+        {
+          id: 'mock-page-2-title',
+          title: '早期识别与规范管理',
+          bullets: [],
+          kind: 'section-title',
+          speakerNotes: '本节开场，先点明早期识别与规范管理。',
+          references: [],
+        },
         {
           id: 'mock-page-3',
           title: '识别高风险人群',
           bullets: ['关注糖尿病和高血压人群', '定期评估肾功能相关指标', '结合个体情况制定随访计划'],
+          kind: 'content',
           visualSuggestion: '漏斗图：高风险人群 → 指标评估 → 个体化随访。',
           references: ['JAMA Netw Open, 2025. UACR screening uptake in primary care.'],
         },
@@ -124,6 +176,7 @@ export const WORKSPACE_MOCK_PPT_OUTLINE: PptOutline = {
           id: 'mock-page-4',
           title: '患者全程管理路径',
           bullets: ['风险评估', '生活方式教育', '规范诊疗与持续随访'],
+          kind: 'content',
           visualSuggestion: '横向四步路径图，步骤用品牌绿色节点串联。',
           references: ['Circulation, 2024. Integrated cardiorenal care pathways.'],
         },
@@ -132,11 +185,21 @@ export const WORKSPACE_MOCK_PPT_OUTLINE: PptOutline = {
     {
       id: 'mock-outline-3',
       title: '沟通建议与行动计划',
+      kind: 'section',
       pages: [
+        {
+          id: 'mock-page-3-title',
+          title: '沟通建议与行动计划',
+          bullets: [],
+          kind: 'section-title',
+          speakerNotes: '本节开场，先点明沟通建议与行动计划。',
+          references: [],
+        },
         {
           id: 'mock-page-5',
           title: '面向患者的沟通要点',
           bullets: ['使用易理解的表达', '强调定期检查的重要性', '有疑问时咨询专业医生'],
+          kind: 'content',
           visualSuggestion: '对话气泡式沟通要点，配患者教育插画，底部咨询医生提示。',
           references: ['Am J Kidney Dis, 2022. Health literacy–adapted patient education RCT.'],
         },
@@ -144,8 +207,24 @@ export const WORKSPACE_MOCK_PPT_OUTLINE: PptOutline = {
           id: 'mock-page-6',
           title: '总结与下一步行动',
           bullets: ['提升风险认知', '推动早筛早诊', '建立持续管理意识'],
+          kind: 'content',
           visualSuggestion: '三步行动清单 + 结束页品牌色条，避免疗效承诺。',
           references: ['Ther Innov Regul Sci, 2024. Evidence traceability in medical communications.'],
+        },
+      ],
+    },
+    {
+      id: 'mock-outline-back',
+      title: '封底',
+      kind: 'back',
+      pages: [
+        {
+          id: 'mock-page-back',
+          title: '谢谢',
+          bullets: [],
+          kind: 'back',
+          visualSuggestion: '封底致谢页，画面中央仅展示标题，底部品牌色条。',
+          references: [],
         },
       ],
     },

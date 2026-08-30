@@ -1,3 +1,5 @@
+import type { ContentBrand } from '@/lib/brands';
+
 export type MaterialContentType = 'text' | 'image' | 'pdf';
 
 export interface LibraryItem {
@@ -5,6 +7,8 @@ export interface LibraryItem {
   cat: string;
   title: string;
   meta: string;
+  /** 未设置则视为全品牌通用 */
+  brand?: ContentBrand;
   cms: boolean;
   def: boolean;
   /** 当前任务是否引用；未设置时沿用默认素材状态 */

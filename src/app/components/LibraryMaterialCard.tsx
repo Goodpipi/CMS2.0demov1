@@ -6,7 +6,7 @@ import {
   materialFormatLabel,
   materialSourceLabel,
 } from '@/lib/libraryUtils';
-import { Check, FileText, Star, Trash2 } from 'lucide-react';
+import { Check, FileText, Trash2 } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 
 function toneGradient(item: LibraryItem) {
@@ -19,7 +19,6 @@ interface LibraryMaterialCardProps {
   item: LibraryItem;
   selected: boolean;
   onToggleSelect: () => void;
-  onToggleDefault: () => void;
   onPreview: () => void;
   onDelete: () => void;
 }
@@ -28,7 +27,6 @@ export function LibraryMaterialCard({
   item,
   selected,
   onToggleSelect,
-  onToggleDefault,
   onPreview,
   onDelete,
 }: LibraryMaterialCardProps) {
@@ -78,20 +76,6 @@ export function LibraryMaterialCard({
         <div className="flex items-center gap-0.5">
           <button
             type="button"
-            className={cn(
-              'grid h-6 w-6 place-items-center rounded-full transition',
-              item.def ? 'text-[#FFB547]' : 'text-muted-foreground/50 hover:text-[#FFB547]'
-            )}
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleDefault();
-            }}
-            title={item.def ? '取消默认' : '设为默认'}
-          >
-            <Star className="h-3.5 w-3.5" fill={item.def ? '#FFB547' : 'none'} strokeWidth={2.2} />
-          </button>
-          <button
-            type="button"
             className="grid h-6 w-6 place-items-center rounded-full text-muted-foreground/50 transition hover:bg-destructive/10 hover:text-destructive"
             onClick={(e) => {
               e.stopPropagation();
@@ -119,6 +103,7 @@ export function LibraryMaterialCard({
           <dl className="mt-1.5 space-y-0.5 text-[11px] leading-[1.45] text-muted-foreground">
             <div>格式：{materialFormatLabel(item)}</div>
             <div>来源：{materialSourceLabel(item)}</div>
+            <div>品牌：{item.brand || '全品牌通用'}</div>
             {item.cms && item.validUntil && !expired && <div>有效期至 {item.validUntil}</div>}
             {expired && <div className="text-destructive">已过期</div>}
             <div>添加于 {formatMaterialAddedTime(item.addedAt)}</div>

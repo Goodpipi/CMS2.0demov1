@@ -77,6 +77,8 @@ import { buildVideoPosterDataUrl } from '@/app/components/videoUtils';
 import { VisualEditor } from '@/app/components/VisualEditor';
 import { parseSvgFromDataUrl } from '@/app/components/svgEditorUtils';
 import { PptOutlineEditor, PptOutlineGenerateFooter } from '@/app/components/PptOutlineEditor';
+import { PptTemplatePickerModal } from '@/app/components/PptTemplatePickerModal';
+import { VersionFisheyeTimeline, type VersionTimelineItem } from '@/app/components/VersionFisheyeTimeline';
 import { ContentBriefPanel } from '@/app/components/ContentBriefPanel';
 import {
   formatContentBriefText,
@@ -85,12 +87,25 @@ import {
 } from '@/lib/contentBrief';
 import {
   pptTemplateIdFromTitle,
-  PPT_BUILTIN_TEMPLATES,
+  applyPptTemplateImages,
+  BLANK_PPT_TEMPLATE,
+  catalogPptTemplates,
+  isBlankPptTemplate,
+  recommendPptTemplates,
   type PptBuiltinTemplate,
 } from '@/app/components/pptTemplates';
-import { getImageTemplatesByIds } from '@/app/components/imageTemplates';
+import { getImageTemplate, getImageTemplatesByIds } from '@/app/components/imageTemplates';
 import { ImageTemplatePickerModal } from '@/app/components/ImageTemplatePickerModal';
 import { MaterialPickerModal, type PickedMaterial } from '@/app/components/MaterialPickerModal';
+import { LiteraturePickerModal } from '@/app/components/LiteraturePickerModal';
+import { ContentFlowNav } from '@/app/components/ContentFlowNav';
+import {
+  flowEntryFromTab,
+  inferFlowEntryFromTabs,
+  type ContentFlowEntry,
+  type ContentFlowProgress,
+  type ContentFlowStep,
+} from '@/lib/contentFlow';
 import { MaterialDetailModal } from '@/app/components/MaterialDetailModal';
 import { MaterialContentPreview } from '@/app/components/MaterialContentPreview';
 import { ContextMaterialsPanel } from '@/app/components/ContextMaterialsPanel';
@@ -109,6 +124,16 @@ import {
   insertCenteredImageIntoSlide,
 } from '@/app/components/pptUtils';
 import { RoleSwitcher } from '@/app/components/RoleSwitcher';
+import { BrandSwitcher } from '@/app/components/BrandSwitcher';
+import { UserAccountMenu } from '@/app/components/UserAccountMenu';
+import { LoginScreen } from '@/app/components/LoginScreen';
+import { loadContentBrand, matchesBrand, saveContentBrand, type ContentBrand } from '@/lib/brands';
+import {
+  ACCOUNT_PROFILES,
+  addTokenUsage,
+  isSignedIn,
+  setSignedIn,
+} from '@/lib/userAccount';
 import { BrandLogo } from '@/app/components/BrandLogo';
 import { ReviewerHome } from '@/app/components/ReviewerHome';
 import { CopyRevisionDisplay } from '@/app/components/CopyRevisionDisplay';
@@ -123,6 +148,7 @@ import {
   upsertReviewTask,
   getReviewTask,
   tasksForRole,
+  collectTaskStatusLabel,
   updateTaskStatus,
   seedReviewTasksIfEmpty,
   reviewerTabsForContentType,
@@ -190,11 +216,9 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  BookMarked,
   Database,
   ExternalLink,
   FolderOpen,
-  History,
   Image as ImageIcon,
   ImagePlus,
   LayoutGrid,
@@ -211,7 +235,6 @@ import {
   Search,
   Sparkles,
   Square,
-  Star,
   Stethoscope,
   Upload,
   Video,
@@ -219,7 +242,8 @@ import {
 } from 'lucide-react';
 import { LibraryMaterialCard } from '@/app/components/LibraryMaterialCard';
 import { AssetLibraryPage } from '@/app/components/AssetLibraryPage';
-import { TerminologyLibraryPage } from '@/app/components/TerminologyLibraryPage';
+import { ProductPickerModal } from '@/app/components/ProductPickerModal';
+import type { TaskProduct } from '@/lib/products';
 import { loadAllProjects } from '@/lib/chatProjects';
 import {
   WORKSPACE_MOCK_IMAGE,
@@ -256,6 +280,7 @@ const HOME_TASK_PAGE_SIZE = 7;
 const HOME_WORKFLOW_ACTIONS: {
   title: string;
   description: string;
+  scenes?: string[];
   intent: HomeEntryIntent;
   prompt: string;
   Icon: typeof Presentation;
@@ -264,6 +289,7 @@ const HOME_WORKFLOW_ACTIONS: {
   {
     title: '病例内容',
     description: '围绕真实诊疗场景梳理病例叙事，生成可用于科室沟通的结构化内容。',
+    scenes: ['病例PPT', '病例推文', '病例卡'],
     intent: 'ppt',
     prompt: '生成病例内容',
     Icon: Stethoscope,
@@ -272,6 +298,18 @@ const HOME_WORKFLOW_ACTIONS: {
   {
     title: '医学与推广内容',
     description: '结合品牌与合规要求，生成面向医生或公众的医学传播与推广素材。',
+    scenes: [
+      '医学PPT-HCP',
+      '医学推文-HCP',
+      '医学内容一图读懂-HCP',
+      '市场推广PPT',
+      '医学PPT-患者',
+      '医学推文-患者',
+      '医学内容一图读懂-患者',
+      '内部培训PPT',
+      '内部培训一图读懂',
+      '话术总结',
+    ],
     intent: 'copy',
     prompt: '生成医学与推广内容',
     Icon: Megaphone,
@@ -280,6 +318,7 @@ const HOME_WORKFLOW_ACTIONS: {
   {
     title: '学术证据解读',
     description: '把研究数据与关键结论转译为清晰、可引用的学术解读内容。',
+    scenes: ['指南解读', '文献解读', '研究解读', '共识解读'],
     intent: 'ppt',
     prompt: '生成学术证据解读',
     Icon: Microscope,
@@ -312,17 +351,23 @@ const HOME_WORKFLOW_ACTIONS: {
 ];
 
 const initialLibrary: LibraryItem[] = [
-  { id: 1, cat: '热点洞察', title: '小红书肾脏健康热点观察 2026-05', meta: 'CMS洞察 · 热点词/互动趋势', cms: true, def: true, addedAt: Date.now() - 9 * 86400000, validUntil: '2026-11-30' },
+  { id: 1, cat: '热点洞察', title: '小红书肾脏健康热点观察 2026-05', meta: 'CMS洞察 · 热点词/互动趋势', cms: true, def: true, addedAt: Date.now() - 9 * 86400000, validUntil: '2026-11-30', brand: '拜新同' },
   { id: 2, cat: '合规手册', title: '公众渠道疾病教育合规手册', meta: 'Word · 全局资料 · 最新版', cms: false, def: true, addedAt: Date.now() - 8 * 86400000 },
-  { id: 3, cat: '参考知识', title: '肾脏健康疾病教育参考知识包', meta: 'PDF/Excel · 12条知识点', cms: false, def: true, addedAt: Date.now() - 7 * 86400000 },
+  { id: 3, cat: '参考知识', title: '肾脏健康疾病教育参考知识包', meta: 'PDF/Excel · 12条知识点', cms: false, def: true, addedAt: Date.now() - 7 * 86400000, brand: '拜新同' },
   { id: 4, cat: 'Brief', title: '2026 品牌沟通 Briefing', meta: 'PDF · 2.4MB · 本地上传', cms: false, def: true, addedAt: Date.now() - 6 * 86400000 },
-  { id: 5, cat: '品牌策略', title: '心肾品牌策略要点 2026', meta: 'PPT · 品牌策略主线', cms: false, def: true, addedAt: Date.now() - 5 * 86400000 },
+  { id: 5, cat: '品牌策略', title: '心肾品牌策略要点 2026', meta: 'PPT · 品牌策略主线', cms: false, def: true, addedAt: Date.now() - 5 * 86400000, brand: '拜新同' },
   { id: 6, cat: '参考知识', title: 'Approved Claims Library', meta: 'CMS · Approved · 可追溯', cms: true, def: true, addedAt: Date.now() - 4 * 86400000, validUntil: '2027-04-30' },
   { id: 7, cat: '品牌元素', title: 'Bayer Blue-Green Visual Kit 2026', meta: 'CMS · Brand Kit · Approved', cms: true, def: true, addedAt: Date.now() - 3 * 86400000, validUntil: '2026-09-12' },
-  { id: 8, cat: '参考知识', title: '患者教育手册:慢性肾病风险认知', meta: 'CMS · Approved · 2026-04-12', cms: true, def: false, addedAt: Date.now() - 2 * 86400000, validUntil: '2027-03-31' },
-  { id: 9, cat: '热点洞察', title: '公众平台高互动标题样本', meta: '本地上传 · 20条样本', cms: false, def: false, addedAt: Date.now() - 86400000 },
-  { id: 10, cat: '模板', title: '医学价值沟通 PPT 模板', meta: 'PPT 模板 · 16:9 · 24 页', cms: false, def: true, addedAt: Date.now() - 12 * 3600000 },
-  { id: 11, cat: '参考知识', title: '2025 肾病科普素材包（已过期）', meta: 'CMS · Approved · 已过期', cms: true, def: true, addedAt: Date.now() - 40 * 86400000, validUntil: '2026-06-30' },
+  { id: 8, cat: '参考知识', title: '患者教育手册:慢性肾病风险认知', meta: 'CMS · Approved · 2026-04-12', cms: true, def: false, addedAt: Date.now() - 2 * 86400000, validUntil: '2027-03-31', brand: '拜新同' },
+  { id: 9, cat: '热点洞察', title: '公众平台高互动标题样本', meta: '本地上传 · 20条样本', cms: false, def: false, addedAt: Date.now() - 86400000, brand: '拜唐苹' },
+  { id: 10, cat: '模板', title: 'EYLEA nAMD Meta分析 PPT 模板', meta: 'PPT 模板 · 16:9 · 3 页', cms: false, def: true, addedAt: Date.now() - 12 * 3600000 },
+  { id: 11, cat: '参考知识', title: '2025 肾病科普素材包（已过期）', meta: 'CMS · Approved · 已过期', cms: true, def: true, addedAt: Date.now() - 40 * 86400000, validUntil: '2026-06-30', brand: '拜新同' },
+  { id: 12, cat: '参考知识', title: '拜唐苹餐后血糖管理要点', meta: 'CMS · Approved · 糖尿病教育', cms: true, def: true, addedAt: Date.now() - 3 * 86400000, validUntil: '2027-01-31', brand: '拜唐苹' },
+  { id: 13, cat: 'Brief', title: '拜唐苹患者教育 Brief 2026', meta: 'PDF · 患者沟通主线', cms: false, def: true, addedAt: Date.now() - 2 * 86400000, brand: '拜唐苹' },
+  { id: 14, cat: '品牌策略', title: '优迈渠道沟通与合规要点', meta: 'PPT · 市场部策略', cms: false, def: true, addedAt: Date.now() - 4 * 86400000, brand: '优迈' },
+  { id: 15, cat: '热点洞察', title: '优迈相关疾病教育话题观察', meta: 'CMS洞察 · 互动趋势', cms: true, def: true, addedAt: Date.now() - 36 * 3600000, validUntil: '2026-12-31', brand: '优迈' },
+  { id: 16, cat: '参考知识', title: '爱格希临床证据速览', meta: 'CMS · Approved · 可追溯', cms: true, def: true, addedAt: Date.now() - 5 * 86400000, validUntil: '2027-02-28', brand: '爱格希' },
+  { id: 17, cat: '热点洞察', title: '爱格希学术会议热点摘录', meta: '本地上传 · Congress notes', cms: false, def: false, addedAt: Date.now() - 18 * 3600000, brand: '爱格希' },
 ];
 
 const tabNames = {
@@ -364,7 +409,7 @@ function findCopyIndexForRevision(
 
 const posterData = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 900 560'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' x2='1' y1='0' y2='1'%3E%3Cstop stop-color='%23eaf7ff'/%3E%3Cstop offset='1' stop-color='%23f4fff0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='900' height='560' fill='url(%23g)'/%3E%3Ccircle cx='720' cy='110' r='100' fill='%2369BE28' opacity='.22'/%3E%3Ccircle cx='145' cy='115' r='82' fill='%231d6bff' opacity='.16'/%3E%3Cpath d='M560 360c90-100 190-85 260-28v228H520c-35-68-27-137 40-200z' fill='%2369BE28' opacity='.24'/%3E%3Crect x='54' y='46' width='118' height='42' rx='21' fill='%23103C8F'/%3E%3Ctext x='83' y='73' font-size='24' font-weight='700' fill='white'%3EBayer%3C/text%3E%3Ctext x='70' y='175' font-size='58' font-weight='900' fill='%23103C8F'%3E%E8%82%BE%E8%84%8F%E5%81%A5%E5%BA%B7%3C/text%3E%3Ctext x='70' y='248' font-size='58' font-weight='900' fill='%23103C8F'%3E%E4%B8%8D%E6%AD%A2%E7%9C%8B%E7%97%87%E7%8A%B6%3C/text%3E%3Ctext x='74' y='316' font-size='28' fill='%2340536a'%3E%E4%BA%86%E8%A7%A3%E9%A3%8E%E9%99%A9%E5%9B%A0%E7%B4%A0%EF%BC%8C%E5%87%BA%E7%8E%B0%E7%96%91%E9%97%AE%E6%97%B6%E8%AF%B7%E5%92%A8%E8%AF%A2%E4%B8%93%E4%B8%9A%E5%8C%BB%E7%94%9F%3C/text%3E%3Crect x='70' y='410' width='420' height='64' rx='32' fill='%23fff' stroke='%23cfe0f1'/%3E%3Ctext x='100' y='452' font-size='24' fill='%231d5aa7'%3E%E7%96%BE%E7%97%85%E6%95%99%E8%82%B2%E5%86%85%E5%AE%B9%EF%BD%9C%E4%BB%85%E4%BE%9B%E7%A7%91%E6%99%AE%E5%8F%82%E8%80%83%3C/text%3E%3C/svg%3E";
 
-type Screen = 'home' | 'library' | 'assets' | 'terminology' | 'workspace';
+type Screen = 'home' | 'library' | 'assets' | 'workspace';
 
 type EditorTarget =
   | { kind: 'image'; index: number }
@@ -392,7 +437,6 @@ export default function App() {
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
   const [activeCat, setActiveCat] = useState(cats[0]);
   const [libCatFilter, setLibCatFilter] = useState('全部');
-  const [onlyDefault, setOnlyDefault] = useState(false);
   const [library, setLibrary] = useState(initialLibrary);
   const [libSearch, setLibSearch] = useState('');
   const [libSelectedIds, setLibSelectedIds] = useState<number[]>([]);
@@ -473,6 +517,14 @@ export default function App() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editorTarget, setEditorTarget] = useState<EditorTarget | null>(null);
   const [userRole, setUserRole] = useState<UserRole>(() => loadUserRole());
+  const [signedIn, setSignedInState] = useState(() => isSignedIn());
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [currentBrand, setCurrentBrand] = useState<ContentBrand>(() => loadContentBrand());
+
+  const handleBrandChange = (brand: ContentBrand) => {
+    setCurrentBrand(brand);
+    saveContentBrand(brand);
+  };
   const [reviewTasks, setReviewTasks] = useState<ReviewTask[]>(() => loadReviewTasks());
   const [activeReviewTaskId, setActiveReviewTaskId] = useState<string | null>(null);
   const [reviewPptPageIndex, setReviewPptPageIndex] = useState(0);
@@ -533,6 +585,9 @@ export default function App() {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [sessionSearch, setSessionSearch] = useState('');
+  const [homeHistoryTab, setHomeHistoryTab] = useState<'generate' | 'collect'>(() =>
+    isReviewerRole(loadUserRole()) ? 'collect' : 'generate'
+  );
   const [homeTaskPage, setHomeTaskPage] = useState(1);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [contextPanelOpen, setContextPanelOpen] = useState(true);
@@ -551,6 +606,9 @@ export default function App() {
   const [creationMethodOpen, setCreationMethodOpen] = useState(false);
   const [openPickedMaterialInPreview, setOpenPickedMaterialInPreview] = useState(false);
   const [entryContext, setEntryContext] = useState<HomeEntryContext | null>(null);
+  const [flowEntry, setFlowEntry] = useState<ContentFlowEntry | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<TaskProduct | null>(null);
+  const [productPickerOpen, setProductPickerOpen] = useState(false);
 
   const feedRef = useRef<HTMLDivElement>(null);
   const workspaceFileInputRef = useRef<HTMLInputElement>(null);
@@ -597,10 +655,13 @@ export default function App() {
       selectedCopies,
       copyRevisions,
       copyRevisionBase,
+      selectedProduct,
+      flowEntry,
       entryContext,
       pptWizard,
       videoWizard,
       visualWizard,
+      modificationTasks,
     }),
     [
       state,
@@ -630,10 +691,13 @@ export default function App() {
       selectedCopies,
       copyRevisions,
       copyRevisionBase,
+      selectedProduct,
+      flowEntry,
       entryContext,
       pptWizard,
       videoWizard,
       visualWizard,
+      modificationTasks,
     ]
   );
 
@@ -713,6 +777,16 @@ export default function App() {
     setPptOutline(w.pptOutline);
     setPptVersions(w.pptVersions);
     setSelectedPptVersionId(w.selectedPptVersionId);
+    const storedPptTasks = (w.modificationTasks || []).filter(isPptDesignModificationTask);
+    const hasPpt =
+      Boolean(w.pptResult?.slides?.length) ||
+      (w.pptVersions || []).some((version) => version.slides?.length);
+    setModificationTasks((prev) => {
+      const keepOthers = prev.filter((task) => !isPptDesignModificationTask(task));
+      if (storedPptTasks.length) return [...keepOthers, ...storedPptTasks];
+      if (hasPpt) return [...keepOthers, ...createMockModificationTasks()];
+      return keepOthers;
+    });
     setSelectedPptTemplateId(w.selectedPptTemplateId ?? null);
     setContentBrief(w.contentBrief ?? null);
     setRichTextContent(w.richTextContent ?? '');
@@ -756,6 +830,8 @@ export default function App() {
       revisions.length ? normalizeCopyRevisions(revisionBase, revisions) : []
     );
     setCopyRevisionBase(revisionBase);
+    setSelectedProduct(w.selectedProduct ?? null);
+    setFlowEntry(w.flowEntry ?? inferFlowEntryFromTabs(normalizedTabs));
     setEntryContext(w.entryContext);
     setPptWizard(w.pptWizard);
     setVideoWizard(w.videoWizard ?? null);
@@ -830,18 +906,18 @@ export default function App() {
       if (!teamReviewSupported(type, stateRef.current.active)) {
         toast(
           type === 'video'
-            ? '请先在「视频生成」中生成视频后再提交团队审阅'
+            ? '请先在「视频生成」中生成视频后再提交团队意见收集'
             : 'PPT 大纲阶段不支持团队修改，请生成 PPT 后在「PPT生成」中提交'
         );
         return;
       }
       if (type === 'visual' && generatedImages.length === 0) {
-        toast('请先生成图片后再提交团队审阅');
+        toast('请先生成图片后再提交团队意见收集');
         return;
       }
       const payload = buildTeamPayload(type);
       if (!payload) {
-        toast(`请先生成${TEAM_CONTENT_LABELS[type]}后再提交团队审阅`);
+        toast(`请先生成${TEAM_CONTENT_LABELS[type]}后再提交团队意见收集`);
         return;
       }
       setTeamReviewTarget(type);
@@ -1168,6 +1244,7 @@ export default function App() {
     saveUserRole(role);
     setActiveReviewTaskId(null);
     setCreatorRightTab('ai');
+    setHomeHistoryTab(isReviewerRole(role) ? 'collect' : 'generate');
     refreshReviewTasks();
     if (role === 'ops') {
       if (currentSessionId && (copies.length > 0 || copyRevisions.length > 0)) {
@@ -1181,6 +1258,27 @@ export default function App() {
         setCurrentScreen('home');
       }
     }
+  };
+
+  const handleLogin = (role: UserRole) => {
+    setSignedIn(true);
+    setSignedInState(true);
+    setUserRole(role);
+    saveUserRole(role);
+    setActiveReviewTaskId(null);
+    setCreatorRightTab('ai');
+    setHomeHistoryTab(isReviewerRole(role) ? 'collect' : 'generate');
+    refreshReviewTasks();
+    setCurrentScreen('home');
+    toast(`已登录「${ACCOUNT_PROFILES[role].name} · ${ACCOUNT_PROFILES[role].dept}」`);
+  };
+
+  const confirmLogout = () => {
+    setSignedIn(false);
+    setSignedInState(false);
+    setActiveReviewTaskId(null);
+    setCurrentScreen('home');
+    toast('已登出当前账号');
   };
 
   useEffect(() => {
@@ -1220,16 +1318,6 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- titleLocked / ref 负责阻断重复命名
   }, [messages.length, state.tabs.length, currentSessionId, titleLocked]);
 
-  const toggleDefault = (id: number) => {
-    setLibrary(prev => prev.map(item =>
-      item.id === id ? { ...item, def: !item.def } : item
-    ));
-    const item = library.find(x => x.id === id);
-    if (item) {
-      toast(item.def ? '已取消默认素材' : '已设为默认素材');
-    }
-  };
-
   const deleteKnowledgeItem = (id: number) => {
     const item = library.find((entry) => entry.id === id);
     setLibrary((prev) => prev.filter((entry) => entry.id !== id));
@@ -1248,6 +1336,7 @@ export default function App() {
       meta: '本地上传 · 刚刚 · 已解析',
       cms: false,
       def: false,
+      brand: currentBrand,
       addedAt: Date.now(),
       fileName: '新上传资料.pdf',
       ...buildPreviewFieldsFromTitle(title, false),
@@ -1264,6 +1353,7 @@ export default function App() {
       meta: 'CMS · Approved · 刚刚加入候选',
       cms: true,
       def: false,
+      brand: currentBrand,
       addedAt: Date.now(),
       validUntil: '2027-07-31',
       ...buildPreviewFieldsFromTitle(title, true),
@@ -1280,8 +1370,22 @@ export default function App() {
     });
   };
 
-  const newTask = (prompt = '', intent: HomeEntryIntent = 'general') =>
-    startFromHome({ intent }, prompt);
+  const newTask = (_prompt = '', intent: HomeEntryIntent = 'general') => {
+    startFromHome({ intent }, '');
+    setProductPickerOpen(true);
+  };
+
+  const confirmTaskProduct = (product: TaskProduct) => {
+    setSelectedProduct(product);
+    setProductPickerOpen(false);
+    toast(`已选择产品「${product.name}」`);
+  };
+
+  const cancelTaskProduct = () => {
+    setProductPickerOpen(false);
+    setSelectedProduct(null);
+    goToHome();
+  };
 
   const createNewContentFromHome = () => {
     setCreationMethodOpen(false);
@@ -1312,6 +1416,7 @@ export default function App() {
       title: WORKSPACE_MOCK_PPT_OUTLINE.title,
       slides: WORKSPACE_MOCK_PPT.slides,
     });
+    seedPptVersionMocks();
     setState({
       ...emptyWorkspaceState(),
       tabs: ['ppt-design'],
@@ -1429,6 +1534,7 @@ export default function App() {
     setPptOutline(null);
     setPptVersions([]);
     setSelectedPptVersionId(null);
+    setModificationTasks((prev) => prev.filter((task) => !isPptDesignModificationTask(task)));
     setCreatorPptPageIndex(0);
     setCreatorRightTab('ai');
     setPromptEditScope('page');
@@ -1453,6 +1559,8 @@ export default function App() {
     setCopyRevisions([]);
     setCopyRevisionBase('');
     setWorkspacePreviewMaterial(null);
+    setSelectedProduct(null);
+    setFlowEntry(null);
     pendingTopicInsightNoteRef.current = '';
     topicInsightUploadPendingRef.current = false;
     const apiHint =
@@ -1663,7 +1771,7 @@ export default function App() {
       cat: '参考知识',
       title: article.title,
       meta: `${article.publisher} · ${article.year} · ${article.source}`,
-      cms: false,
+      cms: article.source === 'CMS',
       def: false,
       referenced: true,
       addedAt: now,
@@ -1755,6 +1863,7 @@ export default function App() {
         title: pptOutline?.title || WORKSPACE_MOCK_PPT_OUTLINE.title,
         slides: restyledPpt.slides,
       });
+      seedPptVersionMocks();
       setCreatorPptPageIndex(0);
       setState((prev) => ({
         ...prev,
@@ -1783,6 +1892,7 @@ export default function App() {
         title: WORKSPACE_MOCK_PPT_OUTLINE_EN.title,
         slides: WORKSPACE_MOCK_PPT_EN.slides,
       });
+      seedPptVersionMocks();
       setCreatorPptPageIndex(0);
       setState((prev) => ({
         ...prev,
@@ -1813,7 +1923,7 @@ export default function App() {
       }));
       addMsg(
         'ai',
-        `PPT 大纲已生成，共 ${WORKSPACE_MOCK_PPT_OUTLINE.chapters.length} 章。已在中间区域展示，可直接编辑章节与页面要点。`,
+        `PPT 大纲已生成，共 ${WORKSPACE_MOCK_PPT_OUTLINE.chapters.length} 节。已在中间区域展示，可直接编辑各节与页面要点。`,
         '本地 Mock'
       );
       return true;
@@ -1830,6 +1940,7 @@ export default function App() {
         title: WORKSPACE_MOCK_PPT_OUTLINE.title,
         slides: WORKSPACE_MOCK_PPT.slides,
       });
+      seedPptVersionMocks();
       setState((prev) => ({
         ...prev,
         tabs: prev.tabs.includes('ppt-design') ? prev.tabs : [...prev.tabs, 'ppt-design'],
@@ -1991,6 +2102,7 @@ export default function App() {
     showLoading(title);
     try {
       await fn();
+      addTokenUsage(userRole, 800 + Math.round(Math.random() * 1600));
       clearLoadingMessages();
       lastAiRetryRef.current = null;
     } catch (e) {
@@ -2232,11 +2344,11 @@ export default function App() {
     const type = opts?.contentType || teamReviewTarget || 'copy';
     const payload = buildTeamPayload(type);
     if (!payload) {
-      toast(`请先生成${TEAM_CONTENT_LABELS[type]}后再提交团队审阅`);
+      toast(`请先生成${TEAM_CONTENT_LABELS[type]}后再提交团队意见收集`);
       return;
     }
     if (!opts?.skipUserMsg) {
-      addMsg('user', `提交${TEAM_CONTENT_LABELS[type]}团队审阅`, selectedModel);
+      addMsg('user', `提交${TEAM_CONTENT_LABELS[type]}团队意见收集`, selectedModel);
     }
     setTeamModificationInProgress(true);
     void runWithAi(
@@ -2313,7 +2425,8 @@ export default function App() {
       ) => {
         const result = await api.generatePoster(copyBody, note, templateId);
         notifyMockIfNeeded(result);
-        newImages.push(result.dataUrl);
+        const preview = templateId ? getImageTemplate(templateId)?.previewImg : undefined;
+        newImages.push(preview || result.dataUrl);
         newMeta.push(meta);
         titles.push(result.title);
       };
@@ -2397,8 +2510,8 @@ export default function App() {
         : templates.length > 1
           ? `已按 ${templates.length} 个模板生成 ${newImages.length || mergedImages.length} 张配图（${templates.map((t) => t.name).join('、')}）。请在右侧查看。`
           : templates.length === 1
-            ? `已按「${templates[0].name}」模板生成配图「${titles[0] || copyTargets[0]?.copy.title}」。请在右侧查看，可勾选后提交团队审阅。`
-            : `已生成 AI 海报「${titles[0] || '配图'}」。右侧可勾选图片提交团队审阅，或继续生成视频、PPT。`;
+            ? `已按「${templates[0].name}」模板生成配图「${titles[0] || copyTargets[0]?.copy.title}」。请在右侧查看，可勾选后提交团队意见收集。`
+            : `已生成 AI 海报「${titles[0] || '配图'}」。右侧可勾选图片提交团队意见收集，或继续生成视频、PPT。`;
 
       addMsg('ai', summary, 'DeepSeek-V3.1｜图片生成', [
         '进入团队修改',
@@ -2982,6 +3095,7 @@ export default function App() {
         slides: ensureSlideSpeakerNotes(version.slides),
       }));
       setPptVersions(notedVersions);
+      seedPptVersionMocks();
       const first = notedVersions[0];
       if (first) {
         setSelectedPptVersionId(first.id);
@@ -3019,7 +3133,7 @@ export default function App() {
       addTab('ppt-outline');
       addMsg(
         'ai',
-        `已为「${outline.title}」生成大纲，共 ${outline.chapters.length} 章。请在右侧「PPT大纲」中编辑大纲；可选模板（不选则生成 3 套方案），确认后点击生成。`,
+        `已为「${outline.title}」生成大纲，共 ${outline.chapters.length} 节。请在中间「PPT大纲」中按节编辑，确认后点击「按模板生成 PPT」。`,
         'DeepSeek-V3.1｜PPT 大纲',
         ['查看大纲']
       );
@@ -3149,25 +3263,37 @@ export default function App() {
     );
   };
 
-  const confirmPptDesigns = (mode?: 'template' | 'no-template') => {
-    if (!pptOutline) return;
-    const selectedTemplate = pptTemplateOptions.find(
-      (template) => template.id === selectedPptTemplateId
+  const seedPptVersionMocks = () => {
+    setModificationTasks((prev) => [
+      ...prev.filter((task) => !isPptDesignModificationTask(task)),
+      ...createMockModificationTasks(),
+    ]);
+    setPptPageVersionEpoch((value) => value + 1);
+  };
+
+  const confirmPptDesigns = (mode?: 'template' | 'no-template', templateId?: string) => {
+    if (!pptOutline) {
+      toast('请先生成并确认 PPT 大纲，再切换模板');
+      setState((prev) => ({ ...prev, active: 'ppt-outline' }));
+      return;
+    }
+    if (templateId) setSelectedPptTemplateId(templateId);
+    const resolvedTemplateId = templateId ?? selectedPptTemplateId;
+    const selectedTemplate = allPptTemplates.find(
+      (template) => template.id === resolvedTemplateId
     );
+    const blankSelected = isBlankPptTemplate(selectedTemplate);
     const effectiveMode =
-      mode ?? (selectedTemplate ? 'template' : 'no-template');
+      mode ?? (blankSelected ? 'no-template' : selectedTemplate ? 'template' : 'no-template');
     if (effectiveMode === 'template' && !selectedTemplate) {
       toast('请先在「PPT大纲」中选择一套模板');
       setState((prev) => ({ ...prev, active: 'ppt-outline' }));
       return;
     }
-    if (effectiveMode === 'no-template') {
-      setSelectedPptTemplateId(null);
-    }
-    const tpl = effectiveMode === 'template' ? selectedTemplate : null;
+    const tpl = effectiveMode === 'template' && !blankSelected ? selectedTemplate : null;
     const loadingLabel = tpl
       ? `正在按「${tpl.name}」模板生成 PPT`
-      : '正在不使用模板直接生成 PPT';
+      : '正在按「空白模板」生成 PPT';
     void runWithAi(
       loadingLabel,
       async () => {
@@ -3178,11 +3304,15 @@ export default function App() {
         tpl?.generationTemplateId ?? tpl?.id ?? null
       );
       notifyMockIfNeeded(designs);
-      const versions = (tpl ? designs.versions : designs.versions.slice(0, 1)).map((version) => ({
-        ...version,
-        slides: ensureSlideSpeakerNotes(version.slides),
-      }));
+      const versions = applyPptTemplateImages(
+        (tpl ? designs.versions : designs.versions.slice(0, 1)).map((version) => ({
+          ...version,
+          slides: ensureSlideSpeakerNotes(version.slides),
+        })),
+        tpl ?? undefined
+      );
       setPptVersions(versions);
+      seedPptVersionMocks();
       const first = versions[0];
       if (first) {
         setSelectedPptVersionId(first.id);
@@ -3200,7 +3330,7 @@ export default function App() {
       } else {
         addMsg(
           'ai',
-          `未使用任何模板，已直接生成 PPT，共 ${first?.slides?.length ?? 0} 页。请在右侧「PPT生成」中预览与编辑。`,
+          `已按「空白模板」生成 PPT，共 ${first?.slides?.length ?? 0} 页。请在右侧「PPT生成」中预览与编辑。`,
           'DeepSeek-V3.1｜PPT 设计',
           ['查看大纲', '提交当前版本到Veeva Vault']
         );
@@ -3479,7 +3609,13 @@ export default function App() {
     return base;
   };
 
+  const lockFlowEntry = (next: ContentFlowEntry | null) => {
+    if (!next) return;
+    setFlowEntry((prev) => prev ?? next);
+  };
+
   const addTab = (key: TabKey) => {
+    lockFlowEntry(flowEntryFromTab(key));
     setState(prev => {
       if (!prev.tabs.includes(key)) {
         return { ...prev, tabs: [...prev.tabs, key], active: key };
@@ -3796,6 +3932,7 @@ export default function App() {
     setPptVersions([version]);
     setSelectedPptVersionId(version.id);
     setPptResult({ title: HCP_PPT_OUTLINE_01.title, slides: version.slides });
+    seedPptVersionMocks();
     addTab('ppt-outline');
     addTab('ppt-design');
     setState((prev) => ({
@@ -3944,7 +4081,7 @@ export default function App() {
     if (wasHidden) {
       addMsg(
         'ai',
-        `已在右侧展示「PPT大纲」，共 ${pptOutline.chapters.length} 章。可按需编辑结构；修改后可在「PPT生成」中重新生成设计稿。`,
+        `已在中间展示「PPT大纲」，共 ${pptOutline.chapters.length} 节。可按需编辑结构；修改后可在「PPT生成」中重新生成设计稿。`,
         'DeepSeek-V3.1',
         ['生成设计', '返回 PPT 生成']
       );
@@ -4008,6 +4145,7 @@ export default function App() {
       title: file.name.replace(/\.(pptx?)$/i, '') || pptResult?.title || WORKSPACE_MOCK_PPT_OUTLINE.title,
       slides,
     });
+    seedPptVersionMocks();
     setState((prev) => ({
       ...prev,
       tabs: prev.tabs.includes('ppt-design') ? prev.tabs : [...prev.tabs, 'ppt-design'],
@@ -4646,6 +4784,21 @@ export default function App() {
       );
       const pill = materialAttachmentPill(item);
       setAttachments((prev) => [...prev.filter((entry) => entry !== pill), pill]);
+      if (item.cat === 'Brief') {
+        lockFlowEntry('brief');
+        addTab('brief');
+        setContentBrief((prev) =>
+          prev ?? {
+            audience: '',
+            scenario: '',
+            format: 'PPT 演示文稿',
+            goal: '',
+            keyMessage: item.title,
+            length: '',
+            notes: `已引用 Brief「${item.title}」`,
+          }
+        );
+      }
       toast(`已添加「${item.title}」到参考知识`);
       return;
     }
@@ -4666,6 +4819,21 @@ export default function App() {
       validUntil: item.validUntil,
     };
     setLibrary((prev) => [libraryItem, ...prev]);
+    if (item.cat === 'Brief') {
+      lockFlowEntry('brief');
+      addTab('brief');
+      setContentBrief((prev) =>
+        prev ?? {
+          audience: '',
+          scenario: '',
+          format: 'PPT 演示文稿',
+          goal: '',
+          keyMessage: item.title,
+          length: '',
+          notes: `已上传 Brief「${item.title}」`,
+        }
+      );
+    }
     const pill = materialAttachmentPill(item);
     setAttachments((prev) => [...prev.filter((p) => !p.endsWith('×')), pill]);
     toast(pickerTarget === 'chat' ? '附件已加入本次对话' : `已添加素材到「${item.cat}」`);
@@ -4697,66 +4865,42 @@ export default function App() {
   };
 
   const filteredLibrary = library
+    .filter((x) => matchesBrand(x.brand, currentBrand))
     .filter((x) => libCatFilter === '全部' || x.cat === libCatFilter)
-    .filter((x) => !libSearch || `${x.title} ${x.meta} ${x.cat}`.toLowerCase().includes(libSearch.toLowerCase()))
-    .filter((x) => !onlyDefault || x.def);
+    .filter((x) => !libSearch || `${x.title} ${x.meta} ${x.cat} ${x.brand || ''}`.toLowerCase().includes(libSearch.toLowerCase()));
   const libraryUploadCat = libCatFilter === '全部' ? activeCat : libCatFilter;
-  const referencedTemplateItems = useMemo(
+  const morePptTemplates = useMemo(() => catalogPptTemplates(), []);
+  const recommendedPptTemplates = useMemo(
     () =>
-      library.filter(
-        (item) => isMaterialUsable(item) && ['参考模板', '模板'].includes(item.cat)
+      recommendPptTemplates(
+        `${pptOutline?.title || ''} ${pptOutline?.audience || ''} ${pptOutline?.scenario || ''} ${inputValue}`
       ),
-    [library]
+    [inputValue, pptOutline]
   );
-  const pptTemplateOptions = useMemo<PptBuiltinTemplate[]>(() => {
-    if (referencedTemplateItems.length > 0) {
-      return referencedTemplateItems.flatMap((item) => {
-        const context = `${item.title} ${item.meta}`.toLowerCase();
-        const base =
-          /患者|宣教|关怀/.test(context)
-            ? PPT_BUILTIN_TEMPLATES.find((template) => template.id === 'patient-edu')
-            : /培训|内部|品牌/.test(context)
-              ? PPT_BUILTIN_TEMPLATES.find((template) => template.id === 'internal-training')
-              : /科普|疾病|社交|海报|图卡/.test(context)
-                ? PPT_BUILTIN_TEMPLATES.find((template) => template.id === 'disease-science')
-                : PPT_BUILTIN_TEMPLATES.find((template) => template.id === 'hcp-comm');
-        if (!base) return [];
-        return [{
-          ...base,
-          id: `reference-template-${item.id}`,
-          generationTemplateId: base.id,
-          name: item.title,
-          description: `来自左侧引用素材 · ${item.meta}`,
-        }];
-      });
+  const allPptTemplates = useMemo(() => {
+    const map = new Map<string, PptBuiltinTemplate>();
+    for (const item of [BLANK_PPT_TEMPLATE, ...recommendedPptTemplates, ...morePptTemplates]) {
+      map.set(item.id, item);
     }
-
-    const context = `${pptOutline?.title || ''} ${pptOutline?.audience || ''} ${
-      pptOutline?.scenario || ''
-    } ${inputValue}`.toLowerCase();
-    const priorityId =
-      /患者|公众|宣教|家属/.test(context)
-        ? 'patient-edu'
-        : /培训|内训|内部/.test(context)
-          ? 'internal-training'
-          : /科普|疾病教育/.test(context)
-            ? 'disease-science'
-            : 'hcp-comm';
-    return [...PPT_BUILTIN_TEMPLATES].sort((a, b) =>
-      a.id === priorityId ? -1 : b.id === priorityId ? 1 : 0
-    );
-  }, [inputValue, pptOutline, referencedTemplateItems]);
-  const pptTemplateSource: 'referenced' | 'recommended' =
-    referencedTemplateItems.length > 0 ? 'referenced' : 'recommended';
+    return [...map.values()];
+  }, [morePptTemplates, recommendedPptTemplates]);
+  const pptTemplateOptions = useMemo<PptBuiltinTemplate[]>(() => {
+    const extra = allPptTemplates.find((item) => item.id === selectedPptTemplateId);
+    if (extra && !recommendedPptTemplates.some((item) => item.id === extra.id)) {
+      return [...recommendedPptTemplates, extra];
+    }
+    return recommendedPptTemplates;
+  }, [allPptTemplates, recommendedPptTemplates, selectedPptTemplateId]);
 
   useEffect(() => {
-    if (
-      selectedPptTemplateId &&
-      !pptTemplateOptions.some((template) => template.id === selectedPptTemplateId)
-    ) {
-      setSelectedPptTemplateId(null);
+    if (!selectedPptTemplateId) {
+      setSelectedPptTemplateId(BLANK_PPT_TEMPLATE.id);
+      return;
     }
-  }, [pptTemplateOptions, selectedPptTemplateId]);
+    if (!allPptTemplates.some((template) => template.id === selectedPptTemplateId)) {
+      setSelectedPptTemplateId(BLANK_PPT_TEMPLATE.id);
+    }
+  }, [allPptTemplates, selectedPptTemplateId]);
 
   const libSelectedCount = libSelectedIds.length;
   const allVisibleSelected =
@@ -4974,7 +5118,7 @@ export default function App() {
       setPptPageVersionEpoch((value) => value + 1);
       setWorkspaceElementSel(null);
       setCreatorRightTab('tasks');
-      toast(`已回溯为当前版本，该版本及之后的小版本与任务已清除`);
+      toast('已回溯到该版本');
     },
     [selectedPptVersionId, toast]
   );
@@ -4994,7 +5138,7 @@ export default function App() {
       });
       openMockImageInPreview(snapshot, title, assetKey);
       setCreatorRightTab('tasks');
-      toast('已回溯为当前版本，该版本及之后的小版本与任务已清除');
+      toast('已回溯到该版本');
     },
     [toast]
   );
@@ -5299,12 +5443,41 @@ export default function App() {
       return `${session.title} ${deriveSessionSubtitle(session)}`.toLowerCase().includes(query);
     });
   }, [sessions, activeProjectId, sessionSearch]);
+  const homeCollectTasks = useMemo(() => {
+    const query = sessionSearch.trim().toLowerCase();
+    const source =
+      userRole === 'medical' || userRole === 'marketing'
+        ? reviewTasks.filter((task) => task.assigneeRole === userRole)
+        : reviewTasks;
+    return source.filter((task) => {
+      if (activeProjectId) {
+        const session = sessions.find((item) => item.id === task.sessionId);
+        if (session && session.projectId !== activeProjectId) return false;
+      }
+      if (!query) return true;
+      const hay = [
+        task.title,
+        TEAM_CONTENT_LABELS[task.contentType],
+        ROLE_PROFILES[task.assigneeRole].dept,
+        task.assigneeName,
+        collectTaskStatusLabel(task.status),
+      ]
+        .join(' ')
+        .toLowerCase();
+      return hay.includes(query);
+    });
+  }, [userRole, reviewTasks, sessions, activeProjectId, sessionSearch]);
+  const homeHistoryCount = homeHistoryTab === 'generate' ? homeTaskSessions.length : homeCollectTasks.length;
   const homeTaskPageCount = Math.max(
     1,
-    Math.ceil(homeTaskSessions.length / HOME_TASK_PAGE_SIZE)
+    Math.ceil(homeHistoryCount / HOME_TASK_PAGE_SIZE)
   );
   const visibleHomeTaskPage = Math.min(homeTaskPage, homeTaskPageCount);
   const pagedHomeTaskSessions = homeTaskSessions.slice(
+    (visibleHomeTaskPage - 1) * HOME_TASK_PAGE_SIZE,
+    visibleHomeTaskPage * HOME_TASK_PAGE_SIZE
+  );
+  const pagedHomeCollectTasks = homeCollectTasks.slice(
     (visibleHomeTaskPage - 1) * HOME_TASK_PAGE_SIZE,
     visibleHomeTaskPage * HOME_TASK_PAGE_SIZE
   );
@@ -5331,7 +5504,7 @@ export default function App() {
 
   useEffect(() => {
     setHomeTaskPage(1);
-  }, [activeProjectId, sessionSearch]);
+  }, [activeProjectId, sessionSearch, homeHistoryTab]);
 
   useEffect(() => {
     if (homeTaskPage > homeTaskPageCount) setHomeTaskPage(homeTaskPageCount);
@@ -5339,26 +5512,30 @@ export default function App() {
 
   const showGlobalHeader = currentScreen === 'home' || currentScreen === 'workspace';
 
+  if (!signedIn) {
+    return (
+      <div className="relative min-h-screen overflow-hidden">
+        <AmbientOrbs />
+        <LoginScreen onLogin={handleLogin} />
+      </div>
+    );
+  }
+
   return (
     <div className="relative min-h-screen overflow-hidden">
       <AmbientOrbs />
       {showGlobalHeader && (
-        <header className="app-global-header relative z-10">
+        <header className="app-global-header relative z-30">
           <div className="app-global-header-left animate-fade-up">
             <BrandLogo onClick={goToHome} />
           </div>
           <div className="app-global-header-right animate-fade-up [animation-delay:120ms]">
             <RoleSwitcher role={userRole} onChange={handleRoleChange} />
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground">当前品牌</span>
-              <select className="rounded-lg border border-border/70 bg-glass px-3 py-1.5 font-medium text-foreground shadow-soft transition hover:border-primary/40">
-                <option value="">请选择品牌</option>
-                <option>拜新同</option>
-                <option>拜唐苹</option>
-                <option>优迈</option>
-                <option>爱格希</option>
-              </select>
-            </div>
+            <UserAccountMenu
+              role={userRole}
+              onLogout={confirmLogout}
+              onOpenChange={setAccountMenuOpen}
+            />
           </div>
         </header>
       )}
@@ -5367,7 +5544,11 @@ export default function App() {
       <section className={`screen home-screen ${currentScreen === 'home' ? 'active' : ''}`}>
         <div className={`app-screen-body relative z-10 min-h-0 px-6 pb-6 lg:px-10${isReviewerRole(userRole) ? ' is-reviewer' : ''}`}>
             <main className="relative min-h-0 min-w-0 flex-1">
-              <div className="absolute right-0 top-0 z-20 flex items-center gap-2 animate-fade-up">
+              <div
+                className={`home-lib-shortcuts absolute right-0 top-0 z-20 flex items-center gap-2 animate-fade-up${
+                  accountMenuOpen ? ' invisible pointer-events-none' : ''
+                }`}
+              >
                 <button
                   type="button"
                   className="glass-button flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium text-foreground hover:text-primary"
@@ -5376,7 +5557,7 @@ export default function App() {
                   <span className="grid h-5 w-5 place-items-center rounded-md bg-gradient-to-br from-[#54B9F9] to-[#3BA6E8] shadow-[0_3px_8px_-2px_rgba(59,150,210,0.5)] ring-1 ring-white/40">
                     <Database className="h-3 w-3 text-white" strokeWidth={2.5} />
                   </span>
-                  参考知识库
+                  个人知识收藏
                 </button>
                 <button
                   type="button"
@@ -5388,24 +5569,16 @@ export default function App() {
                   </span>
                   视觉素材库
                 </button>
-                <button
-                  type="button"
-                  className="glass-button flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium text-foreground hover:text-primary"
-                  onClick={() => setCurrentScreen('terminology')}
-                >
-                  <span className="grid h-5 w-5 place-items-center rounded-md bg-gradient-to-br from-[#8AD329] to-[#6FBD1F] shadow-[0_3px_8px_-2px_rgba(120,180,40,0.5)] ring-1 ring-white/40">
-                    <BookMarked className="h-3 w-3 text-white" strokeWidth={2.5} />
-                  </span>
-                  专业术语库
-                </button>
               </div>
 
               {isReviewerRole(userRole) ? (
                 <div className="px-2 pt-2">
                   <ReviewerHome
-                    tasks={tasksForRole(userRole)}
+                    tasks={homeCollectTasks}
+                    generateSessions={homeTaskSessions}
                     deptLabel={ROLE_PROFILES[userRole].dept}
                     onOpenTask={openReviewTask}
+                    onOpenSession={openSession}
                   />
                 </div>
               ) : (
@@ -5436,7 +5609,7 @@ export default function App() {
                   <div className="home-inspire-grid relative z-10 mt-6 animate-fade-up [animation-delay:120ms]">
                     <div className="home-inspire-left">
                       <div className="home-inspire-actions">
-                        {HOME_WORKFLOW_ACTIONS.map(({ title, description, intent, prompt, Icon, art }) => (
+                        {HOME_WORKFLOW_ACTIONS.map(({ title, description, scenes, intent, prompt, Icon, art }) => (
                           <button
                             key={title}
                             type="button"
@@ -5449,7 +5622,15 @@ export default function App() {
                             <ArrowUpRight className="home-inspire-action-arrow h-4 w-4" />
                             <div className="home-inspire-action-body">
                               <strong>{title}</strong>
-                              <span className="home-inspire-action-desc">{description}</span>
+                              {scenes?.length ? (
+                                <span className="home-inspire-action-scenes">
+                                  {scenes.map((scene) => (
+                                    <em key={scene}>{scene}</em>
+                                  ))}
+                                </span>
+                              ) : (
+                                <span className="home-inspire-action-desc">{description}</span>
+                              )}
                               <span className="home-inspire-action-cta">
                                 新建任务
                                 <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={2.4} />
@@ -5540,9 +5721,13 @@ export default function App() {
                         <div>
                           <h3>历史任务</h3>
                           <p>
-                            {activeProjectName
-                              ? `项目「${activeProjectName}」中的任务`
-                              : '继续处理最近的内容创作任务'}
+                            {homeHistoryTab === 'collect'
+                              ? activeProjectName
+                                ? `项目「${activeProjectName}」中的意见收集任务`
+                                : '查看已提交的团队意见收集任务'
+                              : activeProjectName
+                                ? `项目「${activeProjectName}」中的任务`
+                                : '继续处理最近的内容创作任务'}
                           </p>
                         </div>
                         <div className="home-task-search">
@@ -5550,12 +5735,35 @@ export default function App() {
                           <input
                             value={sessionSearch}
                             onChange={(event) => setSessionSearch(event.target.value)}
-                            placeholder="搜索历史任务"
+                            placeholder={homeHistoryTab === 'collect' ? '搜索意见收集任务' : '搜索历史任务'}
                           />
                         </div>
                       </div>
 
-                      {homeTaskSessions.length > 0 ? (
+                      <div className="home-history-tabs" role="tablist" aria-label="历史任务类型">
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={homeHistoryTab === 'generate'}
+                          className={`home-history-tab ${homeHistoryTab === 'generate' ? 'active' : ''}`}
+                          onClick={() => setHomeHistoryTab('generate')}
+                        >
+                          内容生成
+                          <span>{homeTaskSessions.length}</span>
+                        </button>
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={homeHistoryTab === 'collect'}
+                          className={`home-history-tab ${homeHistoryTab === 'collect' ? 'active' : ''}`}
+                          onClick={() => setHomeHistoryTab('collect')}
+                        >
+                          意见收集
+                          <span>{homeCollectTasks.length}</span>
+                        </button>
+                      </div>
+
+                      {homeHistoryTab === 'generate' && homeTaskSessions.length > 0 ? (
                         <>
                           <div className="home-task-grid home-inspire-history-list">
                             {pagedHomeTaskSessions.map((session) => (
@@ -5592,8 +5800,90 @@ export default function App() {
                                 </article>
                               ))}
                           </div>
-                          {homeTaskPageCount > 1 && (
+                          {homeTaskPageCount > 1 && homeHistoryTab === 'generate' && (
                             <nav className="home-task-pagination" aria-label="历史任务分页">
+                              <button
+                                type="button"
+                                className="home-task-page-arrow"
+                                disabled={visibleHomeTaskPage === 1}
+                                onClick={() => setHomeTaskPage((page) => Math.max(1, page - 1))}
+                                aria-label="上一页"
+                              >
+                                <ChevronLeft className="h-3.5 w-3.5" />
+                              </button>
+                              {homeTaskPageItems.map((page, index) => {
+                                const prev = homeTaskPageItems[index - 1];
+                                const showEllipsis = index > 0 && page - (prev || 0) > 1;
+                                return (
+                                  <span key={page} className="home-task-page-cluster">
+                                    {showEllipsis && (
+                                      <span className="home-task-page-ellipsis" aria-hidden>
+                                        …
+                                      </span>
+                                    )}
+                                    <button
+                                      type="button"
+                                      className={`home-task-page-number ${
+                                        visibleHomeTaskPage === page ? 'active' : ''
+                                      }`}
+                                      onClick={() => setHomeTaskPage(page)}
+                                      aria-current={visibleHomeTaskPage === page ? 'page' : undefined}
+                                    >
+                                      {page}
+                                    </button>
+                                  </span>
+                                );
+                              })}
+                              <button
+                                type="button"
+                                className="home-task-page-arrow"
+                                disabled={visibleHomeTaskPage === homeTaskPageCount}
+                                onClick={() =>
+                                  setHomeTaskPage((page) => Math.min(homeTaskPageCount, page + 1))
+                                }
+                                aria-label="下一页"
+                              >
+                                <ChevronRight className="h-3.5 w-3.5" />
+                              </button>
+                            </nav>
+                          )}
+                        </>
+                      ) : homeHistoryTab === 'collect' && homeCollectTasks.length > 0 ? (
+                        <>
+                          <div className="home-task-grid home-inspire-history-list">
+                            {pagedHomeCollectTasks.map((task) => (
+                              <article
+                                key={task.id}
+                                className={`home-task-card group ${activeReviewTaskId === task.id ? 'active' : ''}`}
+                              >
+                                <button
+                                  type="button"
+                                  className="home-task-card-main"
+                                  onClick={() => {
+                                    if (isReviewerRole(userRole)) {
+                                      openReviewTask(task.id);
+                                      return;
+                                    }
+                                    openSession(task.sessionId);
+                                  }}
+                                >
+                                  <span className="home-task-card-icon is-collect">
+                                    <MessageSquare className="h-4 w-4 text-white" strokeWidth={2.4} />
+                                  </span>
+                                  <span className="home-task-card-copy">
+                                    <strong>{task.title}</strong>
+                                    <span>
+                                      {TEAM_CONTENT_LABELS[task.contentType]} · {ROLE_PROFILES[task.assigneeRole].dept} ·{' '}
+                                      {collectTaskStatusLabel(task.status)} · {formatSessionTime(task.updatedAt)}
+                                    </span>
+                                  </span>
+                                  <ArrowRight className="home-task-card-arrow h-4 w-4" />
+                                </button>
+                              </article>
+                            ))}
+                          </div>
+                          {homeTaskPageCount > 1 && (
+                            <nav className="home-task-pagination" aria-label="意见收集任务分页">
                               <button
                                 type="button"
                                 className="home-task-page-arrow"
@@ -5642,9 +5932,19 @@ export default function App() {
                         </>
                       ) : (
                         <div className="home-task-empty">
-                          <Presentation className="h-6 w-6" />
-                          <strong>暂无历史任务</strong>
-                          <span>从左侧工作流开始第一项内容创作</span>
+                          {homeHistoryTab === 'collect' ? (
+                            <>
+                              <MessageSquare className="h-6 w-6" />
+                              <strong>暂无意见收集任务</strong>
+                              <span>在工作台提交团队意见收集后，任务会出现在这里</span>
+                            </>
+                          ) : (
+                            <>
+                              <Presentation className="h-6 w-6" />
+                              <strong>暂无历史任务</strong>
+                              <span>从左侧工作流开始第一项内容创作</span>
+                            </>
+                          )}
                         </div>
                       )}
                     </aside>
@@ -5674,9 +5974,9 @@ export default function App() {
                   <Database className="h-5 w-5" />
                 </span>
                 <div>
-                  <h2 className="text-[28px] font-semibold tracking-tight text-foreground">参考知识库</h2>
+                  <h2 className="text-[28px] font-semibold tracking-tight text-foreground">个人知识收藏</h2>
                   <p className="mt-0.5 max-w-xl text-[12.5px] text-muted-foreground">
-                    管理品牌知识、合规手册与 CMS 内容，支持多选后一键带入新对话。
+                    正在查看「{currentBrand}」的知识收藏，通用资料会一并显示。支持多选后一键带入新对话。
                   </p>
                 </div>
               </div>
@@ -5700,6 +6000,7 @@ export default function App() {
                     className="glass-input w-full rounded-xl border border-border/70 py-2.5 pl-10 pr-3 text-[13px] outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/15"
                   />
                 </div>
+                <BrandSwitcher value={currentBrand} onChange={handleBrandChange} size="page" />
                 <select
                   value={libCatFilter}
                   onChange={(e) => setLibCatFilter(e.target.value)}
@@ -5713,22 +6014,6 @@ export default function App() {
                     </option>
                   ))}
                 </select>
-                <button
-                  type="button"
-                  className={cn(
-                    'inline-flex items-center gap-1.5 rounded-xl border px-3 py-2.5 text-[12px] font-medium transition',
-                    onlyDefault
-                      ? 'border-primary/35 bg-primary/10 text-primary'
-                      : 'border-border/70 bg-white/65 text-muted-foreground hover:border-primary/30 hover:text-foreground'
-                  )}
-                  onClick={() => setOnlyDefault(!onlyDefault)}
-                >
-                  <Star
-                    className={cn('h-3.5 w-3.5', onlyDefault && 'text-[#FFB547]')}
-                    fill={onlyDefault ? '#FFB547' : 'none'}
-                  />
-                  仅默认
-                </button>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <button
@@ -5769,7 +6054,6 @@ export default function App() {
                     item={x}
                     selected={libSelectedIds.includes(x.id)}
                     onToggleSelect={() => toggleLibSelect(x.id)}
-                    onToggleDefault={() => toggleDefault(x.id)}
                     onPreview={() => setPreviewMaterial(x)}
                     onDelete={() => deleteKnowledgeItem(x.id)}
                   />
@@ -5782,7 +6066,7 @@ export default function App() {
                 </div>
                 <p className="text-[13px] font-semibold text-foreground">暂无匹配的知识</p>
                 <p className="mt-1.5 max-w-xs text-[11.5px] leading-relaxed text-muted-foreground">
-                  上传本地文件，或从 CMS 搜索已审批内容加入参考知识库。
+                  上传本地文件，或从 CMS 搜索已审批内容加入「{currentBrand}」的个人知识收藏。
                 </p>
                 <div className="mt-4 flex gap-2">
                   <button
@@ -5834,12 +6118,12 @@ export default function App() {
 
       {/* Asset Library Screen */}
       <section className={`screen screen-full ${currentScreen === 'assets' ? 'active' : ''}`}>
-        <AssetLibraryPage onNotify={toast} onBack={goToHome} />
-      </section>
-
-      {/* Terminology Glossary Screen */}
-      <section className={`screen screen-full ${currentScreen === 'terminology' ? 'active' : ''}`}>
-        <TerminologyLibraryPage onNotify={toast} onBack={goToHome} />
+        <AssetLibraryPage
+          brand={currentBrand}
+          onBrandChange={handleBrandChange}
+          onNotify={toast}
+          onBack={goToHome}
+        />
       </section>
 
       {/* Workspace Screen */}
@@ -5954,10 +6238,11 @@ export default function App() {
                     {taskTitle}
                   </h3>
                 )}
-              </div>
-              <div className="compliance-agent-status" aria-label="合规智能体正在运行中">
-                <span className="compliance-agent-dot" aria-hidden />
-                合规智能体正在运行中
+                {selectedProduct && (
+                  <span className="task-product-chip" title={`${selectedProduct.en} · ${selectedProduct.hint}`}>
+                    {selectedProduct.name}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -6624,7 +6909,7 @@ export default function App() {
             selectedPptVersionId={selectedPptVersionId}
             selectedPptTemplateId={selectedPptTemplateId}
             pptTemplateOptions={pptTemplateOptions}
-            pptTemplateSource={pptTemplateSource}
+            morePptTemplates={morePptTemplates}
             richTextContent={richTextContent}
             onRichTextChange={setRichTextContent}
             creatorPptPageIndex={creatorPptPageIndex}
@@ -6649,6 +6934,11 @@ export default function App() {
                   version.id === selectedPptVersionId ? { ...version, slides } : version
                 )
               );
+            }}
+            onDiscardPptPageVersions={() => {
+              setModificationTasks((prev) => prev.filter((task) => !task.slideSnapshot));
+              setPptPageVersionEpoch((value) => value + 1);
+              setWorkspaceElementSel(null);
             }}
             onConfirmPptDesigns={confirmPptDesigns}
             onRegeneratePptOutline={regeneratePptOutline}
@@ -6693,6 +6983,20 @@ export default function App() {
             }}
             onImportLocalPpt={() => pptImportInputRef.current?.click()}
             taskTitle={taskTitle}
+            selectedProduct={selectedProduct}
+            entryContext={entryContext}
+            flowEntry={flowEntry}
+            onSelectFlowStep={(step) => {
+              if (!step.tab) {
+                setState((prev) => ({ ...prev, active: null }));
+                return;
+              }
+              if (step.id === 'ppt' && !contentBrief && !pptOutline) {
+                toast('从 0 到 1 生成 PPT 前，请先完成 Brief 与大纲');
+              }
+              addTab(step.tab);
+            }}
+            onUploadBrief={() => openMaterialPicker('workspace', 'Brief')}
             onDownloadInsightReport={() => {
               if (!hotInsightReport) {
                 toast('暂无洞察报告可下载');
@@ -7036,6 +7340,12 @@ export default function App() {
         }}
       />
 
+      <ProductPickerModal
+        open={productPickerOpen}
+        onConfirm={confirmTaskProduct}
+        onCancel={cancelTaskProduct}
+      />
+
       <CreationMethodModal
         open={creationMethodOpen}
         onClose={() => setCreationMethodOpen(false)}
@@ -7044,19 +7354,48 @@ export default function App() {
         onOpenCms={openCmsFileFromHome}
       />
 
-      <MaterialPickerModal
-        open={pickerOpen}
-        defaultCat={pickerCat}
-        initialTab={pickerTab}
-        categories={cats}
-        mode={pickerMode}
-        knowledgeItems={library}
-        onClose={() => {
-          setPickerOpen(false);
-          setOpenPickedMaterialInPreview(false);
-        }}
-        onConfirm={handleMaterialPicked}
-      />
+      {pickerOpen && pickerMode === 'reference' && pickerCat === '参考知识' ? (
+        <LiteraturePickerModal
+          open
+          knowledgeItems={library}
+          addedLiteratureIds={addedLiteratureIds}
+          onClose={() => {
+            setPickerOpen(false);
+            setOpenPickedMaterialInPreview(false);
+          }}
+          onAddLiterature={addLiteratureToTask}
+          onAddKnowledge={(item) => {
+            handleMaterialPicked({
+              existingId: item.id,
+              title: item.title,
+              meta: item.meta,
+              cat: item.cat,
+              cms: item.cms,
+              fileName: item.fileName,
+              contentType: item.contentType,
+              contentText: item.contentText,
+              contentUrl: item.contentUrl,
+              mimeType: item.mimeType,
+              validUntil: item.validUntil,
+            });
+          }}
+          onUpload={handleMaterialPicked}
+        />
+      ) : (
+        <MaterialPickerModal
+          open={pickerOpen}
+          defaultCat={pickerCat}
+          initialTab={pickerTab}
+          categories={cats}
+          mode={pickerMode}
+          knowledgeItems={library}
+          onClose={() => {
+            setPickerOpen(false);
+            setOpenPickedMaterialInPreview(false);
+          }}
+          onConfirm={handleMaterialPicked}
+        />
+      )}
 
       <MaterialDetailModal item={previewMaterial} onClose={() => setPreviewMaterial(null)} />
 
@@ -7134,7 +7473,7 @@ export default function App() {
         }
       }}>
         <div className="modal">
-          <h3>提交团队审阅</h3>
+          <h3>提交团队意见收集</h3>
           {teamReviewTarget && (
             <div className="detail-card team-review-target-card">
               <h4>本次提交内容</h4>
@@ -7149,7 +7488,7 @@ export default function App() {
           <div className="detail-card">
             <h4>分配给（可多选）</h4>
             <div className="small" style={{ marginBottom: 10 }}>
-              可同时选择医学部与市场部，将分别为每位审阅人创建修改任务。
+              可同时选择医学部与市场部，将分别为每位同事创建意见收集任务。
             </div>
             <label className="option team-assignee-option">
               <input
@@ -7197,7 +7536,7 @@ export default function App() {
               className="btn primary"
               onClick={() => {
                 if (teamAssigneeRoles.length === 0 || !deadline) {
-                  toast('请至少选择一位审阅人并设置截止时间');
+                  toast('请至少选择一位同事并设置截止时间');
                   return;
                 }
                 if (!currentSessionId) {
@@ -7261,7 +7600,7 @@ export default function App() {
                 );
                 addMsg(
                   'ai',
-                  `已为 ${assigneeLabels.length} 位审阅人创建团队修改任务，他们将在各自首页任务列表中查看并修改。完成后你可在「团队修改」或「文案生成」标签查看修改详情。`,
+                  `已为 ${assigneeLabels.length} 位同事创建意见收集任务，他们将在各自首页的「意见收集」列表中查看并反馈。完成后你可在「团队修改」或「文案生成」标签查看修改详情。`,
                   'DeepSeek-V3.1'
                 );
               }}
@@ -7300,7 +7639,7 @@ export default function App() {
         title="回退至此"
         message={
           rollbackConfirm
-            ? `确定回退到任务「${rollbackConfirm.prompt}」吗？该版本会成为当前页，其本身及之后的小版本与任务都会被清除。`
+            ? `确定回溯到该版本吗？`
             : ''
         }
         confirmLabel="确认回退"
@@ -7456,6 +7795,12 @@ function DrawableImagePreview({ item }: { item: LibraryItem }) {
   );
 }
 
+const PPT_MAJOR_VERSION_SEED = [
+  { id: 'major-v1', label: 'V1', time: '今天 10:08', depth: 2 },
+  { id: 'major-v2', label: 'V2', time: '今天 15:24', depth: 1 },
+  { id: 'major-latest', label: '当前', time: '刚刚', depth: 0 },
+];
+
 function WorkspaceRightPanel({
   state,
   setState,
@@ -7485,7 +7830,7 @@ function WorkspaceRightPanel({
   selectedPptVersionId,
   selectedPptTemplateId,
   pptTemplateOptions,
-  pptTemplateSource,
+  morePptTemplates,
   richTextContent,
   onRichTextChange,
   creatorPptPageIndex,
@@ -7504,6 +7849,7 @@ function WorkspaceRightPanel({
   onSelectPptTemplate,
   onPptOutlineChange,
   onRollbackPptSlides,
+  onDiscardPptPageVersions,
   onConfirmPptDesigns,
   onRegeneratePptOutline,
   isGenerating,
@@ -7563,6 +7909,11 @@ function WorkspaceRightPanel({
   contentBrief,
   onContentBriefChange,
   onImportLocalPpt,
+  selectedProduct,
+  entryContext,
+  flowEntry,
+  onSelectFlowStep,
+  onUploadBrief,
 }: {
   state: AppState;
   setState: React.Dispatch<React.SetStateAction<AppState>>;
@@ -7592,7 +7943,7 @@ function WorkspaceRightPanel({
   selectedPptVersionId: string | null;
   selectedPptTemplateId: string | null;
   pptTemplateOptions: PptBuiltinTemplate[];
-  pptTemplateSource: 'referenced' | 'recommended';
+  morePptTemplates: PptBuiltinTemplate[];
   richTextContent: string;
   onRichTextChange: (html: string) => void;
   creatorPptPageIndex: number;
@@ -7611,7 +7962,8 @@ function WorkspaceRightPanel({
   onSelectPptTemplate: (id: string | null) => void;
   onPptOutlineChange: (outline: PptOutline) => void;
   onRollbackPptSlides: (slides: PptSlide[]) => void;
-  onConfirmPptDesigns: (mode?: 'template' | 'no-template') => void;
+  onDiscardPptPageVersions: () => void;
+  onConfirmPptDesigns: (mode?: 'template' | 'no-template', templateId?: string) => void;
   onRegeneratePptOutline: () => void;
   isGenerating: boolean;
   onSelectPptVersion: (v: PptDesignVersion) => void;
@@ -7655,6 +8007,11 @@ function WorkspaceRightPanel({
   contentBrief?: ContentBrief | null;
   onContentBriefChange?: (brief: ContentBrief) => void;
   onImportLocalPpt?: () => void;
+  selectedProduct?: TaskProduct | null;
+  entryContext?: HomeEntryContext | null;
+  flowEntry?: ContentFlowEntry | null;
+  onSelectFlowStep: (step: ContentFlowStep) => void;
+  onUploadBrief?: () => void;
   taskTitle: string;
   onDownloadInsightReport: () => void;
   onStartVisualFlow: () => void;
@@ -7675,6 +8032,31 @@ function WorkspaceRightPanel({
     reviewerMode && reviewerAllowedTabs?.length
       ? state.tabs.filter((t) => reviewerAllowedTabs.includes(t))
       : state.tabs;
+  const flowProgress: ContentFlowProgress = {
+    create: true,
+    insight: Boolean(topicInsightReportText.trim() || insightSummary.trim() || hotInsightReport),
+    brief: Boolean(contentBrief),
+    literature: literatureResults.length > 0 || addedLiteratureIds.length > 0,
+    outline: Boolean(pptOutline),
+    ppt: Boolean(pptResult),
+    copy: copies.length > 0,
+    visual: generatedImages.length > 0,
+    video: Boolean(videoResult || videoVersions.length),
+    team: Boolean(teamResult),
+    submit: state.submit,
+  };
+  const entryLabel =
+    entryContext?.intent === 'insight'
+      ? '话题洞察'
+      : entryContext?.intent === 'ppt' || entryContext?.intent === 'ppt-template'
+        ? 'PPT 内容'
+        : entryContext?.intent === 'copy'
+          ? '文案'
+          : entryContext?.intent === 'visual' || entryContext?.intent === 'visual-template'
+            ? '视觉'
+            : entryContext?.intent === 'video'
+              ? '视频'
+              : '通用任务';
   const previewFile: LibraryItem | null =
     openedFile ||
     (generatedImages[0]
@@ -7694,23 +8076,47 @@ function WorkspaceRightPanel({
       : null);
   const isGeneratedImagePreview = previewFile?.cat === '生成图片' && previewFile.contentType === 'image';
   const [selectedCopyRevisionIndex, setSelectedCopyRevisionIndex] = useState<number | null>(null);
-  const [historyOpen, setHistoryOpen] = useState(false);
   const [previewHistoryId, setPreviewHistoryId] = useState<string | null>(null);
   const [restoredFrom, setRestoredFrom] = useState<string | null>(null);
+  const [majorVersions, setMajorVersions] = useState(PPT_MAJOR_VERSION_SEED);
   const [slideVersionId, setSlideVersionId] = useState('current');
+  const [literatureVisibleCount, setLiteratureVisibleCount] = useState(30);
+  const [pptSwitchTemplateOpen, setPptSwitchTemplateOpen] = useState(false);
   const [imageVersionId, setImageVersionId] = useState('current');
   const [imageDownloadOpen, setImageDownloadOpen] = useState(false);
   const [draggingThumbIndex, setDraggingThumbIndex] = useState<number | null>(null);
   const [dropThumbIndex, setDropThumbIndex] = useState<number | null>(null);
   const thumbDragMovedRef = useRef(false);
   const pptPreviewRef = useRef<SelectableSvgPreviewHandle>(null);
-  const historyVersions = [
-    { id: 'latest', label: restoredFrom ? `当前版本（回溯自 ${restoredFrom}）` : '当前版本', time: '刚刚' },
-    { id: 'v2', label: '版本 V2', time: '今天 15:24' },
-    { id: 'v1', label: '版本 V1', time: '今天 10:08' },
-  ];
-  const selectedHistory = historyVersions.find((version) => version.id === previewHistoryId);
-  const historyDepth = previewHistoryId === 'v1' ? 2 : previewHistoryId === 'v2' ? 1 : 0;
+  const selectedHistory = majorVersions.find((version) => version.id === previewHistoryId) ?? null;
+  const historyDepth = selectedHistory?.depth ?? 0;
+  const switchPptTemplates = useMemo(() => {
+    const map = new Map<string, PptBuiltinTemplate>();
+    for (const item of [BLANK_PPT_TEMPLATE, ...morePptTemplates]) {
+      map.set(item.id, item);
+    }
+    return [...map.values()];
+  }, [morePptTemplates]);
+
+  const openSwitchPptTemplate = () => {
+    if (isGenerating) {
+      toast('请等待当前 AI 生成完成');
+      return;
+    }
+    if (!pptOutline) {
+      toast('请先生成并确认 PPT 大纲，再切换模板');
+      setState((prev) => ({ ...prev, active: 'ppt-outline' }));
+      return;
+    }
+    setPptSwitchTemplateOpen(true);
+  };
+
+  const applySwitchPptTemplate = (templateId: string) => {
+    setPptSwitchTemplateOpen(false);
+    const tpl = switchPptTemplates.find((item) => item.id === templateId);
+    onConfirmPptDesigns(isBlankPptTemplate(tpl) ? 'no-template' : 'template', templateId);
+  };
+
   const previewOutline = useMemo(() => {
     if (!pptOutline || historyDepth === 0) return pptOutline;
     return {
@@ -7731,8 +8137,17 @@ function WorkspaceRightPanel({
   );
 
   useEffect(() => {
+    setMajorVersions(PPT_MAJOR_VERSION_SEED);
+    setPreviewHistoryId(null);
+  }, [selectedPptVersionId, pptVersions[0]?.id]);
+
+  useEffect(() => {
     setSlideVersionId('current');
   }, [creatorPptPageIndex, pptPageVersionEpoch]);
+
+  useEffect(() => {
+    setLiteratureVisibleCount(30);
+  }, [literatureResults]);
 
   useEffect(() => {
     setImageVersionId('current');
@@ -7766,10 +8181,6 @@ function WorkspaceRightPanel({
   const viewingHistoricalImage =
     imageVersionId !== 'current' &&
     imageVersions.some((version) => version.id === imageVersionId && version.id !== 'current');
-  const imageVersionIndex = Math.max(
-    0,
-    imageVersions.findIndex((version) => version.id === (activeImageVersion?.id || 'current'))
-  );
   const previewedImageItem =
     previewFile && activeImageVersion?.url
       ? {
@@ -7795,10 +8206,30 @@ function WorkspaceRightPanel({
     }
     if (state.active === 'ppt-design' && previewSlides.length) {
       onRollbackPptSlides(previewSlides);
+      onDiscardPptPageVersions();
     }
+    const restoredDepth = selectedHistory.depth;
+    setMajorVersions((prev) => {
+      const index = prev.findIndex((item) => item.id === selectedHistory.id);
+      if (index < 0) return prev;
+      const kept = prev.slice(0, index).map((item) => ({
+        ...item,
+        depth: Math.max(0, item.depth - restoredDepth),
+      }));
+      return [
+        ...kept,
+        {
+          id: 'major-latest',
+          label: '当前',
+          time: '刚刚',
+          depth: 0,
+        },
+      ];
+    });
     setRestoredFrom(selectedHistory.label);
     setPreviewHistoryId(null);
-    toast(`已回溯至 ${selectedHistory.label}`);
+    setSlideVersionId('current');
+    toast(`已回溯到该版本`);
   };
 
   const teamReviewButton = (contentType: TeamContentType) => (
@@ -7814,7 +8245,7 @@ function WorkspaceRightPanel({
         }}
         onClick={() => !teamModificationInProgress && onOpenTeamReview(contentType)}
       >
-        {teamModificationInProgress ? '团队审阅中...' : '提交团队审阅'}
+        {teamModificationInProgress ? '意见收集中...' : '提交团队意见收集'}
       </button>
     </div>
     )
@@ -7832,18 +8263,18 @@ function WorkspaceRightPanel({
         );
       }
       return (
-        <div className="preview-entry-card">
-          <div className="preview-entry-icon">
-            <Presentation className="h-6 w-6 text-white" strokeWidth={2.2} />
-          </div>
-          <h4>开始新的内容任务</h4>
-          <p>从本地文件或 CMS 内容开始，文件将在当前预览区域中打开。</p>
-          <div className="preview-entry-actions">
-            <button type="button" className="glass-button" onClick={onOpenLocalFile}>
+        <div className="detail-card content-flow-task-card">
+          <h4>任务已创建</h4>
+          <p className="small content-flow-task-hint">
+            您可以先上传品牌策略或其他参考文献进行话题洞察；也可以直接上传
+            brief，开启 PPT 从零到一的制作流程。当然，您也可以选择打开本地文件，基于本地文件进行在线编辑。
+          </p>
+          <div className="preview-entry-actions" style={{ marginTop: 12 }}>
+            <button type="button" className="btn primary" onClick={onOpenLocalFile}>
               <FolderOpen className="h-4 w-4" />
               打开本地文件
             </button>
-            <button type="button" className="btn-hero-3d" onClick={onOpenCmsFile}>
+            <button type="button" className="btn primary" onClick={onOpenCmsFile}>
               <Database className="h-4 w-4" />
               打开 CMS 文件
             </button>
@@ -8079,8 +8510,16 @@ function WorkspaceRightPanel({
           return (
             <div className="detail-card">
               <h4>推荐文献</h4>
-              <div className="small">
-                在对话区输入「检索文献」即可从 PubMed、CMS、万方医学、CNKI 查看推荐文献。
+              <div className="small literature-more-hint">
+                如需检索更多文献，请访问
+                <a href="https://www.cnki.net/" target="_blank" rel="noreferrer">
+                  CNKI
+                </a>
+                ，
+                <a href="https://med.wanfangdata.com.cn/" target="_blank" rel="noreferrer">
+                  万方医学
+                </a>
+                等三方知识库。
               </div>
             </div>
           );
@@ -8090,7 +8529,17 @@ function WorkspaceRightPanel({
             <div className="literature-panel-head">
               <div>
                 <h4>推荐文献</h4>
-                <div className="small">刊物、年份、标题、摘要与来源</div>
+                <div className="small literature-more-hint">
+                  如需检索更多文献，请访问
+                  <a href="https://www.cnki.net/" target="_blank" rel="noreferrer">
+                    CNKI
+                  </a>
+                  ，
+                  <a href="https://med.wanfangdata.com.cn/" target="_blank" rel="noreferrer">
+                    万方医学
+                  </a>
+                  等三方知识库。
+                </div>
               </div>
               <button
                 type="button"
@@ -8102,21 +8551,46 @@ function WorkspaceRightPanel({
               </button>
             </div>
             <div className="literature-list">
-              {literatureResults.map((article) => {
+              {literatureResults.slice(0, literatureVisibleCount).map((article) => {
                 const added = addedLiteratureIds.includes(article.id);
                 return (
                   <article key={article.id} className="literature-card">
                     <div className="literature-card-top">
-                      <span className="literature-source-tag">{article.source}</span>
-                      <span className="literature-journal">
-                        {article.journalAbbr || article.publisher} · {article.year}
-                      </span>
-                    </div>
-                    <h5>{article.title}</h5>
-                    <p className="literature-abstract">{article.abstract}</p>
-                    <div className="literature-actions">
-                      {article.access === 'free' ? (
-                        <>
+                      <div className="literature-card-meta">
+                        <span className="literature-source-tag">{article.source}</span>
+                        <span className="literature-journal">
+                          {article.journalAbbr || article.publisher} · {article.year}
+                        </span>
+                      </div>
+                      <div className="literature-actions">
+                        {article.access === 'free' ? (
+                          <>
+                            <a
+                              className="btn soft literature-link-btn"
+                              href={article.sourceUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" strokeWidth={2.2} />
+                              查看原文章链接
+                            </a>
+                            <button
+                              type="button"
+                              className={`btn ${added ? 'soft' : 'primary'} literature-add-btn`}
+                              disabled={added}
+                              onClick={() => onAddLiteratureToTask(article)}
+                            >
+                              {added ? (
+                                <>
+                                  <Check className="h-3.5 w-3.5" strokeWidth={2.4} />
+                                  已添加
+                                </>
+                              ) : (
+                                '添加到当前任务'
+                              )}
+                            </button>
+                          </>
+                        ) : (
                           <a
                             className="btn soft literature-link-btn"
                             href={article.sourceUrl}
@@ -8124,39 +8598,25 @@ function WorkspaceRightPanel({
                             rel="noreferrer"
                           >
                             <ExternalLink className="h-3.5 w-3.5" strokeWidth={2.2} />
-                            查看原文章链接
+                            前往原链接下载
                           </a>
-                          <button
-                            type="button"
-                            className={`btn ${added ? 'soft' : 'primary'} literature-add-btn`}
-                            disabled={added}
-                            onClick={() => onAddLiteratureToTask(article)}
-                          >
-                            {added ? (
-                              <>
-                                <Check className="h-3.5 w-3.5" strokeWidth={2.4} />
-                                已添加
-                              </>
-                            ) : (
-                              '添加到当前任务'
-                            )}
-                          </button>
-                        </>
-                      ) : (
-                        <a
-                          className="btn soft literature-link-btn"
-                          href={article.sourceUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          <ExternalLink className="h-3.5 w-3.5" strokeWidth={2.2} />
-                          前往原链接下载
-                        </a>
-                      )}
+                        )}
+                      </div>
                     </div>
+                    <h5>{article.title}</h5>
+                    <p className="literature-abstract">{article.abstract}</p>
                   </article>
                 );
               })}
+              {literatureVisibleCount < literatureResults.length && (
+                <button
+                  type="button"
+                  className="btn soft literature-more-btn"
+                  onClick={() => setLiteratureVisibleCount((count) => count + 30)}
+                >
+                  查看更多文献
+                </button>
+              )}
             </div>
           </div>
         );
@@ -8165,13 +8625,18 @@ function WorkspaceRightPanel({
         if (!contentBrief) {
           return (
             <div className="detail-card">
-              <h4>Brief</h4>
+              <h4>生成 / 上传 Brief</h4>
               <div className="small">
-                在对话中输入「生成 Brief」，可基于话题洞察报告或提示词生成内容 Brief。
+                这是从 0 到 1 生成 PPT 的必要步骤。可在对话中输入「生成 Brief」，或上传已有 Brief。
               </div>
-              <button type="button" className="btn primary" style={{ marginTop: 12 }} onClick={() => fillQuick('生成 Brief')}>
-                生成 Brief
-              </button>
+              <div className="quick-row" style={{ marginTop: 12 }}>
+                <button type="button" className="btn primary" onClick={() => fillQuick('生成 Brief')}>
+                  生成 Brief
+                </button>
+                <button type="button" className="btn soft" onClick={() => onUploadBrief?.()}>
+                  上传 Brief
+                </button>
+              </div>
             </div>
           );
         }
@@ -8334,7 +8799,7 @@ function WorkspaceRightPanel({
                     disabled={teamModificationInProgress}
                     onClick={() => !teamModificationInProgress && onOpenTeamReview('rich-text')}
                   >
-                    {teamModificationInProgress ? '团队审阅中...' : '提交团队审阅'}
+                    {teamModificationInProgress ? '意见收集中...' : '提交团队意见收集'}
                   </button>
                   <button
                     type="button"
@@ -8354,7 +8819,7 @@ function WorkspaceRightPanel({
           return (
             <div className="detail-card">
               <h4>团队修改</h4>
-              <div className="small">在对话中提交团队审阅邀请，或点击「进入团队修改」由 AI 整合反馈。</div>
+              <div className="small">在对话中提交团队意见收集邀请，或点击「进入团队修改」由 AI 整合反馈。</div>
             </div>
           );
         }
@@ -8435,7 +8900,7 @@ function WorkspaceRightPanel({
               <h4>图片生成详情</h4>
               <div className="small">
                 {hasGenerated
-                  ? `已生成 ${generatedImages.length} 张配图，按 ${groupImagesByCopy(generatedImages, generatedImageMeta).length} 篇文案分类。勾选后提交团队审阅；点击图片可进入编辑。`
+                  ? `已生成 ${generatedImages.length} 张配图，按 ${groupImagesByCopy(generatedImages, generatedImageMeta).length} 篇文案分类。勾选后提交团队意见收集；点击图片可进入编辑。`
                   : '尚未生成配图，以下为示意预览。请先在对话中生成图片，并说明每个文案想生成几张。'}
               </div>
             </div>
@@ -8743,7 +9208,7 @@ function WorkspaceRightPanel({
               onRegenerateOutline={onRegeneratePptOutline}
               selectedTemplateId={selectedPptTemplateId}
               templates={pptTemplateOptions}
-              templateSource={pptTemplateSource}
+              moreTemplates={morePptTemplates}
               onSelectTemplate={onSelectPptTemplate}
               isGenerating={isGenerating}
               reviewerMode={reviewerMode}
@@ -8791,7 +9256,7 @@ function WorkspaceRightPanel({
             <div className="detail-card">
               <h4>PPT 生成</h4>
               <div className="small">
-                请先在「PPT大纲」中确认大纲并点击「生成 3 套 PPT」或「按模板生成 PPT」。
+                请先在「PPT大纲」中确认大纲并点击「按模板生成 PPT」。
               </div>
               <button
                 type="button"
@@ -8801,14 +9266,23 @@ function WorkspaceRightPanel({
               >
                 前往 PPT 大纲
               </button>
-              <button
-                type="button"
-                className="btn"
-                style={{ marginTop: 8 }}
-                onClick={() => onImportLocalPpt?.()}
-              >
-                导入本地版本
-              </button>
+              <div className="ppt-local-actions">
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => onImportLocalPpt?.()}
+                >
+                  导入本地版本
+                </button>
+                <button
+                  type="button"
+                  className="btn soft"
+                  disabled={isGenerating}
+                  onClick={openSwitchPptTemplate}
+                >
+                  切换PPT模板
+                </button>
+              </div>
             </div>
           );
         }
@@ -8848,11 +9322,39 @@ function WorkspaceRightPanel({
         const viewingHistoricalVersion =
           slideVersionId !== 'current' &&
           pageVersions.some((version) => version.id === slideVersionId && version.id !== 'current');
-        const versionIndex = Math.max(
-          0,
-          pageVersions.findIndex((version) => version.id === (activePageVersion?.id || 'current'))
-        );
         const canReorderThumbs = !selectedHistory && !reviewerMode;
+        const currentMajorMinors: VersionTimelineItem[] =
+          pageVersions.length > 1
+            ? pageVersions.map((version) => ({
+                id: version.id,
+                label: version.id === 'current' ? '当前' : version.label.replace(/^V/i, ''),
+                title: version.prompt,
+                kind: 'minor' as const,
+              }))
+            : [];
+        const timelineItems: VersionTimelineItem[] = [
+          ...majorVersions.map((version) => ({
+            id: version.id,
+            label: version.label,
+            title: restoredFrom && version.id === 'major-latest'
+              ? `当前大版本（回溯自 ${restoredFrom}）· ${version.time}`
+              : `大版本 ${version.label} · ${version.time}`,
+            kind: 'major' as const,
+          })),
+          ...currentMajorMinors,
+        ];
+        const timelineActiveId =
+          previewHistoryId || (currentMajorMinors.length ? slideVersionId : 'major-latest');
+        const selectTimelineVersion = (id: string) => {
+          const major = majorVersions.find((item) => item.id === id);
+          if (major) {
+            setPreviewHistoryId(major.depth === 0 ? null : major.id);
+            if (major.depth === 0) setSlideVersionId('current');
+            return;
+          }
+          setPreviewHistoryId(null);
+          setSlideVersionId(id);
+        };
         return (
           <div className="ppt-design-fit-panel">
             {!singleVersion && (
@@ -8916,7 +9418,7 @@ function WorkspaceRightPanel({
                           setSlideVersionId('current');
                         }}
                       >
-                        回溯到当前版本
+                        回溯到该版本
                       </button>
                     )}
                     {!selectedHistory && !viewingHistoricalVersion && (
@@ -9048,43 +9550,13 @@ function WorkspaceRightPanel({
                         }
                       />
                     </div>
-                    {pageVersions.length > 1 && (
-                      <div
-                        className="creator-ppt-version-scrubber"
-                        role="slider"
-                        aria-label="查看本页版本"
-                        aria-valuemin={0}
-                        aria-valuemax={Math.max(pageVersions.length - 1, 0)}
-                        aria-valuenow={versionIndex}
-                      >
-                        <div className="creator-ppt-version-scrubber-track" aria-hidden>
-                          <i
-                            style={{
-                              width:
-                                pageVersions.length <= 1
-                                  ? '0%'
-                                  : `${(versionIndex / (pageVersions.length - 1)) * 100}%`,
-                            }}
-                          />
-                        </div>
-                        <div className="creator-ppt-version-scrubber-nodes">
-                          {pageVersions.map((version) => (
-                            <button
-                              key={version.id}
-                              type="button"
-                              className={`creator-ppt-version-node ${
-                                slideVersionId === version.id ? 'active' : ''
-                              }`}
-                              title={version.prompt}
-                              aria-label={version.label}
-                              onClick={() => setSlideVersionId(version.id)}
-                            >
-                              <span className="creator-ppt-version-dot" />
-                              <span className="creator-ppt-version-label">{version.label}</span>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
+                    {timelineItems.length > 0 && (
+                      <VersionFisheyeTimeline
+                        items={timelineItems}
+                        activeId={timelineActiveId}
+                        onSelect={selectTimelineVersion}
+                        ariaLabel="PPT 版本时间轴"
+                      />
                     )}
                   </div>
                 </div>
@@ -9101,6 +9573,16 @@ function WorkspaceRightPanel({
               <button type="button" className="btn soft" onClick={() => onImportLocalPpt?.()}>
                 导入本地版本
               </button>
+              {!reviewerMode && (
+                <button
+                  type="button"
+                  className="btn soft"
+                  disabled={isGenerating}
+                  onClick={openSwitchPptTemplate}
+                >
+                  切换PPT模板
+                </button>
+              )}
               <button type="button" className="btn soft" onClick={exportAllPptPages}>
                 一键导出全部页面
               </button>
@@ -9112,7 +9594,7 @@ function WorkspaceRightPanel({
                     disabled={teamModificationInProgress}
                     onClick={() => !teamModificationInProgress && onOpenTeamReview('ppt')}
                   >
-                    {teamModificationInProgress ? '团队审阅中...' : '提交团队审阅'}
+                    {teamModificationInProgress ? '意见收集中...' : '提交团队意见收集'}
                   </button>
                   <button
                     type="button"
@@ -9177,19 +9659,14 @@ function WorkspaceRightPanel({
               <Presentation className="h-4 w-4" strokeWidth={2.2} />
             </span>
             <h3 className="workspace-preview-title workspace-panel-title-text">内容预览</h3>
-            {visibleTabs.length > 0 && (
-              <div className="ppt-compliance-check right-head-compliance-check">
-                <span className="ppt-compliance-dot" aria-hidden />
-                生成内容已通过智能合规校验
-              </div>
-            )}
           </div>
         </div>
         <div className="tabs">
           <div className="tabs-list">
             {previewFile && !isGeneratedImagePreview ? (
               <span className="tab active">文件预览</span>
-            ) : visibleTabs.length > 0 ? visibleTabs.map((k) => (
+            ) : reviewerMode ? (
+              visibleTabs.map((k) => (
                 <button
                   key={k}
                   type="button"
@@ -9198,63 +9675,28 @@ function WorkspaceRightPanel({
                 >
                   {tabNames[k]}
                 </button>
-            )) : null}
+              ))
+            ) : (
+              <ContentFlowNav
+                entry={flowEntry ?? null}
+                progress={flowProgress}
+                activeTab={state.active}
+                onSelect={onSelectFlowStep}
+              />
+            )}
           </div>
-          {!reviewerMode &&
-            state.active !== 'literature' &&
-            state.active !== 'visual' &&
-            state.active !== 'insight' &&
-            state.active !== 'ppt-outline' &&
-            state.active !== 'brief' &&
-            (state.active || previewFile) && (
-            <div className="preview-history-control">
-              <button
-                type="button"
-                className="preview-history-trigger"
-                onClick={() => setHistoryOpen((open) => !open)}
-                aria-expanded={historyOpen}
-              >
-                <History className="h-3.5 w-3.5" />
-                查看历史版本
-                <ChevronDown className={`h-3.5 w-3.5 transition ${historyOpen ? 'rotate-180' : ''}`} />
-              </button>
-              {historyOpen && (
-                <div className="preview-history-menu">
-                  {historyVersions.map((version) => (
-                    <button
-                      key={version.id}
-                      type="button"
-                      className={`preview-history-option ${
-                        (version.id === 'latest' && !previewHistoryId) ||
-                        previewHistoryId === version.id
-                          ? 'active'
-                          : ''
-                      }`}
-                      onClick={() => {
-                        setPreviewHistoryId(version.id === 'latest' ? null : version.id);
-                        setHistoryOpen(false);
-                      }}
-                    >
-                      <span>{version.label}</span>
-                      <small>{version.time}</small>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </div>
       <div className="detail">
         {selectedHistory && (
           <div className="preview-history-banner">
             <div>
-              <strong>正在预览 {selectedHistory.label}</strong>
+              <strong>正在预览大版本 {selectedHistory.label}</strong>
               <span>{selectedHistory.time}</span>
             </div>
             <div className="preview-history-actions">
               <button type="button" className="btn primary" onClick={restoreHistoryVersion}>
-                回溯至该版本
+                回溯到该版本
               </button>
             </div>
           </div>
@@ -9267,42 +9709,17 @@ function WorkspaceRightPanel({
                 <div className="workspace-surface-panel image-preview-stage">
                   {previewedImageItem && <DrawableImagePreview item={previewedImageItem} />}
                   {imageVersions.length > 1 && (
-                    <div
-                      className="creator-ppt-version-scrubber image-version-scrubber"
-                      role="slider"
-                      aria-label="查看图片版本"
-                      aria-valuemin={0}
-                      aria-valuemax={Math.max(imageVersions.length - 1, 0)}
-                      aria-valuenow={imageVersionIndex}
-                    >
-                      <div className="creator-ppt-version-scrubber-track" aria-hidden>
-                        <i
-                          style={{
-                            width:
-                              imageVersions.length <= 1
-                                ? '0%'
-                                : `${(imageVersionIndex / (imageVersions.length - 1)) * 100}%`,
-                          }}
-                        />
-                      </div>
-                      <div className="creator-ppt-version-scrubber-nodes">
-                        {imageVersions.map((version) => (
-                          <button
-                            key={version.id}
-                            type="button"
-                            className={`creator-ppt-version-node ${
-                              imageVersionId === version.id ? 'active' : ''
-                            }`}
-                            title={version.prompt}
-                            aria-label={version.label}
-                            onClick={() => setImageVersionId(version.id)}
-                          >
-                            <span className="creator-ppt-version-dot" />
-                            <span className="creator-ppt-version-label">{version.label}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                    <VersionFisheyeTimeline
+                      items={imageVersions.map((version) => ({
+                        id: version.id,
+                        label: version.label,
+                        title: version.prompt,
+                        kind: 'minor' as const,
+                      }))}
+                      activeId={imageVersionId}
+                      onSelect={setImageVersionId}
+                      ariaLabel="图片版本时间轴"
+                    />
                   )}
                 </div>
                 <div className="image-preview-submit-actions">
@@ -9320,7 +9737,7 @@ function WorkspaceRightPanel({
                         setImageVersionId('current');
                       }}
                     >
-                      回溯到当前版本
+                      回溯到该版本
                     </button>
                   )}
                   <div className="image-download-control">
@@ -9371,7 +9788,7 @@ function WorkspaceRightPanel({
                         disabled={teamModificationInProgress}
                         onClick={() => !teamModificationInProgress && onOpenTeamReview('visual')}
                       >
-                        {teamModificationInProgress ? '团队审阅中...' : '提交团队审阅'}
+                        {teamModificationInProgress ? '意见收集中...' : '提交团队意见收集'}
                       </button>
                       <button
                         type="button"
@@ -9406,6 +9823,16 @@ function WorkspaceRightPanel({
         )}
         </div>
       </div>
+      <PptTemplatePickerModal
+        open={pptSwitchTemplateOpen}
+        templates={switchPptTemplates}
+        selectedId={selectedPptTemplateId}
+        title="切换 PPT 模板"
+        description="选择一套模板后，将按当前大纲重新生成 PPT。"
+        confirmLabel="切换并重新生成"
+        onClose={() => setPptSwitchTemplateOpen(false)}
+        onConfirm={applySwitchPptTemplate}
+      />
     </aside>
   );
 }

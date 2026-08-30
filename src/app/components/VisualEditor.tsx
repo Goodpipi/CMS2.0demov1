@@ -14,8 +14,10 @@ import {
   Undo2,
   Image as ImageIcon,
 } from 'lucide-react';
+import { EDITOR_PAGE_ASSET_GROUPS, type EditorPageAsset } from '@/lib/editorPageAssets';
 import {
   applyElementProps,
+  EDITOR_FONT_FAMILIES,
   clientToSvgPoint,
   collectElementList,
   createInsertImage,
@@ -58,6 +60,7 @@ interface ElementProps {
   strokeWidth: number;
   fontSize: number;
   fontWeight: string;
+  fontFamily: string;
   x: number;
   y: number;
   width?: number;
@@ -160,6 +163,8 @@ export function VisualEditor({
   const [discardOpen, setDiscardOpen] = useState(false);
   const [props, setProps] = useState<ElementProps | null>(null);
   const [insertTool, setInsertTool] = useState<InsertShapeType | null>(null);
+  const [sidePanelTab, setSidePanelTab] = useState<'page' | 'assets'>('page');
+  const isPptEditor = !allowBrush;
 
   useEffect(() => {
     if (!allowBrush && mode !== 'drag') setMode('drag');
@@ -257,6 +262,7 @@ export function VisualEditor({
     strokeWidth: p.strokeWidth,
     fontSize: p.fontSize,
     fontWeight: p.fontWeight,
+    fontFamily: p.fontFamily,
     x: Math.round(p.x),
     y: Math.round(p.y),
     width: p.width,
@@ -430,6 +436,25 @@ export function VisualEditor({
         probe.src = dataUrl;
       };
       reader.readAsDataURL(file);
+    },
+    [refreshElements, pushEditHistory, selectElement]
+  );
+
+  const handleInsertAsset = useCallback(
+    (asset: EditorPageAsset) => {
+      const host = svgHostRef.current;
+      const liveSvg = host?.querySelector('svg');
+      if (!host || !liveSvg) return;
+      setMode('drag');
+      setInsertTool(null);
+      const id = nextEditId(host);
+      createInsertImage(liveSvg, asset.href, id, {
+        width: asset.width,
+        height: asset.height,
+      });
+      refreshElements();
+      pushEditHistory();
+      selectElement(id);
     },
     [refreshElements, pushEditHistory, selectElement]
   );
@@ -742,7 +767,37 @@ export function VisualEditor({
   return (
     <div className="visual-editor-layout">
       <aside className="wpanel visual-editor-side visual-editor-props">
-        <h3 className="section-title">视觉编辑</h3>
+        <h3 className="section-title">{isPptEditor ? '页面编辑' : '视觉编辑'}</h3>
+
+        {isPptEditor && (
+        <div className="visual-editor-mode-tabs" role="tablist" aria-label="页面编辑方式">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={sidePanelTab === 'page'}
+            className={`visual-editor-mode-tab ${sidePanelTab === 'page' ? 'active' : ''}`}
+            onClick={() => {
+              setSidePanelTab('page');
+              setMode('drag');
+            }}
+          >
+            页面编辑
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={sidePanelTab === 'assets'}
+            className={`visual-editor-mode-tab ${sidePanelTab === 'assets' ? 'active' : ''}`}
+            onClick={() => {
+              setSidePanelTab('assets');
+              setMode('drag');
+              setInsertTool(null);
+            }}
+          >
+            添加元素
+          </button>
+        </div>
+        )}
 
         {allowBrush && (
         <div className="visual-editor-mode-tabs" role="tablist" aria-label="编辑方式">
@@ -795,7 +850,7 @@ export function VisualEditor({
           </div>
         )}
 
-        {mode === 'drag' && (
+        {mode === 'drag' && (!isPptEditor || sidePanelTab === 'page') && (
           <>
             <div className="small" style={{ marginTop: 10 }}>
               {insertTool
@@ -964,6 +1019,28 @@ export function VisualEditor({
                 </label>
                 {(selectedMeta.isText || selectedMeta.tag === 'text' || selectedMeta.tag === 'tspan') && (
                   <>
+                    <label className="props-field">
+                      <span>字体</span>
+                      <select
+                        className="input"
+                        value={props.fontFamily}
+                        style={{ fontFamily: props.fontFamily }}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setProps((p) => (p ? { ...p, fontFamily: v } : p));
+                          updateSelectedDom({ fontFamily: v }, true);
+                        }}
+                      >
+                        {!EDITOR_FONT_FAMILIES.some((item) => item.value === props.fontFamily) && (
+                          <option value={props.fontFamily}>当前字体</option>
+                        )}
+                        {EDITOR_FONT_FAMILIES.map((item) => (
+                          <option key={item.value} value={item.value} style={{ fontFamily: item.value }}>
+                            {item.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                     <label className="props-field">
                       <span>字号 {Math.round(props.fontSize)}</span>
                       <input
@@ -1163,6 +1240,45 @@ export function VisualEditor({
               </div>
             )}
           </>
+        )}
+
+        {isPptEditor && sidePanelTab === 'assets' && (
+          <div className="visual-editor-asset-picker">
+            <div className="small" style={{ marginTop: 10 }}>
+              点击任意素材即可插入到当前页面。
+            </div>
+            {EDITOR_PAGE_ASSET_GROUPS.map((group) => (
+              <div key={group.id} className="glass-card-subtle rounded-2xl p-2.5">
+                <div className="mb-1.5 flex items-center justify-between px-1 text-[12px] leading-[1.25]">
+                  <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                    {group.title}
+                    <span className="grid h-4 min-w-[16px] place-items-center rounded-full bg-gradient-to-br from-[#54B9F9] to-[#8AD329] px-1 text-[10px] font-bold text-white shadow-[0_2px_6px_-1px_rgba(59,150,210,0.5)]">
+                      {group.items.length}
+                    </span>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  {group.items.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="visual-editor-asset-row group flex w-full items-start gap-2 rounded-xl border border-transparent p-1.5 text-left transition hover:border-border/60 hover:bg-background/80 hover:shadow-soft"
+                      onClick={() => handleInsertAsset(item)}
+                      title={`插入「${item.title}」`}
+                    >
+                      <span className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-lg bg-white ring-1 ring-black/5">
+                        <img src={item.href} alt="" className="h-full w-full object-contain" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="min-w-0 truncate text-[12px] font-medium text-foreground">{item.title}</div>
+                        <div className="mt-0.5 text-[10px] leading-[1.45] text-muted-foreground">{item.meta}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
         )}
 
         {allowBrush && mode === 'brush' && (

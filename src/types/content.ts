@@ -73,6 +73,9 @@ export interface PptResult {
   title?: string;
 }
 
+export type PptOutlineSectionKind = 'cover' | 'toc' | 'section' | 'back';
+export type PptOutlinePageKind = 'cover' | 'toc' | 'section-title' | 'content' | 'back';
+
 export interface PptOutlinePage {
   id: string;
   title: string;
@@ -82,6 +85,8 @@ export interface PptOutlinePage {
   visualSuggestion?: string;
   /** 当前页面参考文献 */
   references?: string[];
+  /** 封面 / 目录 / 章节标题页 / 正文 / 封底 */
+  kind?: PptOutlinePageKind;
 }
 
 export interface ContentBrief {
@@ -98,6 +103,8 @@ export interface PptOutlineChapter {
   id: string;
   title: string;
   pages: PptOutlinePage[];
+  /** 封面 / 目录 / 内容节 / 封底，对应 PowerPoint 节 */
+  kind?: PptOutlineSectionKind;
 }
 
 export interface PptOutline {

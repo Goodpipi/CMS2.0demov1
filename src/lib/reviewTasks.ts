@@ -90,6 +90,26 @@ export function tasksForRole(role: UserRole): ReviewTask[] {
   return loadReviewTasks().filter((t) => t.assigneeRole === role);
 }
 
+/** 运营看自己发起的全部意见收集任务；审阅角色只看分配给自己的 */
+export function collectTasksForRole(role: UserRole): ReviewTask[] {
+  const all = loadReviewTasks();
+  if (role === 'medical' || role === 'marketing') {
+    return all.filter((t) => t.assigneeRole === role);
+  }
+  return all;
+}
+
+export function collectTaskStatusLabel(status: ReviewTaskStatus): string {
+  switch (status) {
+    case 'completed':
+      return '已完成';
+    case 'in_progress':
+      return '收集中';
+    default:
+      return '待收集';
+  }
+}
+
 /** 同一会话下所有文案审阅任务（医学部 + 市场部） */
 export function copyReviewTasksForSession(sessionId: string): ReviewTask[] {
   return loadReviewTasks().filter(
@@ -350,7 +370,7 @@ export function seedReviewTasksIfEmpty(): void {
     {
       id: 'rt_demo_visual',
       sessionId: DEMO_SESSION_ID,
-      title: '配图团队审阅',
+      title: '配图意见收集',
       contentType: 'visual',
       assigneeRole: 'medical',
       assigneeName: '小王',

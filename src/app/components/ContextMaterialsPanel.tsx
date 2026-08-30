@@ -24,12 +24,10 @@ function toneClasses(item: LibraryItem) {
 
 function MaterialSourceRow({
   item,
-  showDefaultTag,
   onPreview,
   onRemove,
 }: {
   item: LibraryItem;
-  showDefaultTag?: boolean;
   onPreview: (item: LibraryItem) => void;
   onRemove: (item: LibraryItem) => void;
 }) {
@@ -62,11 +60,6 @@ function MaterialSourceRow({
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-1.5">
           <div className="min-w-0 flex-1 truncate text-[12px] font-medium text-foreground">{item.title}</div>
-          {showDefaultTag && item.def && (
-            <span className="shrink-0 rounded-full border border-[#FFB547]/35 bg-[#FFB547]/12 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-[#9a6207]">
-              默认
-            </span>
-          )}
         </div>
         <div className="mt-0.5 text-[10px] leading-[1.45] text-muted-foreground">
           {[
@@ -100,7 +93,6 @@ function AssetSection({
   badge,
   items,
   addable,
-  showDefaultTag,
   onOpenPicker,
   onPreview,
   onRemove,
@@ -110,7 +102,6 @@ function AssetSection({
   badge?: number;
   items: LibraryItem[];
   addable?: boolean;
-  showDefaultTag?: boolean;
   onOpenPicker?: (cat: string) => void;
   onPreview: (item: LibraryItem) => void;
   onRemove: (item: LibraryItem) => void;
@@ -145,7 +136,6 @@ function AssetSection({
             <MaterialSourceRow
               key={item.id}
               item={item}
-              showDefaultTag={showDefaultTag}
               onPreview={onPreview}
               onRemove={onRemove}
             />
@@ -160,12 +150,10 @@ function AssetSection({
   );
 }
 
-const SECTIONS: { title: string; groupId: 'knowledge' | 'strategy' | 'brief' | 'template' | 'brand'; category: string }[] = [
+const SECTIONS: { title: string; groupId: 'knowledge' | 'strategy' | 'brief'; category: string }[] = [
   { title: '参考知识', groupId: 'knowledge', category: '参考知识' },
   { title: '品牌策略', groupId: 'strategy', category: '品牌策略' },
   { title: 'Brief', groupId: 'brief', category: 'Brief' },
-  { title: '模板', groupId: 'template', category: '模板' },
-  { title: '品牌元素', groupId: 'brand', category: '品牌元素' },
 ];
 
 export function ContextMaterialsPanel({
@@ -175,18 +163,9 @@ export function ContextMaterialsPanel({
   onRemove,
 }: ContextMaterialsPanelProps) {
   const referencedMaterials = library.filter((item) => item.referenced ?? item.def);
-  const defaultItems = library.filter((item) => item.def && item.referenced !== false);
 
   return (
     <div className="space-y-2">
-      <AssetSection
-        title="默认素材"
-        badge={defaultItems.length}
-        items={defaultItems}
-        showDefaultTag
-        onPreview={onPreview}
-        onRemove={onRemove}
-      />
       {SECTIONS.map((section) => {
         const items = filterMaterialsByGroup(referencedMaterials, section.groupId);
         return (

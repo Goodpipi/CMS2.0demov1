@@ -1,7 +1,247 @@
-import type { PptOutline, PptOutlineChapter, PptOutlinePage, PptSlide } from '@/types/content';
+import type {
+  PptOutline,
+  PptOutlineChapter,
+  PptOutlinePage,
+  PptOutlinePageKind,
+  PptOutlineSectionKind,
+  PptSlide,
+} from '@/types/content';
 
 export function genId(prefix = 'id') {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export function isStructuralSection(chapter?: PptOutlineChapter | null): boolean {
+  return chapter?.kind === 'cover' || chapter?.kind === 'toc' || chapter?.kind === 'back';
+}
+
+export function isContentSection(chapter?: PptOutlineChapter | null): boolean {
+  return Boolean(chapter) && !isStructuralSection(chapter);
+}
+
+export function isTitleOnlyPage(page?: PptOutlinePage | null): boolean {
+  return page?.kind === 'cover' || page?.kind === 'section-title' || page?.kind === 'back';
+}
+
+function titlePageVisual(kind: PptOutlinePageKind): string {
+  if (kind === 'cover') return '封面大标题居中，副标题与品牌色条，右下角合规提示。';
+  if (kind === 'toc') return '目录列表，按节列出后续章节标题。';
+  if (kind === 'back') return '封底致谢页，画面中央仅展示标题，底部品牌色条。';
+  return '';
+}
+
+export function makeOutlinePage(
+  title: string,
+  kind: PptOutlinePageKind,
+  bullets: string[] = [],
+  extra: Partial<PptOutlinePage> = {}
+): PptOutlinePage {
+  return {
+    id: extra.id || genId('pg'),
+    title,
+    bullets,
+    kind,
+    speakerNotes: extra.speakerNotes,
+    visualSuggestion: extra.visualSuggestion ?? titlePageVisual(kind),
+    references: extra.references || [],
+  };
+}
+
+function makeSection(
+  title: string,
+  kind: PptOutlineSectionKind,
+  pages: PptOutlinePage[],
+  id?: string
+): PptOutlineChapter {
+  return { id: id || genId('ch'), title, kind, pages };
+}
+
+function textLooksLike(source: string, pattern: RegExp): boolean {
+  return pattern.test(source);
+}
+
+function chapterLooksLike(chapter: PptOutlineChapter, pattern: RegExp): boolean {
+  return textLooksLike(`${chapter.title} ${chapter.pages[0]?.title || ''}`, pattern);
+}
+
+function looksLikeSectionTitlePage(page: PptOutlinePage, chapterTitle: string): boolean {
+  if (page.kind === 'section-title') return true;
+  if (page.kind && page.kind !== 'content') return false;
+  if (!page.bullets?.length) return true;
+  if (page.title.trim() === chapterTitle.trim()) return true;
+  return /^(章节标题|本节标题|第.+章)/.test(page.title);
+}
+
+export function contentSectionTitles(outline: PptOutline): string[] {
+  return outline.chapters.filter(isContentSection).map((chapter) => chapter.title).filter(Boolean);
+}
+
+export function outlineHasDeckStructure(outline: PptOutline): boolean {
+  const kinds = outline.chapters.map((chapter) => chapter.kind);
+  if (!kinds.includes('cover') || !kinds.includes('toc') || !kinds.includes('back')) return false;
+  return outline.chapters.every((chapter) => {
+    if (!chapter.kind || !chapter.pages.length) return false;
+    if (chapter.kind === 'cover') return chapter.pages.length === 1 && chapter.pages[0].kind === 'cover';
+    if (chapter.kind === 'toc') return chapter.pages.length === 1 && chapter.pages[0].kind === 'toc';
+    if (chapter.kind === 'back') return chapter.pages.length === 1 && chapter.pages[0].kind === 'back';
+    return chapter.kind === 'section';
+  });
+}
+
+function takeMatchingChapter(
+  chapters: PptOutlineChapter[],
+  match: (chapter: PptOutlineChapter) => boolean
+): { chapter: PptOutlineChapter | null; rest: PptOutlineChapter[] } {
+  const index = chapters.findIndex(match);
+  if (index < 0) return { chapter: null, rest: chapters };
+  return {
+    chapter: chapters[index],
+    rest: chapters.filter((_, i) => i !== index),
+  };
+}
+
+function asSinglePageSection(
+  chapter: PptOutlineChapter,
+  kind: Exclude<PptOutlineSectionKind, 'section'>,
+  fallbackTitle: string,
+  pageTitle: string,
+  bullets: string[] = []
+): PptOutlineChapter {
+  const first = chapter.pages[0];
+  return makeSection(
+    chapter.title || fallbackTitle,
+    kind,
+    [
+      makeOutlinePage(first?.title || pageTitle, kind, kind === 'toc' ? first?.bullets?.length ? first.bullets : bullets : [], {
+        id: first?.id,
+        speakerNotes: first?.speakerNotes,
+        visualSuggestion: first?.visualSuggestion,
+        references: first?.references,
+      }),
+    ],
+    chapter.id
+  );
+}
+
+function ensureSectionTitlePage(chapter: PptOutlineChapter): PptOutlineChapter {
+  const title = chapter.title || '未命名章节';
+  const pages = chapter.pages.map((page, index) => ({
+    ...page,
+    kind:
+      page.kind && page.kind !== 'content'
+        ? page.kind
+        : index === 0 && looksLikeSectionTitlePage(page, title)
+          ? 'section-title'
+          : 'content',
+  }));
+  if (pages[0]?.kind !== 'section-title') {
+    pages.unshift(
+      makeOutlinePage(title, 'section-title', [], {
+        speakerNotes: `本节开场，先点明「${title}」。`,
+      })
+    );
+  } else if (!pages[0].title.trim()) {
+    pages[0] = { ...pages[0], title };
+  }
+  return { ...chapter, kind: 'section', title, pages };
+}
+
+export function ensureOutlineDeckStructure(
+  outline: PptOutline,
+  options: { ensureContentTitlePages?: boolean } = {}
+): PptOutline {
+  if (outlineHasDeckStructure(outline)) {
+    if (!options.ensureContentTitlePages) return outline;
+    return syncOutlineSectionMeta({
+      ...outline,
+      chapters: outline.chapters.map((chapter) =>
+        isContentSection(chapter) ? ensureSectionTitlePage(chapter) : chapter
+      ),
+    });
+  }
+
+  let working = outline.chapters.map((chapter) => ({
+    ...chapter,
+    pages: chapter.pages.map((page) => ({ ...page })),
+  }));
+
+  let coverSource: PptOutlineChapter | null = null;
+  const coverSplit = working.map((chapter) => {
+    if (chapter.kind === 'cover' || (chapterLooksLike(chapter, /封面|cover/i) && chapter.pages.length <= 1)) {
+      return chapter;
+    }
+    const first = chapter.pages[0];
+    if (!coverSource && first && /封面|cover/i.test(first.title) && chapter.pages.length > 1) {
+      coverSource = makeSection(
+        '封面',
+        'cover',
+        [makeOutlinePage(first.title.replace(/^封面[:：]\s*/, '') || outline.title, 'cover', [], first)]
+      );
+      return { ...chapter, pages: chapter.pages.slice(1) };
+    }
+    return chapter;
+  });
+  working = coverSplit.filter((chapter) => chapter.pages.length > 0);
+
+  const coverPick = takeMatchingChapter(
+    working,
+    (chapter) => chapter.kind === 'cover' || chapterLooksLike(chapter, /封面|cover/i)
+  );
+  working = coverPick.rest;
+  const tocPick = takeMatchingChapter(
+    working,
+    (chapter) => chapter.kind === 'toc' || chapterLooksLike(chapter, /目录|contents|agenda/i)
+  );
+  working = tocPick.rest;
+  const backPick = takeMatchingChapter(
+    working,
+    (chapter) => chapter.kind === 'back' || chapterLooksLike(chapter, /封底|致谢|谢谢观看|thank\s*you/i)
+  );
+  working = backPick.rest;
+
+  const content = working.map(ensureSectionTitlePage);
+  const tocItems = content.map((chapter) => chapter.title);
+
+  const cover =
+    coverSource ||
+    (coverPick.chapter
+      ? asSinglePageSection(coverPick.chapter, 'cover', '封面', outline.title)
+      : makeSection('封面', 'cover', [makeOutlinePage(outline.title || '封面', 'cover')]));
+
+  const toc = tocPick.chapter
+    ? asSinglePageSection(tocPick.chapter, 'toc', '目录', '目录', tocItems)
+    : makeSection('目录', 'toc', [makeOutlinePage('目录', 'toc', tocItems)]);
+
+  const back = backPick.chapter
+    ? asSinglePageSection(backPick.chapter, 'back', '封底', '谢谢')
+    : makeSection('封底', 'back', [makeOutlinePage('谢谢', 'back')]);
+
+  return {
+    ...outline,
+    chapters: [cover, toc, ...content, back],
+  };
+}
+
+export function syncOutlineSectionMeta(outline: PptOutline): PptOutline {
+  const titles = contentSectionTitles(outline);
+  return {
+    ...outline,
+    chapters: outline.chapters.map((chapter) => {
+      if (chapter.kind === 'toc' && chapter.pages[0]) {
+        return {
+          ...chapter,
+          pages: [{ ...chapter.pages[0], kind: 'toc', bullets: titles }],
+        };
+      }
+      if (chapter.kind === 'section' && chapter.pages[0]?.kind === 'section-title') {
+        return {
+          ...chapter,
+          pages: [{ ...chapter.pages[0], title: chapter.title || chapter.pages[0].title }, ...chapter.pages.slice(1)],
+        };
+      }
+      return chapter;
+    }),
+  };
 }
 
 export function parseAudience(text: string): string {
@@ -14,6 +254,23 @@ export function parseAudience(text: string): string {
 
 export function parseScenario(text: string): string {
   const patterns = [
+    '医学内容一图读懂-HCP',
+    '医学内容一图读懂-患者',
+    '内部培训一图读懂',
+    '医学PPT-HCP',
+    '医学推文-HCP',
+    '医学PPT-患者',
+    '医学推文-患者',
+    '市场推广PPT',
+    '内部培训PPT',
+    '话术总结',
+    '病例PPT',
+    '病例推文',
+    '病例卡',
+    '指南解读',
+    '文献解读',
+    '研究解读',
+    '共识解读',
     '作用机制',
     '产品培训',
     '疾病教育',
@@ -40,12 +297,14 @@ export function normalizeOutline(
     scenario?: string;
     chapters?: {
       title: string;
+      kind?: PptOutlineSectionKind;
       pages?: {
         title: string;
         bullets?: string[];
         speakerNotes?: string;
         visualSuggestion?: string;
         references?: string[];
+        kind?: PptOutlinePageKind;
       }[];
     }[];
   },
@@ -55,15 +314,19 @@ export function normalizeOutline(
   const chapters: PptOutlineChapter[] = (raw.chapters || []).map((ch) => ({
     id: genId('ch'),
     title: ch.title || '未命名章节',
+    kind: ch.kind,
     pages: (ch.pages || []).map((p) => ({
       id: genId('pg'),
       title: p.title || '未命名页面',
-      bullets: p.bullets?.length ? p.bullets : ['待补充要点'],
+      bullets: p.bullets?.length ? p.bullets : isTitleOnlyPage({ ...p, id: '', title: p.title || '', bullets: [] }) ? [] : ['待补充要点'],
       speakerNotes: p.speakerNotes,
       visualSuggestion:
-        p.visualSuggestion ||
-        `围绕「${p.title || '本页主题'}」做要点列表 + 示意图，保持品牌蓝绿配色与充足留白。`,
+        p.visualSuggestion ??
+        (p.kind === 'section-title'
+          ? ''
+          : `围绕「${p.title || '本页主题'}」做要点列表 + 示意图，保持品牌蓝绿配色与充足留白。`),
       references: p.references?.length ? p.references : [],
+      kind: p.kind,
     })),
   }));
 
@@ -71,28 +334,26 @@ export function normalizeOutline(
     chapters.push({
       id: genId('ch'),
       title: '主要内容',
-          pages: [{ id: genId('pg'), title: '封面', bullets: ['标题', '副标题'], visualSuggestion: '封面大标题 + 品牌色条，右下角合规提示。', references: [] }],
+      kind: 'section',
+      pages: [makeOutlinePage('主要内容', 'section-title')],
     });
   }
 
   chapters.forEach((ch) => {
     if (!ch.pages.length) {
-      ch.pages.push({
-        id: genId('pg'),
-        title: '新页面',
-        bullets: ['要点 1'],
-        visualSuggestion: '要点列表配合示意图，避免信息过载。',
-        references: [],
-      });
+      ch.pages.push(makeOutlinePage(ch.title || '新页面', ch.kind === 'section' || !ch.kind ? 'section-title' : ch.kind === 'cover' || ch.kind === 'toc' || ch.kind === 'back' ? ch.kind : 'content'));
     }
   });
 
-  return {
-    title: raw.title || '医学演示文稿',
-    audience: raw.audience || audience,
-    scenario: raw.scenario || scenario,
-    chapters,
-  };
+  return ensureOutlineDeckStructure(
+    {
+      title: raw.title || '医学演示文稿',
+      audience: raw.audience || audience,
+      scenario: raw.scenario || scenario,
+      chapters,
+    },
+    { ensureContentTitlePages: true }
+  );
 }
 
 export function flattenOutline(outline: PptOutline): PptSlide[] {
@@ -105,7 +366,7 @@ export function flattenOutline(outline: PptOutline): PptSlide[] {
         page,
         title: p.title,
         bullets: p.bullets,
-        speakerNotes: p.speakerNotes || `章节：${ch.title}`,
+        speakerNotes: p.speakerNotes || (isTitleOnlyPage(p) ? `章节标题页：${ch.title}` : `章节：${ch.title}`),
       });
     }
   }
@@ -143,13 +404,16 @@ export function moveChapterInOutline(
   dragChapterId: string,
   targetChapterId: string
 ): PptOutline {
+  const from = outline.chapters.find((ch) => ch.id === dragChapterId);
+  const to = outline.chapters.find((ch) => ch.id === targetChapterId);
+  if (!from || !to || from.id === to.id) return outline;
+  if (isStructuralSection(from) || isStructuralSection(to)) return outline;
   const fromIdx = outline.chapters.findIndex((ch) => ch.id === dragChapterId);
   const toIdx = outline.chapters.findIndex((ch) => ch.id === targetChapterId);
-  if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return outline;
-  return {
+  return syncOutlineSectionMeta({
     ...outline,
     chapters: reorderList(outline.chapters, fromIdx, toIdx),
-  };
+  });
 }
 
 export function movePageInOutline(
@@ -178,16 +442,19 @@ export function movePageInOutline(
   });
 
   if (fromChIdx < 0 || fromPgIdx < 0 || toChIdx < 0) return outline;
-
+  if (isStructuralSection(chapters[toChIdx]) && fromChIdx !== toChIdx) return outline;
   const [page] = chapters[fromChIdx].pages.splice(fromPgIdx, 1);
   if (!page) return outline;
 
   if (chapters[fromChIdx].pages.length === 0) {
-    chapters[fromChIdx].pages.push({
-      id: genId('pg'),
-      title: '新页面',
-      bullets: ['要点 1'],
-    });
+    const fromKind = chapters[fromChIdx].kind;
+    chapters[fromChIdx].pages.push(
+      makeOutlinePage(
+        chapters[fromChIdx].title || '新页面',
+        fromKind === 'cover' || fromKind === 'toc' || fromKind === 'back' ? fromKind : 'content',
+        fromKind === 'toc' ? [] : ['要点 1']
+      )
+    );
   }
 
   let insertAt = targetPageId ? toPgIdx : chapters[toChIdx].pages.length;
@@ -197,15 +464,17 @@ export function movePageInOutline(
 
   chapters[toChIdx].pages.splice(insertAt, 0, page);
 
-  return { ...outline, chapters };
+  return syncOutlineSectionMeta({ ...outline, chapters });
 }
 
 export function removeChapterFromOutline(outline: PptOutline, chapterId: string): PptOutline {
-  if (outline.chapters.length <= 1) return outline;
-  return {
+  const target = outline.chapters.find((ch) => ch.id === chapterId);
+  if (!target || isStructuralSection(target)) return outline;
+  if (outline.chapters.filter(isContentSection).length <= 1) return outline;
+  return syncOutlineSectionMeta({
     ...outline,
     chapters: outline.chapters.filter((ch) => ch.id !== chapterId),
-  };
+  });
 }
 
 export function removePageFromOutline(
@@ -217,12 +486,14 @@ export function removePageFromOutline(
     ...outline,
     chapters: outline.chapters.map((ch) => {
       if (ch.id !== chapterId) return ch;
+      const target = ch.pages.find((p) => p.id === pageId);
+      if (isStructuralSection(ch)) return ch;
       const pages = ch.pages.filter((p) => p.id !== pageId);
       return {
         ...ch,
         pages: pages.length
           ? pages
-          : [{ id: genId('pg'), title: '新页面', bullets: ['要点 1'] }],
+          : [makeOutlinePage(ch.title || '新页面', 'content', ['要点 1'])],
       };
     }),
   };

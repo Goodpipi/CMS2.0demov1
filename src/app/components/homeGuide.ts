@@ -194,17 +194,13 @@ export function getEntryWelcome(ctx: HomeEntryContext): { html: string; chips: s
 }
 
 export const HOME_IMAGE_TEMPLATES = [
-  { title: '小红书配图', img: 'https://images.unsplash.com/photo-1584432810601-6c7f27d2362b?w=400' },
-  { title: '疾病教育海报', img: 'https://images.unsplash.com/photo-1559757175-053139280de2?w=400' },
-  { title: '健康科普图文', img: 'https://images.unsplash.com/photo-1559757175-9e351c9a1301?w=400' },
-  { title: '医疗场景图', img: '' },
-  { title: '药品说明', img: 'https://images.unsplash.com/photo-1587854692152-cbe660dbde88?w=400' },
-  { title: '患者关怀', img: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=400' },
+  { title: 'Radimetrics™ 智能化剂量管理平台', img: '/image-templates/radimetrics.png' },
+  { title: 'CONFIDENCE周周谈', img: '/image-templates/confidence-talk.png' },
+  { title: '房颤卒中预防科普', img: '/image-templates/afib-stroke.png' },
 ] as const;
 
 export const HOME_PPT_TEMPLATES = [
-  { title: 'HCP沟通方案', img: 'https://images.unsplash.com/photo-1542744173-8e7e53415bb0?w=400' },
-  { title: '患者教育PPT', img: 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?w=400' },
-  { title: '疾病科普模板', img: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=400' },
-  { title: '内部培训PPT', img: 'https://images.unsplash.com/photo-1552664730-d307ca884978?w=400' },
+  { title: 'EYLEA nAMD Meta分析', img: '/ppt-templates/eylea-namd-01.png' },
+  { title: 'HER2突变NSCLC医学汇报', img: '/ppt-templates/her2-nsclc-01.png' },
+  { title: 'PAD抗栓指南进展', img: '/ppt-templates/pad-xarelto-01.png' },
 ] as const;
