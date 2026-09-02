@@ -1352,7 +1352,7 @@ export function VisualEditor({
                       }}
                       title={label}
                     >
-                      <Icon className="h-3.5 w-3.5" strokeWidth={2.2} />
+                      <Icon className="h-5 w-5" strokeWidth={2.2} />
                       {label}
                     </button>
                   ))}
@@ -1364,31 +1364,25 @@ export function VisualEditor({
                 <h4>素材</h4>
                 <div className="visual-editor-asset-picker">
                   {EDITOR_PAGE_ASSET_GROUPS.map((group) => (
-                    <div key={group.id} className="glass-card-subtle rounded-2xl p-2.5">
-                      <div className="mb-1.5 flex items-center justify-between px-1 text-[12px] leading-[1.25]">
-                        <div className="flex items-center gap-1.5 font-semibold text-foreground">
-                          {group.title}
-                          <span className="grid h-4 min-w-[16px] place-items-center rounded-full bg-gradient-to-br from-[#54B9F9] to-[#8AD329] px-1 text-[10px] font-bold text-white shadow-[0_2px_6px_-1px_rgba(59,150,210,0.5)]">
-                            {group.items.length}
-                          </span>
-                        </div>
+                    <div key={group.id} className="visual-editor-asset-group">
+                      <div className="visual-editor-asset-group-head">
+                        <span>{group.title}</span>
+                        <span className="visual-editor-asset-group-count">{group.items.length}</span>
                       </div>
-                      <div className="space-y-1">
+                      <div className="visual-editor-asset-tile-grid">
                         {group.items.map((item) => (
                           <button
                             key={item.id}
                             type="button"
-                            className="visual-editor-asset-row group flex w-full items-start gap-2 rounded-xl border border-transparent p-1.5 text-left transition hover:border-border/60 hover:bg-background/80 hover:shadow-soft"
+                            className="visual-editor-asset-tile"
                             onClick={() => handleInsertAsset(item)}
                             title={`插入「${item.title}」`}
                           >
-                            <span className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-lg bg-white ring-1 ring-black/5">
-                              <img src={item.href} alt="" className="h-full w-full object-contain" />
+                            <span className="visual-editor-asset-tile-preview">
+                              <img src={item.href} alt="" />
                             </span>
-                            <div className="min-w-0 flex-1">
-                              <div className="min-w-0 truncate text-[12px] font-medium text-foreground">{item.title}</div>
-                              <div className="mt-0.5 text-[10px] leading-[1.45] text-muted-foreground">{item.meta}</div>
-                            </div>
+                            <span className="visual-editor-asset-tile-title">{item.title}</span>
+                            <span className="visual-editor-asset-tile-meta">{item.meta}</span>
                           </button>
                         ))}
                       </div>

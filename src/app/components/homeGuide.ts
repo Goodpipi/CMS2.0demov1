@@ -201,8 +201,8 @@ export function getEntryWelcome(ctx: HomeEntryContext): { html: string; chips: s
 
   if (source === 'promo') {
     return {
-      html: '您好！请先添加参考知识或品牌策略，再输入「生成话术」。',
-      chips: ['生成话术'],
+      html: '您好！请先添加参考知识或品牌策略。中间流程会按你的第一步展开：话题洞察、Brief、PPT、推文、长图或话术。',
+      chips: ['基于素材生成话题洞察', '生成 Brief', '生成PPT大纲', '生成图文大纲', '生成长图大纲', '生成话术'],
     };
   }
 

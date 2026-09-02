@@ -47,6 +47,18 @@ export function LiteratureSourceTag({
   );
 }
 
+export function LiteraturePremiumTag() {
+  return <span className="literature-premium-tag">优质文献</span>;
+}
+
+export function isCmsPremiumArticle(article: LiteratureArticle) {
+  return Boolean(article.premium) && inferLiteratureScope(article) === 'cms';
+}
+
+export function isCmsPremiumKnowledge(item: LibraryItem) {
+  return Boolean(item.cms) && /approved|优质/i.test(`${item.title} ${item.meta} ${item.contentText ?? ''}`);
+}
+
 export function LiteraturePreviewModal({
   article,
   item,
@@ -71,6 +83,7 @@ export function LiteraturePreviewModal({
   const meta = article ? literatureCitationMeta(article, { includeJournal: true }) : item?.meta || '';
   const body = article ? buildLiteratureFullText(article) : item?.contentText || item?.meta || '';
   const canAdd = Boolean(onAdd) && (article ? article.access === 'free' : true);
+  const isPremium = article ? isCmsPremiumArticle(article) : item ? isCmsPremiumKnowledge(item) : false;
 
   return (
     <div
@@ -91,6 +104,7 @@ export function LiteraturePreviewModal({
           <div>
             <div className="literature-card-meta">
               <LiteratureSourceTag scope={scope} label={sourceLabel} />
+              {isPremium ? <LiteraturePremiumTag /> : null}
               {meta ? <span className="literature-journal">{meta}</span> : null}
             </div>
             <h3 id="literature-preview-title">{title}</h3>
@@ -153,12 +167,14 @@ export function LiteratureResultCard({
   const meta = literatureCitationMeta(article);
   const canAdd = article.access === 'free';
   const hasOutboundLink = Boolean(article.sourceUrl) && !article.sourceUrl.startsWith('#');
+  const isPremium = isCmsPremiumArticle(article);
 
   return (
-    <article className={cn('literature-card literature-picker-card', compact && 'is-compact')}>
+    <article className={cn('literature-card literature-picker-card', compact && 'is-compact', isPremium && 'is-premium')}>
       <div className="literature-card-top">
         <div className="literature-card-meta">
           <LiteratureSourceTag scope={scope} label={sourceLabel} />
+          {isPremium ? <LiteraturePremiumTag /> : null}
           <span className="literature-journal">{meta}</span>
         </div>
         {!compact && (
@@ -209,11 +225,13 @@ export function KnowledgeResultCard({
 }) {
   const scope: LiteratureScope = item.cms ? 'cms' : 'personal';
   const sourceLabel = item.cms ? 'CMS' : '个人知识收藏';
+  const isPremium = isCmsPremiumKnowledge(item);
   return (
-    <article className={cn('literature-card literature-picker-card', compact && 'is-compact')}>
+    <article className={cn('literature-card literature-picker-card', compact && 'is-compact', isPremium && 'is-premium')}>
       <div className="literature-card-top">
         <div className="literature-card-meta">
           <LiteratureSourceTag scope={scope} label={sourceLabel} />
+          {isPremium ? <LiteraturePremiumTag /> : null}
           <span className="literature-journal">{item.meta}</span>
         </div>
         {!compact && <AddToTaskButton added={added} onAdd={onAdd} />}

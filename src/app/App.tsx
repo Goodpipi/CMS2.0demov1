@@ -132,6 +132,7 @@ import {
   inferFlowEntryFromTabs,
   nextLockedFlowEntry,
   omitsBriefLiterature,
+  omitsTopicInsight,
   type ContentFlowEntry,
   type ContentFlowProgress,
   type ContentFlowStep,
@@ -1106,6 +1107,10 @@ export default function App() {
         return;
       }
       if (isInsightQuickAction(text) || entryContext?.intent === 'insight' || text.includes('洞察')) {
+        if (omitsTopicInsight(flowEntry, entryContext?.source)) {
+          toast('病例内容与学术证据解读不包含话题洞察步骤');
+          return;
+        }
         runInsight(text, { skipUserMsg });
         return;
       }
@@ -1534,7 +1539,7 @@ export default function App() {
         if (previewedImageAssetKey === 'mobile') return '针对当前手机版海报说明要改什么…';
         return '输入「生成主KV」或「生成海报」…';
       }
-      if (flowEntry === 'script' || entryContext?.source === 'promo') {
+      if (flowEntry === 'script' || (state.active === 'copy' && Boolean(scriptContent.trim()))) {
         return scriptContent.trim() ? '针对当前话术说明要改什么…' : '输入「生成话术」…';
       }
       return `针对第 ${creatorPptPageIndex + 1} 页说明要改什么…`;
@@ -1545,7 +1550,9 @@ export default function App() {
       case 'insight':
         return '描述你想洞察的主题，如渠道、疾病领域、受众…';
       case 'copy':
-        return ctx.source === 'promo' ? '输入「生成话术」…' : '描述文案类型、受众与核心信息…';
+        return ctx.source === 'promo'
+          ? '描述你想生成的内容，如 PPT、推文、长图或话术…'
+          : '描述文案类型、受众与核心信息…';
       case 'visual':
       case 'visual-template':
         return ctx.source === 'poster'
@@ -1820,6 +1827,7 @@ export default function App() {
     });
     setContentBrief(brief);
     syncBriefToLibrary(brief);
+    setFlowEntry((prev) => nextLockedFlowEntry(prev, 'brief'));
     setState((prev) => ({
       ...prev,
       tabs: prev.tabs.includes('brief') ? prev.tabs : [...prev.tabs, 'brief'],
@@ -1837,6 +1845,7 @@ export default function App() {
   };
 
   const runTopicInsightReport = () => {
+    setFlowEntry((prev) => nextLockedFlowEntry(prev, 'insight'));
     setTopicInsightReportText(TOPIC_INSIGHT_MOCK_REPORT);
     setHotInsightReport(null);
     setRecommendedTopics([]);
@@ -1900,7 +1909,7 @@ export default function App() {
     setWorkspaceElementSel(null);
     setDrawerOpen(false);
     setImagePageVersionEpoch((value) => value + 1);
-    setFlowEntry((prev) => (prev === 'longImageOutline' ? prev : prev ?? 'longImageOutline'));
+    setFlowEntry((prev) => nextLockedFlowEntry(prev, 'longImageOutline'));
     setState((prev) => {
       const tabs = [...prev.tabs];
       if (!tabs.includes('long-image-outline')) tabs.push('long-image-outline');
@@ -1944,6 +1953,17 @@ export default function App() {
       return true;
     }
 
+    if (
+      omitsTopicInsight(flowEntry, entryContext?.source) &&
+      (isInsightQuickAction(text) ||
+        isTopicInsightGenerateIntent(text) ||
+        isTopicInsightAgentIntent(text) ||
+        ((text.includes('话题') || text.toLowerCase().includes('topic')) && text.includes('洞察')))
+    ) {
+      toast('病例内容与学术证据解读不包含话题洞察步骤');
+      return true;
+    }
+
     if (/检索文献|搜索文献|文献检索|search\s*literature|find\s*papers/i.test(text)) {
       runLiteratureSearch(text);
       return true;
@@ -1973,7 +1993,7 @@ export default function App() {
     if (!demoScriptBusy && isGenerateScriptIntent(text) && flowEntry !== 'conferencePoster') {
       const next = buildMockScriptSummary(selectedProduct?.name);
       setScriptContent(next);
-      setFlowEntry((prev) => (prev === 'conferencePoster' ? prev : 'script'));
+      setFlowEntry((prev) => nextLockedFlowEntry(prev, 'script'));
       setState((prev) => ({
         ...prev,
         tabs: prev.tabs.includes('copy') ? prev.tabs : [...prev.tabs, 'copy'],
@@ -2178,7 +2198,7 @@ export default function App() {
       );
       setLongImageOutline(WORKSPACE_MOCK_LONG_IMAGE_OUTLINE);
       setSelectedLongImageTemplateId((prev) => prev ?? BLANK_IMAGE_TEMPLATE.id);
-      setFlowEntry((prev) => prev ?? 'longImageOutline');
+      setFlowEntry((prev) => nextLockedFlowEntry(prev, 'longImageOutline'));
       setState((prev) => ({
         ...prev,
         tabs: prev.tabs.includes('long-image-outline')
@@ -2200,7 +2220,7 @@ export default function App() {
         current?.cat === '生成图片' && current.contentType === 'image' ? current : null
       );
       setArticleOutline(WORKSPACE_MOCK_ARTICLE_OUTLINE);
-      setFlowEntry((prev) => prev ?? 'articleOutline');
+      setFlowEntry((prev) => nextLockedFlowEntry(prev, 'articleOutline'));
       setState((prev) => ({
         ...prev,
         tabs: prev.tabs.includes('article-outline') ? prev.tabs : [...prev.tabs, 'article-outline'],
@@ -2220,7 +2240,7 @@ export default function App() {
         current?.cat === '生成图片' && current.contentType === 'image' ? current : null
       );
       setRichTextContent(WORKSPACE_MOCK_RICH_TEXT);
-      setFlowEntry((prev) => prev ?? 'copy');
+      setFlowEntry((prev) => nextLockedFlowEntry(prev, 'articleOutline'));
       setState((prev) => ({
         ...prev,
         tabs: prev.tabs.includes('rich-text') ? prev.tabs : [...prev.tabs, 'rich-text'],
@@ -2479,6 +2499,11 @@ export default function App() {
     userNote = '',
     opts?: { skipUserMsg?: boolean; forceSkill?: 'A' | 'B' }
   ) => {
+    if (omitsTopicInsight(flowEntry, entryContext?.source)) {
+      toast('病例内容与学术证据解读不包含话题洞察步骤');
+      return;
+    }
+    setFlowEntry((prev) => nextLockedFlowEntry(prev, 'insight'));
     const note = userNote.replace(/^基于素材生成话题洞察[：:]?\s*/i, '').trim() || userNote;
     if (!opts?.skipUserMsg) {
       addMsg('user', userNote || '基于素材生成话题洞察', selectedModel);
@@ -3885,7 +3910,10 @@ export default function App() {
   };
 
   const nextPrompts = (): string[] => {
-    const base = ['生成话题洞察', '直接生成文案', '直接生成图片', '直接生成PPT', '直接生成视频'];
+    const hideInsight = omitsTopicInsight(flowEntry, entryContext?.source);
+    const base = hideInsight
+      ? ['直接生成文案', '直接生成图片', '直接生成PPT', '直接生成视频']
+      : ['生成话题洞察', '直接生成文案', '直接生成图片', '直接生成PPT', '直接生成视频'];
     if (state.visual && generatedImages.length) {
       return ['进入团队修改', '提交当前版本到Veeva Vault', '直接生成PPT', '直接生成视频'];
     }
@@ -6844,7 +6872,11 @@ export default function App() {
 
               {!reviewFocusMode && (
                 <div className="composer-guides quick-row">
-                  {WORKSPACE_QUICK_PROMPTS.map(({ label, prefix }) => (
+                  {WORKSPACE_QUICK_PROMPTS.filter((item) =>
+                    omitsTopicInsight(flowEntry, entryContext?.source)
+                      ? !item.label.includes('话题洞察')
+                      : true
+                  ).map(({ label, prefix }) => (
                     <button
                       key={label}
                       type="button"
@@ -7460,23 +7492,21 @@ export default function App() {
                       ? 'rich-text'
                       : flowEntry === 'video'
                         ? 'video'
-                        : flowEntry === 'script' || flowEntry === 'copy' || entryContext?.source === 'promo'
-                          ? 'copy'
-                          : flowEntry === 'ppt' || flowEntry === 'outline' || flowEntry === 'insight'
-                            ? 'ppt'
+                        : flowEntry === 'ppt' || flowEntry === 'outline' || flowEntry === 'insight'
+                          ? 'ppt'
+                          : flowEntry === 'script' || flowEntry === 'copy'
+                            ? 'copy'
                             : resolveTeamReviewType('', state.active);
                 openTeamReview(type);
                 return;
               }
-              if (flowEntry === 'script' || entryContext?.source === 'promo') {
-                if (step.id === 'copy') {
-                  if (!scriptContent.trim()) {
-                    toast('请先输入「生成话术」');
-                    return;
-                  }
-                  addTab('copy');
+              if (flowEntry === 'script' && step.id === 'copy') {
+                if (!scriptContent.trim()) {
+                  toast('请先输入「生成话术」');
                   return;
                 }
+                addTab('copy');
+                return;
               }
               if (flowEntry === 'conferencePoster' || entryContext?.source === 'poster') {
                 if (step.id === 'kv') {
@@ -8912,7 +8942,7 @@ function WorkspaceRightPanel({
               : entryContext?.source === 'poster'
                 ? '请先输入「生成主KV」，确认主视觉后再输入「生成海报」。会议信息可先下载模板填写后上传。'
                 : entryContext?.source === 'promo'
-                  ? '请先添加参考知识或品牌策略，再输入「生成话术」。'
+                  ? '请先添加参考知识或品牌策略。流程会按你的第一步展开，可先做话题洞察、Brief、PPT、推文、长图或话术。'
                   : entryContext?.source === 'evidence'
                   ? '请添加待解读的目标材料，也可补充其他参考知识。'
                   : entryContext?.source === 'insight'

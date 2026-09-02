@@ -64,11 +64,15 @@ export function LiteraturePickerModal({
     if (!open) return;
     setQuery('');
     setAppliedQuery('');
+    setSearching(false);
     setPreview(null);
   }, [open]);
 
+  const hasSearched = Boolean(appliedQuery.trim());
+
   const results = useMemo(() => {
     const q = appliedQuery.trim().toLowerCase();
+    if (!q) return [];
     const articles = searchLiteratureByScopes(appliedQuery, ALL_SCOPES);
     const articleTitles = new Set(articles.map((item) => item.title));
     const knowledgeHits: SearchHit[] = knowledgeItems
@@ -188,6 +192,8 @@ export function LiteraturePickerModal({
         <div className="literature-picker-columns" aria-busy={searching}>
           {searching ? (
             <div className="literature-picker-empty literature-picker-empty-span">正在检索文献…</div>
+          ) : !hasSearched ? (
+            <div className="literature-picker-empty literature-picker-empty-span">请输入关键词后点击确认搜索</div>
           ) : (
             columns.map((column) => (
               <section key={column.id} className="literature-picker-column">
@@ -229,7 +235,9 @@ export function LiteraturePickerModal({
 
         <div className="literature-picker-foot">
           <span>
-            {`共 ${results.length} 条 · ${columns.map((column) => `${column.label} ${column.hits.length}`).join(' · ')}`}
+            {hasSearched
+              ? `共 ${results.length} 条 · ${columns.map((column) => `${column.label} ${column.hits.length}`).join(' · ')}`
+              : '请输入关键词检索'}
           </span>
           <button type="button" className="btn soft literature-upload-btn" onClick={() => fileRef.current?.click()}>
             <Upload className="h-3.5 w-3.5" strokeWidth={2.2} />
