@@ -310,16 +310,16 @@ export function getDemoResponse(path: string, body: Record<string, unknown> = {}
             id: 'ch1',
             title: INSIGHT_TOPICS[scenario][0].title.slice(0, 12),
             pages: [
-              { id: 'p1', title: '封面与议题', bullets: ['品牌与议题', '免责声明'], visualSuggestion: '封面大标题 + 品牌色条，右下角免责声明。', references: ['CMS Approved Claims Library, 2026.'] },
-              { id: 'p2', title: '背景与意义', bullets: ['场景化痛点', '沟通目标'], visualSuggestion: '痛点卡片并列，右侧配示意图。', references: [] },
+              { id: 'p1', title: '封面与议题', bullets: ['品牌与议题', '免责声明'], bulletCites: [[1], []], visualSuggestion: '封面大标题 + 品牌色条，右下角免责声明。', references: ['CMS Approved Claims Library, 2026, p. 8.'], referencedImages: [{ url: '/demo-assets/Poster_Result_01.PNG', caption: '封面视觉参考', alt: '封面视觉参考', cites: [1] }] },
+              { id: 'p2', title: '背景与意义', bullets: ['场景化痛点', '沟通目标'], visualSuggestion: '痛点卡片并列，右侧配示意图。', references: [], referencedImages: [{ url: '/other/vegf-pathway.svg', caption: '背景机制示意', alt: '背景机制示意' }] },
             ],
           },
           {
             id: 'ch2',
             title: '核心内容与总结',
             pages: [
-              { id: 'p3', title: '关键信息', bullets: INSIGHT_TOPICS[scenario].slice(1, 3).map((t) => t.title), visualSuggestion: '关键信息用数据卡或对比条呈现。', references: ['PubMed systematic review, 2024.'] },
-              { id: 'p4', title: '总结', bullets: ['行动建议', '合规提示'], visualSuggestion: '总结清单 + 合规脚注，避免绝对化用语。', references: [] },
+              { id: 'p3', title: '关键信息', bullets: INSIGHT_TOPICS[scenario].slice(1, 3).map((t) => t.title), bulletCites: [[1], [1]], visualSuggestion: '关键信息用数据卡或对比条呈现。', references: ['PubMed systematic review, 2024, 18(4): 112-118.'], referencedImages: [{ url: '/image-templates/confidence-talk.png', caption: '关键信息视觉参考', alt: '关键信息视觉参考', cites: [1] }] },
+              { id: 'p4', title: '总结', bullets: ['行动建议', '合规提示'], visualSuggestion: '总结清单 + 合规脚注，避免绝对化用语。', references: [], referencedImages: [{ url: '/ppt-templates/pad-xarelto-01.png', caption: '总结页版式参考', alt: '总结页版式参考' }] },
             ],
           },
         ],

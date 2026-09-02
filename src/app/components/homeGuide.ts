@@ -194,14 +194,14 @@ export function getEntryWelcome(ctx: HomeEntryContext): { html: string; chips: s
 
   if (source === 'poster') {
     return {
-      html: '您好！请先输入「生成主KV」，确认主视觉后再输入「生成海报」。海报支持手动调整与导出，也可一键适配手机版后提交 Veeva 审批。',
+      html: '您好！请先输入「生成主KV」，确认主视觉后再输入「生成海报」。海报支持手动编辑与导出，也可一键适配手机版后提交 Veeva 审批。',
       chips: ['生成主KV', '生成海报'],
     };
   }
 
   if (source === 'promo') {
     return {
-      html: '您好！请先添加参考知识或品牌策略，再输入「生成话术」。生成后可在中间直接修改纯文字总结，并导出为 DOCX，也可提交团队意见收集与 Veeva 审批。',
+      html: '您好！请先添加参考知识或品牌策略，再输入「生成话术」。',
       chips: ['生成话术'],
     };
   }
@@ -216,7 +216,7 @@ export function getEntryWelcome(ctx: HomeEntryContext): { html: string; chips: s
   if (source === 'insight') {
     return {
       html: '您好！请添加参考知识或品牌策略，描述想洞察的主题与受众后即可生成话题洞察。',
-      chips: ['基于素材生成话题洞察', '直接生成文案', '直接生成图片', '直接生成PPT'],
+      chips: ['基于素材生成话题洞察'],
     };
   }
 
@@ -231,7 +231,7 @@ export function getEntryWelcome(ctx: HomeEntryContext): { html: string; chips: s
     case 'insight':
       return {
         html: '默认素材已就绪。请描述想洞察的主题与受众，发送后将自动检查「热点洞察」素材并生成报告或话题推荐。',
-        chips: ['基于素材生成话题洞察', '直接生成文案', '直接生成图片', '直接生成PPT'],
+        chips: ['基于素材生成话题洞察'],
       };
     case 'copy':
       return {

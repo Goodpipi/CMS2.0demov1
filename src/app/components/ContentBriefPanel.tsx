@@ -37,7 +37,6 @@ export function ContentBriefPanel({ brief, onChange, onCopy }: ContentBriefPanel
           </label>
         ))}
       </div>
-      <p className="small content-brief-hint">可直接在此编辑；复制结果为纯文本，便于粘贴到邮件或任务说明。</p>
     </div>
   );
 }

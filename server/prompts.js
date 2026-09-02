@@ -142,6 +142,11 @@ ${userNote ? `用户要求：${userNote}` : ''}
 - 每个内容节的第一页必须是章节标题页：title 与节标题相同，bullets 为空数组
 - 内容节随后再给 2-3 页正文，每页有标题和 2-4 条要点
 - 符合制药合规，疾病教育导向
+- 每个正文页必须给出当前页面参考文献 references（字符串数组）；封面、目录、章节标题页、封底可为空数组
+- 每条参考文献必须精确到页码，例如：
+  "Lancet Diabetes Endocrinol, 2024, 12(6): 412-414. SGLT2 inhibitors and kidney outcomes."
+  "中华肾脏病杂志, 2024, 40(3): 18. 早期筛查路径真实世界研究."
+  "KDIGO 2024 CKD Guideline, pp. 45-47. Clinical Practice Guideline for CKD."
 
 只返回 JSON：
 {
@@ -164,7 +169,7 @@ ${userNote ? `用户要求：${userNote}` : ''}
       "kind": "section",
       "pages": [
         { "title": "章节名", "bullets": [], "kind": "section-title" },
-        { "title": "页面标题", "bullets": ["要点1", "要点2"], "kind": "content", "speakerNotes": "备注" }
+        { "title": "页面标题", "bullets": ["要点1", "要点2"], "kind": "content", "speakerNotes": "备注", "visualSuggestion": "可视化建议", "references": ["Lancet Diabetes Endocrinol, 2024, 12(6): 412-414. SGLT2 inhibitors and kidney outcomes."] }
       ]
     },
     {

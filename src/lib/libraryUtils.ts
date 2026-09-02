@@ -17,6 +17,11 @@ export const MATERIAL_GROUP_DEFS = [
     cats: ['Brief', '品牌briefing'],
   },
   {
+    id: 'literature',
+    title: '参考文献',
+    cats: ['参考文献'],
+  },
+  {
     id: 'template',
     title: '模板',
     cats: ['模板', '参考模板'],

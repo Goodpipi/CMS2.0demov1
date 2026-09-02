@@ -13,7 +13,8 @@ import { cn } from '@/app/components/ui/utils';
 
 interface ContextMaterialsPanelProps {
   library: LibraryItem[];
-  variant?: 'default' | 'case' | 'poster' | 'evidence' | 'insight';
+  variant?: 'default' | 'case' | 'poster' | 'evidence' | 'insight' | 'promo';
+  citedItemIds?: number[];
   onOpenPicker: (cat: string) => void;
   onPreview: (item: LibraryItem) => void;
   onRemove: (item: LibraryItem) => void;
@@ -28,10 +29,12 @@ function toneClasses(item: LibraryItem) {
 
 function MaterialSourceRow({
   item,
+  cited,
   onPreview,
   onRemove,
 }: {
   item: LibraryItem;
+  cited?: boolean;
   onPreview: (item: LibraryItem) => void;
   onRemove: (item: LibraryItem) => void;
 }) {
@@ -64,6 +67,7 @@ function MaterialSourceRow({
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-1.5">
           <div className="min-w-0 flex-1 truncate text-[12px] font-medium text-foreground">{item.title}</div>
+          {cited && <span className="context-literature-cited-tag">已引用</span>}
         </div>
         <div className="mt-0.5 text-[10px] leading-[1.45] text-muted-foreground">
           {[
@@ -92,6 +96,9 @@ function MaterialSourceRow({
   );
 }
 
+const LITERATURE_CONTEXT_HINT_THRESHOLD = 10;
+const LITERATURE_CONTEXT_HINT = '由于模型上下文限制，系统会优先筛选关联度最高的文献';
+
 function AssetSection({
   title,
   badge,
@@ -104,6 +111,8 @@ function AssetSection({
   collapsible = false,
   extraActions,
   emptyText,
+  hint,
+  citedItemIds,
 }: {
   title: string;
   badge?: number;
@@ -116,6 +125,8 @@ function AssetSection({
   collapsible?: boolean;
   extraActions?: ReactNode;
   emptyText?: string;
+  hint?: ReactNode;
+  citedItemIds?: number[];
 }) {
   const [expanded, setExpanded] = useState(true);
 
@@ -157,12 +168,14 @@ function AssetSection({
         )}
         {extraActions}
       </div>
+      {hint}
       {expanded && <div className="space-y-1">
         {items.length > 0 ? (
           items.map((item) => (
             <MaterialSourceRow
               key={item.id}
               item={item}
+              cited={citedItemIds?.includes(item.id)}
               onPreview={onPreview}
               onRemove={onRemove}
             />
@@ -188,6 +201,13 @@ const SECTIONS: MaterialSectionDef[] = [
   { title: '参考知识', groupId: 'knowledge', category: '参考知识' },
   { title: '品牌策略', groupId: 'strategy', category: '品牌策略' },
   { title: 'Brief', groupId: 'brief', category: 'Brief' },
+];
+
+const PROMO_SECTIONS: MaterialSectionDef[] = [
+  { title: '品牌策略', groupId: 'strategy', category: '品牌策略' },
+  { title: 'Brief', groupId: 'brief', category: 'Brief' },
+  { title: '参考知识', groupId: 'knowledge', category: '参考知识' },
+  { title: '参考文献', groupId: 'literature', category: '参考文献' },
 ];
 
 const CASE_SECTIONS: MaterialSectionDef[] = [
@@ -216,6 +236,7 @@ function sectionsForVariant(variant: ContextMaterialsPanelProps['variant']): Mat
   if (variant === 'poster') return POSTER_SECTIONS;
   if (variant === 'evidence') return EVIDENCE_SECTIONS;
   if (variant === 'insight') return INSIGHT_SECTIONS;
+  if (variant === 'promo') return PROMO_SECTIONS;
   return SECTIONS;
 }
 
@@ -258,6 +279,7 @@ function downloadConferenceInfoTemplate() {
 export function ContextMaterialsPanel({
   library,
   variant = 'default',
+  citedItemIds,
   onOpenPicker,
   onPreview,
   onRemove,
@@ -283,6 +305,7 @@ export function ContextMaterialsPanel({
       {sections.map((section) => {
         const items = sectionItems(section, referencedMaterials);
         const isConference = variant === 'poster' && section.category === '会议信息';
+        const isLiterature = section.category === '参考文献' || section.groupId === 'literature';
         return (
           <AssetSection
             key={section.title}
@@ -290,9 +313,15 @@ export function ContextMaterialsPanel({
             badge={items.length}
             items={items}
             category={section.category}
+            citedItemIds={citedItemIds}
             onPreview={onPreview}
             onRemove={onRemove}
             collapsible
+            hint={
+              isLiterature && items.length > LITERATURE_CONTEXT_HINT_THRESHOLD ? (
+                <p className="context-literature-limit-hint">{LITERATURE_CONTEXT_HINT}</p>
+              ) : undefined
+            }
             emptyText={
               isConference ? '暂无会议信息。可先下载模板填写后上传。' : undefined
             }

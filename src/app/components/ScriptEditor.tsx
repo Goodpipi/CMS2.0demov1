@@ -19,7 +19,6 @@ export function ScriptEditor({
     <div className="workspace-surface-panel script-editor">
       <div className="script-editor-toolbar">
         <strong>{title}</strong>
-        <span>纯文字 · {readOnly ? '审阅预览' : '可直接在中间修改'}</span>
       </div>
       <div className="script-editor-paper-wrap">
         <textarea

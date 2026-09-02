@@ -26,8 +26,21 @@ export function isTitleOnlyPage(page?: PptOutlinePage | null): boolean {
 function titlePageVisual(kind: PptOutlinePageKind): string {
   if (kind === 'cover') return '封面大标题居中，副标题与品牌色条，右下角合规提示。';
   if (kind === 'toc') return '目录列表，按节列出后续章节标题。';
+  if (kind === 'section-title') return '全幅章节标题页：大标题居中，可配一句导语与品牌色条，不要堆叠正文要点。';
   if (kind === 'back') return '封底致谢页，画面中央仅展示标题，底部品牌色条。';
   return '';
+}
+
+export function sectionTitlePageFields(title: string): Pick<PptOutlinePage, 'bullets' | 'visualSuggestion'> {
+  const topic = title.trim() || '本节主题';
+  return {
+    bullets: [
+      '本章为章节标题页',
+      `本节主题：${topic}`,
+      '用于开启新一节，后续页面展开具体要点',
+    ],
+    visualSuggestion: titlePageVisual('section-title'),
+  };
 }
 
 export function makeOutlinePage(
@@ -36,14 +49,17 @@ export function makeOutlinePage(
   bullets: string[] = [],
   extra: Partial<PptOutlinePage> = {}
 ): PptOutlinePage {
+  const titleFields = kind === 'section-title' ? sectionTitlePageFields(title) : null;
   return {
     id: extra.id || genId('pg'),
     title,
-    bullets,
+    bullets: bullets.length ? bullets : titleFields?.bullets ?? bullets,
     kind,
     speakerNotes: extra.speakerNotes,
-    visualSuggestion: extra.visualSuggestion ?? titlePageVisual(kind),
+    visualSuggestion: extra.visualSuggestion ?? titleFields?.visualSuggestion ?? titlePageVisual(kind),
     references: extra.references || [],
+    referencedImages: extra.referencedImages || [],
+    bulletCites: extra.bulletCites,
   };
 }
 
@@ -304,6 +320,8 @@ export function normalizeOutline(
         speakerNotes?: string;
         visualSuggestion?: string;
         references?: string[];
+        referencedImages?: PptOutlinePage['referencedImages'];
+        bulletCites?: number[][];
         kind?: PptOutlinePageKind;
       }[];
     }[];
@@ -318,14 +336,22 @@ export function normalizeOutline(
     pages: (ch.pages || []).map((p) => ({
       id: genId('pg'),
       title: p.title || '未命名页面',
-      bullets: p.bullets?.length ? p.bullets : isTitleOnlyPage({ ...p, id: '', title: p.title || '', bullets: [] }) ? [] : ['待补充要点'],
+      bullets: p.bullets?.length
+        ? p.bullets
+        : p.kind === 'section-title'
+          ? sectionTitlePageFields(p.title || ch.title).bullets
+          : isTitleOnlyPage({ ...p, id: '', title: p.title || '', bullets: [] })
+            ? []
+            : ['待补充要点'],
       speakerNotes: p.speakerNotes,
       visualSuggestion:
         p.visualSuggestion ??
         (p.kind === 'section-title'
-          ? ''
+          ? sectionTitlePageFields(p.title || ch.title).visualSuggestion
           : `围绕「${p.title || '本页主题'}」做要点列表 + 示意图，保持品牌蓝绿配色与充足留白。`),
       references: p.references?.length ? p.references : [],
+      referencedImages: p.referencedImages?.length ? p.referencedImages : [],
+      bulletCites: p.bulletCites,
       kind: p.kind,
     })),
   }));

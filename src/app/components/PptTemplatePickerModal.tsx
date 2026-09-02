@@ -44,7 +44,7 @@ export function PptTemplatePickerModal({
   onClose,
   onConfirm,
   title = '选择更多模板',
-  description = '从模板库挑选一套 PPT 模板，用于本次大纲生成。',
+  description = '',
   confirmLabel = '使用此模板',
   className,
 }: PptTemplatePickerModalProps) {
@@ -76,7 +76,7 @@ export function PptTemplatePickerModal({
         <div className="ppt-more-template-head">
           <div>
             <h3 id="ppt-more-template-title">{title}</h3>
-            <p>{description}</p>
+            {description ? <p>{description}</p> : null}
           </div>
           <button type="button" className="literature-picker-close" onClick={onClose} aria-label="关闭">
             <X className="h-4 w-4" strokeWidth={2.2} />

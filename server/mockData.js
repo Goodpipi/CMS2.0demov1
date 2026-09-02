@@ -175,14 +175,24 @@ export function getMockData(kind, userNote = '') {
             title: '认识肾脏健康',
             pages: [
               { id: 'p1', title: '封面与议题', bullets: ['品牌与议题', '免责声明'] },
-              { id: 'p2', title: '为什么重要', bullets: ['生理功能简述', '公众常见误区'] },
+              {
+                id: 'p2',
+                title: '为什么重要',
+                bullets: ['生理功能简述', '公众常见误区'],
+                references: ['中华肾脏病杂志, 2024, 40(3): 18. 早期筛查路径真实世界研究.'],
+              },
             ],
           },
           {
             id: 'ch2',
             title: '风险与就医',
             pages: [
-              { id: 'p3', title: '风险因素', bullets: ['生活方式', '筛查意识'] },
+              {
+                id: 'p3',
+                title: '风险因素',
+                bullets: ['生活方式', '筛查意识'],
+                references: ['Lancet Diabetes Endocrinol, 2024, 12(6): 412-414. SGLT2 inhibitors and kidney outcomes.'],
+              },
               { id: 'p4', title: '总结', bullets: ['就医建议', '教育信息来源'] },
             ],
           },

@@ -69,9 +69,6 @@ export function ImageTemplatePickerModal({
         <header className="image-template-modal-head">
           <div>
             <h3>选择配图模板</h3>
-            <div className="small">
-              可多选；将按每个模板各生成一版配图。点击缩略图查看详情，勾选后确认生成。
-            </div>
           </div>
           <button type="button" className="ppt-close-btn" onClick={onClose} aria-label="关闭">
             ×

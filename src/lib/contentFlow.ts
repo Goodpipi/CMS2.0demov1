@@ -15,6 +15,8 @@ export type ContentFlowEntry =
   | 'script'
   | 'video'
   | 'team'
+  | 'case'
+  | 'evidence'
   | 'general';
 
 export type ContentFlowStepId =
@@ -111,8 +113,30 @@ export function flowEntryFromTab(tab: TabKey | null | undefined): ContentFlowEnt
   return null;
 }
 
-export function flowEntryFromIntent(intent?: HomeEntryIntent | null): ContentFlowEntry | null {
-  return intent === 'insight' ? 'insight' : null;
+export function flowEntryFromSource(source?: string | null): ContentFlowEntry | null {
+  if (source === 'poster') return 'conferencePoster';
+  if (source === 'promo') return 'script';
+  if (source === 'case') return 'case';
+  if (source === 'evidence') return 'evidence';
+  if (source === 'insight') return 'insight';
+  return null;
+}
+
+export function omitsBriefLiterature(
+  entry?: ContentFlowEntry | null,
+  source?: string | null
+): boolean {
+  return entry === 'case' || entry === 'evidence' || source === 'case' || source === 'evidence';
+}
+
+export function nextLockedFlowEntry(
+  prev: ContentFlowEntry | null,
+  next: ContentFlowEntry | null
+): ContentFlowEntry | null {
+  if (!next) return prev;
+  if (!prev) return next;
+  if (omitsBriefLiterature(prev)) return prev;
+  return prev;
 }
 
 export function inferFlowEntryFromTabs(tabs: TabKey[]): ContentFlowEntry | null {
@@ -149,6 +173,14 @@ function appendMissing(
   }
 }
 
+function finishFlow(steps: ContentFlowStep[]): ContentFlowStep[] {
+  appendMissing(steps, 'team', true);
+  if (!steps.some((item) => item.id === 'submit')) {
+    steps.push(step('submit', true));
+  }
+  return steps;
+}
+
 export function buildContentFlowSteps(
   entry: ContentFlowEntry | null,
   extras: Partial<
@@ -166,12 +198,14 @@ export function buildContentFlowSteps(
       | 'longImageOutline'
       | 'ppt'
     >
-  > = {}
+  > = {},
+  source?: string | null
 ): ContentFlowStep[] {
+  const skipBriefLiterature = omitsBriefLiterature(entry, source);
   const hasExtras = Boolean(
     extras.insight ||
-      extras.brief ||
-      extras.literature ||
+      (!skipBriefLiterature && extras.brief) ||
+      (!skipBriefLiterature && extras.literature) ||
       extras.outline ||
       extras.articleOutline ||
       extras.longImageOutline ||
@@ -183,19 +217,34 @@ export function buildContentFlowSteps(
   );
 
   if (!entry && !hasExtras) {
-    return [step('create', true), emptySlot(), emptySlot(), emptySlot(), step('submit', true)];
+    return [step('create', true), emptySlot(), emptySlot(), step('team', true), step('submit', true)];
   }
 
   const steps: ContentFlowStep[] = [step('create', true)];
   const locked = entry || 'general';
 
-  if (locked === 'insight') {
-    steps.push(step('insight', true), step('brief', true), step('literature', false));
+  if (locked === 'case' || locked === 'evidence') {
+    if (!hasExtras) {
+      return [step('create', true), emptySlot(), emptySlot(), step('team', true), step('submit', true)];
+    }
+  } else if (locked === 'insight') {
+    steps.push(step('insight', true));
+    if (!skipBriefLiterature) {
+      steps.push(step('brief', true), step('literature', false));
+    }
     steps.push(step('outline', true), step('ppt', true));
   } else if (locked === 'literature') {
-    steps.push(step('literature', true), step('brief', true), step('outline', true), step('ppt', true));
+    if (skipBriefLiterature) {
+      steps.push(step('outline', true), step('ppt', true));
+    } else {
+      steps.push(step('literature', true), step('brief', true), step('outline', true), step('ppt', true));
+    }
   } else if (locked === 'brief') {
-    steps.push(step('brief', true), step('literature', false), step('outline', true), step('ppt', true));
+    if (skipBriefLiterature) {
+      steps.push(step('outline', true), step('ppt', true));
+    } else {
+      steps.push(step('brief', true), step('literature', false), step('outline', true), step('ppt', true));
+    }
   } else if (locked === 'outline') {
     steps.push(step('outline', true), step('ppt', true));
   } else if (locked === 'articleOutline') {
@@ -209,24 +258,25 @@ export function buildContentFlowSteps(
   } else if (locked === 'visual') {
     steps.push(step('visual', true));
   } else if (locked === 'conferencePoster') {
-    steps.push(step('kv', true), step('poster', true), step('mobile', true));
-    steps.push(step('submit', true));
-    return steps;
+    steps.push(step('kv', true), step('poster', true));
+    return finishFlow(steps);
   } else if (locked === 'script') {
     steps.push(scriptCopyStep(true));
-    steps.push(step('submit', true));
-    return steps;
+    return finishFlow(steps);
   } else if (locked === 'video') {
     steps.push(step('video', true));
   } else if (locked === 'team') {
     steps.push(step('team', true));
-  } else {
-    steps.push(step('brief', true), step('literature', false), step('outline', true), step('ppt', true));
+  } else if (locked !== 'case' && locked !== 'evidence') {
+    if (!skipBriefLiterature) {
+      steps.push(step('brief', true), step('literature', false));
+    }
+    steps.push(step('outline', true), step('ppt', true));
   }
 
   if (extras.insight) appendMissing(steps, 'insight');
-  if (extras.brief) appendMissing(steps, 'brief');
-  if (extras.literature) appendMissing(steps, 'literature');
+  if (!skipBriefLiterature && extras.brief) appendMissing(steps, 'brief');
+  if (!skipBriefLiterature && extras.literature) appendMissing(steps, 'literature');
   if (extras.outline) appendMissing(steps, 'outline');
   if (extras.articleOutline) appendMissing(steps, 'articleOutline');
   if (extras.longImageOutline) appendMissing(steps, 'longImageOutline');
@@ -234,10 +284,8 @@ export function buildContentFlowSteps(
   if (extras.copy) appendMissing(steps, 'copy');
   if (extras.visual) appendMissing(steps, 'visual');
   if (extras.video) appendMissing(steps, 'video');
-  if (extras.team) appendMissing(steps, 'team');
 
-  steps.push(step('submit', true));
-  return steps;
+  return finishFlow(steps);
 }
 
 export function activeFlowStepId(active: TabKey | null): ContentFlowStepId {

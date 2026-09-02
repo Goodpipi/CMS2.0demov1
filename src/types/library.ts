@@ -23,4 +23,6 @@ export interface LibraryItem {
   mimeType?: string;
   /** CMS 同步内容的有效期，ISO 日期 */
   validUntil?: string;
+  /** 从文献检索添加时对应的文献 id，用于生成后回标「已引用」 */
+  literatureId?: string;
 }

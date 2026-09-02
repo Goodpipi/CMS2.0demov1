@@ -83,7 +83,7 @@ export function buildUnderstoodSummary(analysis: BriefAnalysis): string {
 
 const ACTION_CHIPS: Record<HomeEntryIntent, string[]> = {
   general: ['生成话题洞察', '直接生成文案', '直接生成图片', '直接生成PPT', '直接生成视频'],
-  insight: ['开始生成话题洞察', '直接生成文案', '直接生成图片', '生成PPT大纲'],
+  insight: ['开始生成话题洞察'],
   copy: ['开始生成文案', '生成话题洞察', '直接生成图片', '直接生成视频'],
   visual: ['开始生成配图', '选用内置模板', '直接生成文案', '生成话题洞察'],
   video: ['直接生成视频', '直接生成文案', '生成话题洞察', '直接生成PPT'],

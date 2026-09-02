@@ -76,15 +76,27 @@ export interface PptResult {
 export type PptOutlineSectionKind = 'cover' | 'toc' | 'section' | 'back';
 export type PptOutlinePageKind = 'cover' | 'toc' | 'section-title' | 'content' | 'back';
 
+export interface OutlineRefImage {
+  url: string;
+  alt?: string;
+  caption?: string;
+  /** 对应本页参考文献的 1-based 序号 */
+  cites?: number[];
+}
+
 export interface PptOutlinePage {
   id: string;
   title: string;
   bullets: string[];
+  /** 与 bullets 对齐，每条核心内容引用的文献序号 */
+  bulletCites?: number[][];
   speakerNotes?: string;
   /** 页面可视化建议 */
   visualSuggestion?: string;
   /** 当前页面参考文献 */
   references?: string[];
+  /** 当前页面引用图片 */
+  referencedImages?: OutlineRefImage[];
   /** 封面 / 目录 / 章节标题页 / 正文 / 封底 */
   kind?: PptOutlinePageKind;
 }
@@ -142,11 +154,15 @@ export interface ArticleOutlineChapter {
   id: string;
   title: string;
   core: string;
+  /** 核心信息引用的本章文献序号 */
+  coreCites?: number[];
   imageUrl: string;
   imageAlt?: string;
   tmsh: string;
   /** 本章参考文献，展示在对应卡片内 */
   references?: string[];
+  /** 本章引用图片 */
+  referencedImages?: OutlineRefImage[];
 }
 
 export interface ArticleOutline {

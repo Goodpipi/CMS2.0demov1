@@ -43,7 +43,6 @@ export function CopyRevisionDisplay({
         {editable ? (
           <>
             当前身份：<strong>{profile.name}（{profile.dept}）</strong>
-            。在下方「修订对比」中直接修改正文，保存后增删将相对原文显示。
           </>
         ) : hasRevisions ? (
           '相对原文的增删对比（已合并全部审阅修改）'
@@ -76,8 +75,6 @@ export function CopyRevisionDisplay({
               <strong>修订对比</strong>
               {revision ? (
                 <> · {new Date(revision.createdAt).toLocaleString()}</>
-              ) : editable ? (
-                <> · 可直接编辑</>
               ) : null}
             </div>
 

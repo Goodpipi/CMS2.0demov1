@@ -7,11 +7,13 @@ import {
   Eraser,
   Layers,
   Minus,
+  Plus,
   Redo2,
   Square,
   Trash2,
   Type,
   Undo2,
+  X,
   Image as ImageIcon,
 } from 'lucide-react';
 import { EDITOR_PAGE_ASSET_GROUPS, type EditorPageAsset } from '@/lib/editorPageAssets';
@@ -81,6 +83,7 @@ const SHAPE_TOOLS: { type: InsertShapeType; label: string; Icon: typeof Square }
   { type: 'arrow', label: '箭头', Icon: ArrowRight },
 ];
 
+const ELEMENT_SHAPE_TOOLS = SHAPE_TOOLS.filter((tool) => tool.type !== 'text');
 const TEXT_ONLY_TOOLS = SHAPE_TOOLS.filter((tool) => tool.type === 'text');
 
 function isLockedBackgroundElement(el: Element | null): boolean {
@@ -163,12 +166,23 @@ export function VisualEditor({
   const [discardOpen, setDiscardOpen] = useState(false);
   const [props, setProps] = useState<ElementProps | null>(null);
   const [insertTool, setInsertTool] = useState<InsertShapeType | null>(null);
-  const [sidePanelTab, setSidePanelTab] = useState<'page' | 'assets'>('page');
+  const [addElementOpen, setAddElementOpen] = useState(false);
   const isPptEditor = !allowBrush;
+  const elementShapeTools = allowShapes ? ELEMENT_SHAPE_TOOLS : [];
+  const showAddElement = elementShapeTools.length > 0 || isPptEditor;
 
   useEffect(() => {
     if (!allowBrush && mode !== 'drag') setMode('drag');
   }, [allowBrush, mode]);
+
+  useEffect(() => {
+    if (!addElementOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setAddElementOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [addElementOpen]);
   const [historyTick, setHistoryTick] = useState(0);
 
   const svgHostRef = useRef<HTMLDivElement>(null);
@@ -447,6 +461,7 @@ export function VisualEditor({
       if (!host || !liveSvg) return;
       setMode('drag');
       setInsertTool(null);
+      setAddElementOpen(false);
       const id = nextEditId(host);
       createInsertImage(liveSvg, asset.href, id, {
         width: asset.width,
@@ -769,36 +784,6 @@ export function VisualEditor({
       <aside className="wpanel visual-editor-side visual-editor-props">
         <h3 className="section-title">{isPptEditor ? '页面编辑' : '视觉编辑'}</h3>
 
-        {isPptEditor && (
-        <div className="visual-editor-mode-tabs" role="tablist" aria-label="页面编辑方式">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={sidePanelTab === 'page'}
-            className={`visual-editor-mode-tab ${sidePanelTab === 'page' ? 'active' : ''}`}
-            onClick={() => {
-              setSidePanelTab('page');
-              setMode('drag');
-            }}
-          >
-            页面编辑
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={sidePanelTab === 'assets'}
-            className={`visual-editor-mode-tab ${sidePanelTab === 'assets' ? 'active' : ''}`}
-            onClick={() => {
-              setSidePanelTab('assets');
-              setMode('drag');
-              setInsertTool(null);
-            }}
-          >
-            添加元素
-          </button>
-        </div>
-        )}
-
         {allowBrush && (
         <div className="visual-editor-mode-tabs" role="tablist" aria-label="编辑方式">
           <button
@@ -850,30 +835,25 @@ export function VisualEditor({
           </div>
         )}
 
-        {mode === 'drag' && (!isPptEditor || sidePanelTab === 'page') && (
+        {mode === 'drag' && (
           <>
-            <div className="small" style={{ marginTop: 10 }}>
-              {insertTool
-                ? `插入模式：在画布空白处点击添加「${insertTools.find((s) => s.type === insertTool)?.label}」`
-                : allowShapes
-                  ? '选中元素后可拖拽、改属性；或使用下方工具插入形状与图片。'
-                  : '选中元素后可拖拽、改属性；也可插入文字或图片。'}
-            </div>
+            {insertTool ? (
+              <div className="small" style={{ marginTop: 10 }}>
+                {`插入模式：在画布空白处点击添加「${insertTools.find((s) => s.type === insertTool)?.label}」`}
+              </div>
+            ) : null}
 
             <h4 className="props-subtitle">插入</h4>
             <div className="visual-editor-shape-grid">
-              {insertTools.map(({ type, label, Icon }) => (
-                <button
-                  key={type}
-                  type="button"
-                  className={`visual-editor-shape-btn ${insertTool === type ? 'active' : ''}`}
-                  onClick={() => setInsertTool((prev) => (prev === type ? null : type))}
-                  title={label}
-                >
-                  <Icon className="h-3.5 w-3.5" strokeWidth={2.2} />
-                  {label}
-                </button>
-              ))}
+              <button
+                type="button"
+                className={`visual-editor-shape-btn ${insertTool === 'text' ? 'active' : ''}`}
+                onClick={() => setInsertTool((prev) => (prev === 'text' ? null : 'text'))}
+                title="文字"
+              >
+                <Type className="h-3.5 w-3.5" strokeWidth={2.2} />
+                文字
+              </button>
               <button
                 type="button"
                 className="visual-editor-shape-btn"
@@ -886,6 +866,20 @@ export function VisualEditor({
                 <ImageIcon className="h-3.5 w-3.5" strokeWidth={2.2} />
                 图片
               </button>
+              {showAddElement ? (
+                <button
+                  type="button"
+                  className={`visual-editor-shape-btn ${addElementOpen ? 'active' : ''}`}
+                  title="添加元素"
+                  onClick={() => {
+                    setInsertTool(null);
+                    setAddElementOpen(true);
+                  }}
+                >
+                  <Plus className="h-3.5 w-3.5" strokeWidth={2.2} />
+                  添加元素
+                </button>
+              ) : null}
               <input
                 ref={imageInputRef}
                 type="file"
@@ -1242,45 +1236,6 @@ export function VisualEditor({
           </>
         )}
 
-        {isPptEditor && sidePanelTab === 'assets' && (
-          <div className="visual-editor-asset-picker">
-            <div className="small" style={{ marginTop: 10 }}>
-              点击任意素材即可插入到当前页面。
-            </div>
-            {EDITOR_PAGE_ASSET_GROUPS.map((group) => (
-              <div key={group.id} className="glass-card-subtle rounded-2xl p-2.5">
-                <div className="mb-1.5 flex items-center justify-between px-1 text-[12px] leading-[1.25]">
-                  <div className="flex items-center gap-1.5 font-semibold text-foreground">
-                    {group.title}
-                    <span className="grid h-4 min-w-[16px] place-items-center rounded-full bg-gradient-to-br from-[#54B9F9] to-[#8AD329] px-1 text-[10px] font-bold text-white shadow-[0_2px_6px_-1px_rgba(59,150,210,0.5)]">
-                      {group.items.length}
-                    </span>
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  {group.items.map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className="visual-editor-asset-row group flex w-full items-start gap-2 rounded-xl border border-transparent p-1.5 text-left transition hover:border-border/60 hover:bg-background/80 hover:shadow-soft"
-                      onClick={() => handleInsertAsset(item)}
-                      title={`插入「${item.title}」`}
-                    >
-                      <span className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-lg bg-white ring-1 ring-black/5">
-                        <img src={item.href} alt="" className="h-full w-full object-contain" />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="min-w-0 truncate text-[12px] font-medium text-foreground">{item.title}</div>
-                        <div className="mt-0.5 text-[10px] leading-[1.45] text-muted-foreground">{item.meta}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
         {allowBrush && mode === 'brush' && (
           <div className="small" style={{ marginTop: 10 }}>
             {brushTool === 'brush'
@@ -1326,7 +1281,7 @@ export function VisualEditor({
       </main>
 
       <aside className="wpanel visual-editor-side">
-        <h3 className="section-title">{showBrushAiPanel ? 'AI 局部修改' : '手动调整'}</h3>
+        <h3 className="section-title">{showBrushAiPanel ? 'AI 局部修改' : '手动编辑'}</h3>
 
         {showBrushAiPanel && (
           <>
@@ -1356,6 +1311,95 @@ export function VisualEditor({
           返回
         </button>
       </aside>
+      {addElementOpen ? (
+        <div
+          className="modal-bg show visual-editor-add-bg"
+          role="presentation"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setAddElementOpen(false);
+          }}
+        >
+          <div
+            className="modal visual-editor-add-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="visual-editor-add-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="visual-editor-add-head">
+              <h3 id="visual-editor-add-title">添加元素</h3>
+              <button
+                type="button"
+                className="visual-editor-add-close"
+                onClick={() => setAddElementOpen(false)}
+                aria-label="关闭"
+              >
+                <X className="h-4 w-4" strokeWidth={2.2} />
+              </button>
+            </header>
+            {elementShapeTools.length ? (
+              <section className="visual-editor-add-section">
+                <h4>形状</h4>
+                <div className="visual-editor-shape-grid">
+                  {elementShapeTools.map(({ type, label, Icon }) => (
+                    <button
+                      key={type}
+                      type="button"
+                      className={`visual-editor-shape-btn ${insertTool === type ? 'active' : ''}`}
+                      onClick={() => {
+                        setInsertTool(type);
+                        setAddElementOpen(false);
+                      }}
+                      title={label}
+                    >
+                      <Icon className="h-3.5 w-3.5" strokeWidth={2.2} />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+            {isPptEditor ? (
+              <section className="visual-editor-add-section">
+                <h4>素材</h4>
+                <div className="visual-editor-asset-picker">
+                  {EDITOR_PAGE_ASSET_GROUPS.map((group) => (
+                    <div key={group.id} className="glass-card-subtle rounded-2xl p-2.5">
+                      <div className="mb-1.5 flex items-center justify-between px-1 text-[12px] leading-[1.25]">
+                        <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                          {group.title}
+                          <span className="grid h-4 min-w-[16px] place-items-center rounded-full bg-gradient-to-br from-[#54B9F9] to-[#8AD329] px-1 text-[10px] font-bold text-white shadow-[0_2px_6px_-1px_rgba(59,150,210,0.5)]">
+                            {group.items.length}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        {group.items.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            className="visual-editor-asset-row group flex w-full items-start gap-2 rounded-xl border border-transparent p-1.5 text-left transition hover:border-border/60 hover:bg-background/80 hover:shadow-soft"
+                            onClick={() => handleInsertAsset(item)}
+                            title={`插入「${item.title}」`}
+                          >
+                            <span className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-lg bg-white ring-1 ring-black/5">
+                              <img src={item.href} alt="" className="h-full w-full object-contain" />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="min-w-0 truncate text-[12px] font-medium text-foreground">{item.title}</div>
+                              <div className="mt-0.5 text-[10px] leading-[1.45] text-muted-foreground">{item.meta}</div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       <ConfirmModal
         open={discardOpen}
         title="修改尚未保存"

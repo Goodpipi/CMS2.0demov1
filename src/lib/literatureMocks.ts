@@ -1,11 +1,12 @@
 /** 医药行业文献 Mock（检索文献演示） */
 
 export type LiteratureAccess = 'free' | 'paid';
-export type LiteratureSource = 'PubMed' | 'CMS' | '万方医学' | 'CNKI' | '个人知识收藏';
-export type LiteratureScope = 'cms' | 'personal' | 'external';
+export type LiteratureSource = 'PubMed' | 'CMS' | 'DEEP' | '万方医学' | 'CNKI' | '个人知识收藏';
+export type LiteratureScope = 'cms' | 'deep' | 'personal' | 'external';
 
 export const LITERATURE_SCOPE_OPTIONS: { id: LiteratureScope; label: string }[] = [
   { id: 'cms', label: 'CMS' },
+  { id: 'deep', label: 'DEEP' },
   { id: 'personal', label: '个人知识收藏' },
   { id: 'external', label: '外部知识库' },
 ];
@@ -23,13 +24,79 @@ export interface LiteratureArticle {
   scope?: LiteratureScope;
   /** CMS 优质素材，选中 CMS 范围时优先置顶 */
   premium?: boolean;
+  volume?: string;
+  issue?: string;
+  /** 起止页或单页，如 412-418、8 */
+  pages?: string;
 }
 
 export function inferLiteratureScope(article: LiteratureArticle): LiteratureScope {
   if (article.scope) return article.scope;
   if (article.source === 'CMS') return 'cms';
+  if (article.source === 'DEEP') return 'deep';
   if (article.source === '个人知识收藏') return 'personal';
   return 'external';
+}
+
+export function literatureSourceLabel(article: LiteratureArticle): string {
+  const scope = inferLiteratureScope(article);
+  if (scope === 'cms') return 'CMS';
+  if (scope === 'deep') return 'DEEP';
+  if (scope === 'personal') return '个人知识收藏';
+  return article.source;
+}
+
+export function literaturePageLocator(article: LiteratureArticle): string {
+  const pages = (article.pages || '').trim();
+  if (!pages) return '';
+  if (article.volume) {
+    const issue = article.issue ? `(${article.issue})` : '';
+    return `${article.volume}${issue}: ${pages}`;
+  }
+  return /[-–,，]/.test(pages) ? `pp. ${pages}` : `p. ${pages}`;
+}
+
+export function literatureCitationMeta(
+  article: LiteratureArticle,
+  options?: { includeJournal?: boolean }
+): string {
+  const includeJournal = options?.includeJournal ?? inferLiteratureScope(article) === 'external';
+  return [
+    includeJournal ? article.journalAbbr || article.publisher : '',
+    String(article.year),
+    literaturePageLocator(article),
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+export function buildLiteratureFullText(article: LiteratureArticle): string {
+  const locator = literaturePageLocator(article);
+  return [
+    article.title,
+    '',
+    `${article.publisher} · ${article.year} · ${literatureSourceLabel(article)}`,
+    article.journalAbbr ? `期刊：${article.journalAbbr}` : '',
+    locator ? `页码：${locator}` : '',
+    '',
+    '摘要',
+    article.abstract,
+    '',
+    '全文（演示）',
+    `本文围绕「${article.title}」整理可追溯的医学沟通要点，覆盖研究背景、关键结局、临床沟通口径与合规边界，便于在当前任务中作为参考文献使用。`,
+    '',
+    '1. 研究背景与适用场景',
+    `材料来源为 ${literatureSourceLabel(article)}。适用于医学专业人士沟通、内容生产与口径核对，不构成对公众的疗效承诺。`,
+    '',
+    '2. 关键信息',
+    article.abstract,
+    '',
+    '3. 使用提示',
+    '引用时请保留来源、年份与页码，并与获批说明书或 Approved Claims 核对。超出适应症的表述不得使用。',
+    article.sourceUrl ? `\n原文链接：${article.sourceUrl}` : '',
+  ]
+    .filter((line) => line !== undefined)
+    .join('\n');
 }
 
 export function literatureScopeLabel(scopes: LiteratureScope[]): string {
@@ -54,6 +121,7 @@ const CURATED_LITERATURE_ARTICLES: LiteratureArticle[] = [
     journalAbbr: 'CMS',
     scope: 'cms',
     premium: true,
+    pages: '8-12',
   },
   {
     id: 'lit-cms-claims-2026',
@@ -68,6 +136,35 @@ const CURATED_LITERATURE_ARTICLES: LiteratureArticle[] = [
     journalAbbr: 'CMS Vault',
     scope: 'cms',
     premium: true,
+    pages: '14-18',
+  },
+  {
+    id: 'lit-deep-hf-map-2026',
+    title: '射血分数分层沟通证据图：HFrEF / HFmrEF / HFpEF 口径对照',
+    publisher: 'DEEP Knowledge Graph',
+    year: 2026,
+    abstract:
+      '由 DEEP 检索并结构化的心衰分层沟通材料，将指南要点、随访节奏与可追溯声明映射到科室拜访话术。可用于当前任务直接引用，使用时仍需与获批口径核对。',
+    access: 'free',
+    source: 'DEEP',
+    sourceUrl: '#deep-index',
+    journalAbbr: 'DEEP',
+    scope: 'deep',
+    pages: '3-6',
+  },
+  {
+    id: 'lit-deep-ckd-signals-2025',
+    title: '早期 CKD 识别信号与监测指标速览（DEEP）',
+    publisher: 'DEEP Evidence Index',
+    year: 2025,
+    abstract:
+      '汇总 eGFR、UACR 与合并症管理相关证据条目，按「识别—解释—随访」组织，便于生成患者教育或 HCP 材料时快速定位可引用句子。',
+    access: 'free',
+    source: 'DEEP',
+    sourceUrl: '#deep-index',
+    journalAbbr: 'DEEP',
+    scope: 'deep',
+    pages: '7-9',
   },
   {
     id: 'lit-personal-hf-notes-2025',
@@ -81,6 +178,7 @@ const CURATED_LITERATURE_ARTICLES: LiteratureArticle[] = [
     sourceUrl: '#personal-collection',
     journalAbbr: '个人知识收藏',
     scope: 'personal',
+    pages: '2-4',
   },
   {
     id: 'lit-sglt2-meta-zh-2025',
@@ -94,6 +192,9 @@ const CURATED_LITERATURE_ARTICLES: LiteratureArticle[] = [
     sourceUrl: 'https://pubmed.ncbi.nlm.nih.gov/',
     journalAbbr: 'Nephrol Dial Transplant',
     scope: 'external',
+    volume: '40',
+    issue: '8',
+    pages: '1422-1435',
   },
   {
     id: 'lit-sglt2-ckd-2024',
@@ -108,6 +209,9 @@ const CURATED_LITERATURE_ARTICLES: LiteratureArticle[] = [
     sourceUrl: 'https://pubmed.ncbi.nlm.nih.gov/',
     journalAbbr: 'Lancet Diabetes Endocrinol',
     scope: 'external',
+    volume: '12',
+    issue: '6',
+    pages: '412-418',
   },
   {
     id: 'lit-egfr-trajectory-2023',
@@ -121,6 +225,9 @@ const CURATED_LITERATURE_ARTICLES: LiteratureArticle[] = [
     sourceUrl: 'https://pubmed.ncbi.nlm.nih.gov/',
     journalAbbr: 'Nephrol Dial Transplant',
     scope: 'external',
+    volume: '38',
+    issue: '6',
+    pages: '1104-1112',
   },
   {
     id: 'lit-cms-hcp-card-2025',
@@ -134,6 +241,7 @@ const CURATED_LITERATURE_ARTICLES: LiteratureArticle[] = [
     sourceUrl: '#cms-vault',
     journalAbbr: 'CMS',
     scope: 'cms',
+    pages: '1-2',
   },
   {
     id: 'lit-wanfang-ckd-2024',
@@ -147,6 +255,9 @@ const CURATED_LITERATURE_ARTICLES: LiteratureArticle[] = [
     sourceUrl: 'https://med.wanfangdata.com.cn/',
     journalAbbr: '中华肾脏病杂志',
     scope: 'external',
+    volume: '40',
+    issue: '3',
+    pages: '18-24',
   },
   {
     id: 'lit-wanfang-af-2023',
@@ -160,6 +271,9 @@ const CURATED_LITERATURE_ARTICLES: LiteratureArticle[] = [
     sourceUrl: 'https://med.wanfangdata.com.cn/',
     journalAbbr: '中国循环杂志',
     scope: 'external',
+    volume: '38',
+    issue: '11',
+    pages: '1021-1028',
   },
   {
     id: 'lit-cnki-health-literacy-2022',
@@ -173,6 +287,9 @@ const CURATED_LITERATURE_ARTICLES: LiteratureArticle[] = [
     sourceUrl: 'https://www.cnki.net/',
     journalAbbr: '中国全科医学',
     scope: 'external',
+    volume: '25',
+    issue: '14',
+    pages: '1888-1894',
   },
   {
     id: 'lit-cnki-omnichannel-2024',
@@ -186,6 +303,9 @@ const CURATED_LITERATURE_ARTICLES: LiteratureArticle[] = [
     sourceUrl: 'https://www.cnki.net/',
     journalAbbr: '中国新药杂志',
     scope: 'external',
+    volume: '33',
+    issue: '9',
+    pages: '1201-1208',
   },
 ];
 
@@ -215,6 +335,13 @@ const EXTRA_LITERATURE_SOURCES: {
   sourceUrl: string;
 }[] = [
   { source: 'CMS', scope: 'cms', publisher: 'CMS', journalAbbr: 'CMS', sourceUrl: '#cms-vault' },
+  {
+    source: 'DEEP',
+    scope: 'deep',
+    publisher: 'DEEP Evidence Index',
+    journalAbbr: 'DEEP',
+    sourceUrl: '#deep-index',
+  },
   {
     source: '个人知识收藏',
     scope: 'personal',
@@ -256,6 +383,7 @@ function buildExtraLiteratureArticles(): LiteratureArticle[] {
       const index = topicIndex * EXTRA_LITERATURE_SOURCES.length + sourceIndex + 1;
       const year = 2020 + ((topicIndex + sourceIndex) % 7);
       const premium = source.scope === 'cms' && topicIndex % 4 === 0;
+      const startPage = 80 + (index % 40);
       return {
         id: `lit-extra-${index}`,
         title: `${topic}医学沟通与临床证据综述（${year}）`,
@@ -268,6 +396,13 @@ function buildExtraLiteratureArticles(): LiteratureArticle[] {
         journalAbbr: source.journalAbbr,
         scope: source.scope,
         premium,
+        ...(source.scope === 'external'
+          ? {
+              volume: String(10 + (index % 20)),
+              issue: String(1 + (index % 12)),
+              pages: `${startPage}-${startPage + 7}`,
+            }
+          : { pages: String(3 + (index % 18)) }),
       };
     })
   );
@@ -287,10 +422,10 @@ function matchesLiteratureQuery(item: LiteratureArticle, query: string): boolean
 
 export function searchLiteratureByScopes(query: string, scopes: LiteratureScope[]): LiteratureArticle[] {
   const q = query.trim().toLowerCase();
-  if (!q || !scopes.length) return [];
+  if (!scopes.length) return [];
   const includeCms = scopes.includes('cms');
   const scoped = MOCK_LITERATURE_ARTICLES.filter((item) => scopes.includes(inferLiteratureScope(item)));
-  const list = scoped.filter((item) => matchesLiteratureQuery(item, q));
+  const list = q ? scoped.filter((item) => matchesLiteratureQuery(item, q)) : scoped;
   if (!includeCms) return list;
   return [...list].sort((a, b) => {
     const aRank = a.premium && inferLiteratureScope(a) === 'cms' ? 0 : 1;

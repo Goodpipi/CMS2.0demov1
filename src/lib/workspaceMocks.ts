@@ -1,4 +1,8 @@
-import type { ArticleOutline, PptDesignVersion, PptOutline, PptSlide } from '@/types/content';
+import type { ArticleOutline, OutlineRefImage, PptDesignVersion, PptOutline, PptSlide } from '@/types/content';
+
+function refImg(url: string, caption: string, cites?: number[]): OutlineRefImage {
+  return { url, caption, alt: caption, cites };
+}
 
 function slideSvg(title: string, subtitle: string, index: number, accent: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540">
@@ -101,6 +105,7 @@ export const WORKSPACE_MOCK_PPT_OUTLINE: PptOutline = {
           speakerNotes: '开场出示封面标题，明确本次沟通主题。',
           visualSuggestion: '封面大标题居中，副标题与品牌色条，右下角合规提示。',
           references: [],
+          referencedImages: [refImg('/demo-assets/Poster_Result_01.PNG', 'CKD 学术会议主视觉参考')],
         },
       ],
     },
@@ -127,27 +132,42 @@ export const WORKSPACE_MOCK_PPT_OUTLINE: PptOutline = {
         {
           id: 'mock-page-1-title',
           title: '疾病负担与未满足需求',
-          bullets: [],
+          bullets: [
+            '本章为章节标题页',
+            '本节主题：疾病负担与未满足需求',
+            '用于开启新一节，后续页面展开具体要点',
+          ],
           kind: 'section-title',
           speakerNotes: '本节开场，先点明疾病负担与未满足需求。',
+          visualSuggestion: '全幅章节标题页：大标题居中，可配一句导语与品牌色条，不要堆叠正文要点。',
           references: [],
         },
         {
           id: 'mock-page-1',
           title: '慢性肾脏病的疾病负担',
           bullets: ['患者数量持续增长', '早期症状不明显', '公众认知与筛查率仍需提升'],
+          bulletCites: [[1], [1, 2], [2]],
           kind: 'content',
           speakerNotes: '开场建立疾病教育背景，不使用绝对化或疗效承诺表述。',
           visualSuggestion: '左侧三项疾病负担要点，右侧用简易趋势图示意患者规模上升，底部保留合规脚注。',
-          references: ['Lancet Diabetes Endocrinol, 2024. SGLT2 inhibitors and kidney outcomes.', '中华肾脏病杂志, 2024. 早期筛查路径真实世界研究.'],
+          references: [
+            'Lancet Diabetes Endocrinol, 2024, 12(6): 412-414. SGLT2 inhibitors and kidney outcomes.',
+            '中华肾脏病杂志, 2024, 40(3): 18-19. 早期筛查路径真实世界研究.',
+          ],
+          referencedImages: [
+            refImg('/other/vegf-pathway.svg', '肾脏相关通路示意', [1]),
+            refImg('/demo-assets/CaseCard_Result_01.PNG', 'CKD 合并代谢风险病例卡', [2]),
+          ],
         },
         {
           id: 'mock-page-2',
           title: '当前管理中的关键挑战',
           bullets: ['高风险人群识别不足', '长期随访依从性有限', '多学科协作仍有提升空间'],
+          bulletCites: [[1], [1], []],
           kind: 'content',
           visualSuggestion: '三栏挑战卡片，每栏配小图标，避免使用绝对化疗效表述。',
-          references: ['Nephrol Dial Transplant, 2023. eGFR trajectories and HCP communication.'],
+          references: ['Nephrol Dial Transplant, 2023, 38(6): 1104-1112. eGFR trajectories and HCP communication.'],
+          referencedImages: [refImg('/image-templates/radimetrics.png', '剂量与指标管理视觉参考', [1])],
         },
       ],
     },
@@ -159,26 +179,38 @@ export const WORKSPACE_MOCK_PPT_OUTLINE: PptOutline = {
         {
           id: 'mock-page-2-title',
           title: '早期识别与规范管理',
-          bullets: [],
+          bullets: [
+            '本章为章节标题页',
+            '本节主题：早期识别与规范管理',
+            '用于开启新一节，后续页面展开具体要点',
+          ],
           kind: 'section-title',
           speakerNotes: '本节开场，先点明早期识别与规范管理。',
+          visualSuggestion: '全幅章节标题页：大标题居中，可配一句导语与品牌色条，不要堆叠正文要点。',
           references: [],
         },
         {
           id: 'mock-page-3',
           title: '识别高风险人群',
           bullets: ['关注糖尿病和高血压人群', '定期评估肾功能相关指标', '结合个体情况制定随访计划'],
+          bulletCites: [[1], [1], []],
           kind: 'content',
           visualSuggestion: '漏斗图：高风险人群 → 指标评估 → 个体化随访。',
-          references: ['JAMA Netw Open, 2025. UACR screening uptake in primary care.'],
+          references: ['JAMA Netw Open, 2025, 8(2): 3-7. UACR screening uptake in primary care.'],
+          referencedImages: [
+            refImg('/image-templates/confidence-talk.png', '随访沟通视觉参考', [1]),
+            refImg('/other/her2-signaling.svg', '风险识别机制示意'),
+          ],
         },
         {
           id: 'mock-page-4',
           title: '患者全程管理路径',
           bullets: ['风险评估', '生活方式教育', '规范诊疗与持续随访'],
+          bulletCites: [[1], [1], [1]],
           kind: 'content',
           visualSuggestion: '横向四步路径图，步骤用品牌绿色节点串联。',
-          references: ['Circulation, 2024. Integrated cardiorenal care pathways.'],
+          references: ['Circulation, 2024, 149(4): 221-229. Integrated cardiorenal care pathways.'],
+          referencedImages: [refImg('/other/platelet-antithrombotic.svg', '全程管理路径示意图', [1])],
         },
       ],
     },
@@ -190,26 +222,35 @@ export const WORKSPACE_MOCK_PPT_OUTLINE: PptOutline = {
         {
           id: 'mock-page-3-title',
           title: '沟通建议与行动计划',
-          bullets: [],
+          bullets: [
+            '本章为章节标题页',
+            '本节主题：沟通建议与行动计划',
+            '用于开启新一节，后续页面展开具体要点',
+          ],
           kind: 'section-title',
           speakerNotes: '本节开场，先点明沟通建议与行动计划。',
+          visualSuggestion: '全幅章节标题页：大标题居中，可配一句导语与品牌色条，不要堆叠正文要点。',
           references: [],
         },
         {
           id: 'mock-page-5',
           title: '面向患者的沟通要点',
           bullets: ['使用易理解的表达', '强调定期检查的重要性', '有疑问时咨询专业医生'],
+          bulletCites: [[1], [1], []],
           kind: 'content',
           visualSuggestion: '对话气泡式沟通要点，配患者教育插画，底部咨询医生提示。',
-          references: ['Am J Kidney Dis, 2022. Health literacy–adapted patient education RCT.'],
+          references: ['Am J Kidney Dis, 2022, 79(3): 355-364. Health literacy–adapted patient education RCT.'],
+          referencedImages: [refImg('/image-templates/afib-stroke.png', '患者教育海报参考', [1])],
         },
         {
           id: 'mock-page-6',
           title: '总结与下一步行动',
           bullets: ['提升风险认知', '推动早筛早诊', '建立持续管理意识'],
+          bulletCites: [[1], [1], [1]],
           kind: 'content',
           visualSuggestion: '三步行动清单 + 结束页品牌色条，避免疗效承诺。',
-          references: ['Ther Innov Regul Sci, 2024. Evidence traceability in medical communications.'],
+          references: ['Ther Innov Regul Sci, 2024, 58(1): 88-94. Evidence traceability in medical communications.'],
+          referencedImages: [refImg('/ppt-templates/eylea-namd-01.png', '总结页版式参考', [1])],
         },
       ],
     },
@@ -289,11 +330,22 @@ export const WORKSPACE_MOCK_PPT_OUTLINE_EN: PptOutline = {
           id: 'mock-page-en-1',
           title: 'The Burden of Chronic Kidney Disease',
           bullets: ['A growing patient population', 'Early symptoms may be subtle', 'Awareness and screening remain limited'],
+          bulletCites: [[1], [1], [1]],
+          visualSuggestion: 'Left: three burden points. Right: simple trend chart of patient scale.',
+          references: ['Lancet Diabetes Endocrinol, 2024, 12(6): 412-418. SGLT2 inhibitors and kidney outcomes.'],
+          referencedImages: [
+            { url: '/other/vegf-pathway.svg', caption: 'Kidney pathway schematic', alt: 'Kidney pathway schematic', cites: [1] },
+            { url: '/demo-assets/CaseCard_Result_01.PNG', caption: 'CKD case card reference', alt: 'CKD case card reference', cites: [1] },
+          ],
         },
         {
           id: 'mock-page-en-2',
           title: 'Key Challenges in Current Management',
           bullets: ['Insufficient identification of high-risk groups', 'Limited long-term adherence', 'Opportunities for multidisciplinary collaboration'],
+          bulletCites: [[1], [1], []],
+          visualSuggestion: 'Three challenge cards with small icons, avoid absolute efficacy claims.',
+          references: ['Nephrol Dial Transplant, 2023, 38(6): 1104-1112. eGFR trajectories and HCP communication.'],
+          referencedImages: [{ url: '/image-templates/radimetrics.png', caption: 'Metrics management visual', alt: 'Metrics management visual', cites: [1] }],
         },
       ],
     },
@@ -305,11 +357,21 @@ export const WORKSPACE_MOCK_PPT_OUTLINE_EN: PptOutline = {
           id: 'mock-page-en-3',
           title: 'Identifying High-Risk Populations',
           bullets: ['Focus on people with diabetes or hypertension', 'Assess kidney-related indicators regularly', 'Develop individualized follow-up plans'],
+          bulletCites: [[1], [1], []],
+          visualSuggestion: 'Funnel: high-risk groups → indicator assessment → individualized follow-up.',
+          references: ['JAMA Netw Open, 2025, 8(2): 3-7. UACR screening uptake in primary care.'],
+          referencedImages: [
+            { url: '/image-templates/confidence-talk.png', caption: 'Follow-up communication visual', alt: 'Follow-up communication visual', cites: [1] },
+          ],
         },
         {
           id: 'mock-page-en-4',
           title: 'The Integrated Patient Management Pathway',
           bullets: ['Risk assessment', 'Disease education', 'Standardized care', 'Continuous follow-up'],
+          bulletCites: [[1], [1], [1], [1]],
+          visualSuggestion: 'Four-step horizontal pathway with branded green nodes.',
+          references: ['Circulation, 2024, 149(4): 221-229. Integrated cardiorenal care pathways.'],
+          referencedImages: [{ url: '/other/platelet-antithrombotic.svg', caption: 'Care pathway schematic', alt: 'Care pathway schematic', cites: [1] }],
         },
       ],
     },
@@ -503,65 +565,88 @@ export const WORKSPACE_MOCK_ARTICLE_OUTLINE: ArticleOutline = {
       title: '患者概况',
       core:
         '女性，58 岁。2 型糖尿病病史 9 年，近期体检提示 eGFR 下降。主诉乏力、夜尿增多，对肾脏健康风险认知不足，既往未建立规律的肾功能随访。',
+      coreCites: [1],
       imageUrl: '/demo-assets/CaseCard_Result_01.PNG',
       imageAlt: 'CKD 合并代谢风险病例配图',
       tmsh:
         'T：糖尿病病程较长时，肾功能指标变化不能只当一次体检结果\nM：症状不突出不等于肾脏风险消失\nS：eGFR 下降提示需把肾脏随访纳入既有慢病管理\nH：先讲清当前指标意义，再给出下次复查动作',
-      references: ['中华肾脏病杂志, 2024. 早期筛查路径真实世界研究.'],
+      references: ['中华肾脏病杂志, 2024, 40(3): 18. 早期筛查路径真实世界研究.'],
+      referencedImages: [
+        { url: '/other/vegf-pathway.svg', caption: '肾功能指标解读示意', alt: '肾功能指标解读示意', cites: [1] },
+        { url: '/image-templates/radimetrics.png', caption: '指标随访视觉参考', alt: '指标随访视觉参考', cites: [1] },
+      ],
     },
     {
       id: 'article-ch-2',
       title: '关键指标',
       core:
         '年龄 / 性别：58 岁，女性。糖尿病病程 9 年。eGFR 较前下降，提示需关注慢性肾脏病进展风险。代谢风险因素并存，需结合血糖、血压与体重综合评估。',
+      coreCites: [1],
       imageUrl: '/other/vegf-pathway.svg',
       imageAlt: '关键指标示意',
       tmsh:
         'T：把 eGFR、UACR 与代谢指标放在同一张随访清单里\nM：肾脏保护不能只盯单一数值\nS：血糖、血压、体重都会影响肾脏预后\nH：列出需要持续记录的检查结果',
-      references: ['Nephrol Dial Transplant, 2023. eGFR trajectories and HCP communication.'],
+      references: ['Nephrol Dial Transplant, 2023, 38(6): 1106. eGFR trajectories and HCP communication.'],
+      referencedImages: [
+        { url: '/other/her2-signaling.svg', caption: '多指标综合评估示意', alt: '多指标综合评估示意', cites: [1] },
+      ],
     },
     {
       id: 'article-ch-3',
       title: '临床解读',
       core:
         '该患者处于糖尿病长期管理阶段，近期出现肾功能指标变化，提示不能仅以“症状不明显”判断风险高低。乏力与夜尿增多可能与血糖控制、肾功能变化或生活方式有关，需要把肾脏指标纳入既有慢病随访。',
+      coreCites: [1],
       imageUrl: '/other/her2-signaling.svg',
       imageAlt: '临床解读机制示意',
       tmsh:
         'T：早期肾脏损伤信号应被识别，而不是等症状明显再处理\nM：孤立体检结果要转成可追踪的临床信号\nS：关注 eGFR 与 UACR 的变化趋势\nH：说明为何需要把肾脏指标纳入常规随访',
-      references: ['Lancet Diabetes Endocrinol, 2024. SGLT2 inhibitors and kidney outcomes.'],
+      references: ['Lancet Diabetes Endocrinol, 2024, 12(6): 415. SGLT2 inhibitors and kidney outcomes.'],
+      referencedImages: [
+        { url: '/other/retina-cnv.svg', caption: '早期损伤信号示意', alt: '早期损伤信号示意', cites: [1] },
+        { url: '/image-templates/confidence-talk.png', caption: '临床沟通视觉参考', alt: '临床沟通视觉参考', cites: [1] },
+      ],
     },
     {
       id: 'article-ch-4',
       title: '管理思路',
       core:
         '建立肾功能指标的长期监测计划；围绕血糖、血压、体重与生活方式综合管理；向患者说明“症状稳定不等于风险消失”；指标继续异常或出现水肿、尿液明显改变时及时复诊。',
+      coreCites: [1],
       imageUrl: '/image-templates/confidence-talk.png',
       imageAlt: '随访管理沟通示意',
       tmsh:
         'T：管理目标是可执行的随访，而不是一次性宣教\nM：综合管理优于单指标干预\nS：复查节奏、生活方式与复诊指征要一起讲清\nH：给出下次复查时间和预警信号',
-      references: ['KDIGO 2024. Clinical Practice Guideline for the Evaluation and Management of Chronic Kidney Disease.'],
+      references: ['KDIGO 2024 CKD Guideline, pp. 45-47. Clinical Practice Guideline for the Evaluation and Management of Chronic Kidney Disease.'],
+      referencedImages: [
+        { url: '/other/platelet-antithrombotic.svg', caption: '综合管理路径示意', alt: '综合管理路径示意', cites: [1] },
+      ],
     },
     {
       id: 'article-ch-5',
       title: '专家点评',
       core:
         '张三教授：把“体检发现 eGFR 下降”转成需要持续追踪的临床信号。李四副主任医师：血糖管理与肾脏保护不能分开讨论，门诊沟通应把复查节奏和复诊指征讲清楚。',
+      coreCites: [1, 2],
       imageUrl: '/demo-assets/Poster_Result_01.PNG',
       imageAlt: '专家点评配图',
       tmsh:
         'T：专家视角强调早期随访窗口\nM：代谢管理与肾脏保护必须同屏出现\nS：即使症状不突出，也应尽早纳入 eGFR、UACR 随访\nH：帮助患者理解长期随访的意义',
       references: [
-        '中华肾脏病杂志, 2024. 早期筛查路径真实世界研究.',
-        'KDIGO 2024. Clinical Practice Guideline for the Evaluation and Management of Chronic Kidney Disease.',
+        '中华肾脏病杂志, 2024, 40(3): 21. 早期筛查路径真实世界研究.',
+        'KDIGO 2024 CKD Guideline, pp. 52-53. Clinical Practice Guideline for the Evaluation and Management of Chronic Kidney Disease.',
+      ],
+      referencedImages: [
+        { url: '/image-templates/afib-stroke.png', caption: '专家点评配图参考', alt: '专家点评配图参考', cites: [1] },
+        { url: '/official/bayer-beijing-campus.png', caption: '学术交流场景参考', alt: '学术交流场景参考', cites: [2] },
       ],
     },
   ],
   references: [
-    'Lancet Diabetes Endocrinol, 2024. SGLT2 inhibitors and kidney outcomes.',
-    '中华肾脏病杂志, 2024. 早期筛查路径真实世界研究.',
-    'Nephrol Dial Transplant, 2023. eGFR trajectories and HCP communication.',
-    'KDIGO 2024. Clinical Practice Guideline for the Evaluation and Management of Chronic Kidney Disease.',
+    'Lancet Diabetes Endocrinol, 2024, 12(6): 412-418. SGLT2 inhibitors and kidney outcomes.',
+    '中华肾脏病杂志, 2024, 40(3): 18-24. 早期筛查路径真实世界研究.',
+    'Nephrol Dial Transplant, 2023, 38(6): 1104-1112. eGFR trajectories and HCP communication.',
+    'KDIGO 2024 CKD Guideline, pp. 45-52. Clinical Practice Guideline for the Evaluation and Management of Chronic Kidney Disease.',
   ],
 };
 

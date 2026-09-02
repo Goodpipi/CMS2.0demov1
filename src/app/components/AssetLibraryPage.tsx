@@ -421,7 +421,6 @@ export function AssetLibraryPage({ brand, onBrandChange, onNotify, onBack }: Ass
               >
                 <div className="asset-library-card-preview">
                   <TemplatePreview asset={asset} />
-                  <span className="asset-library-card-preview-hint">点击预览</span>
                 </div>
                 <div className="px-1 pb-1 pt-3">
                   <div className="mb-1.5 flex items-center justify-between gap-2">

@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronDown, Download, ExternalLink, Plus, Search, Star, Upload, X } from 'lucide-react';
+import { Search, Upload, X } from 'lucide-react';
 import { readFileForPreview } from '@/lib/materialContent';
 import {
   inferLiteratureScope,
-  literatureScopeLabel,
   LITERATURE_SCOPE_OPTIONS,
   searchLiteratureByScopes,
   type LiteratureArticle,
@@ -12,11 +11,16 @@ import {
 import { isMaterialUsable } from '@/lib/libraryUtils';
 import type { LibraryItem } from '@/types/library';
 import type { PickedMaterial } from '@/app/components/MaterialPickerModal';
-import { cn } from '@/app/components/ui/utils';
+import {
+  KnowledgeResultCard,
+  LiteraturePreviewModal,
+  LiteratureResultCard,
+  LiteratureThirdPartyHint,
+} from '@/app/components/literatureUi';
 
 type SearchHit =
   | { key: string; kind: 'article'; article: LiteratureArticle }
-  | { key: string; kind: 'knowledge'; item: LibraryItem; premium: boolean };
+  | { key: string; kind: 'knowledge'; item: LibraryItem };
 
 interface LiteraturePickerModalProps {
   open: boolean;
@@ -30,14 +34,9 @@ interface LiteraturePickerModalProps {
 }
 
 const ALL_SCOPES = LITERATURE_SCOPE_OPTIONS.map((option) => option.id);
-const LITERATURE_PAGE_SIZE = 30;
 
 function knowledgeScope(item: LibraryItem): LiteratureScope {
   return item.cms ? 'cms' : 'personal';
-}
-
-function isKnowledgePremium(item: LibraryItem): boolean {
-  return item.cms && /approved|优质/i.test(`${item.title} ${item.meta}`);
 }
 
 function matchesQuery(text: string, query: string): boolean {
@@ -56,59 +55,31 @@ export function LiteraturePickerModal({
   onUpload,
 }: LiteraturePickerModalProps) {
   const [query, setQuery] = useState('');
-  const [scopes, setScopes] = useState<LiteratureScope[]>(ALL_SCOPES);
-  const [scopeOpen, setScopeOpen] = useState(false);
   const [appliedQuery, setAppliedQuery] = useState('');
-  const [appliedScopes, setAppliedScopes] = useState<LiteratureScope[]>(ALL_SCOPES);
   const [searching, setSearching] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(LITERATURE_PAGE_SIZE);
+  const [preview, setPreview] = useState<SearchHit | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const scopeRef = useRef<HTMLDivElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     setQuery('');
-    setScopes(ALL_SCOPES);
     setAppliedQuery('');
-    setAppliedScopes(ALL_SCOPES);
-    setScopeOpen(false);
-    setVisibleCount(LITERATURE_PAGE_SIZE);
+    setPreview(null);
   }, [open]);
 
-  useEffect(() => {
-    setVisibleCount(LITERATURE_PAGE_SIZE);
-    listRef.current?.scrollTo({ top: 0 });
-  }, [appliedQuery, appliedScopes]);
-
-  useEffect(() => {
-    if (!scopeOpen) return;
-    const onDoc = (event: MouseEvent) => {
-      if (scopeRef.current && !scopeRef.current.contains(event.target as Node)) {
-        setScopeOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [scopeOpen]);
-
-  const hasSearched = Boolean(appliedQuery.trim());
   const results = useMemo(() => {
     const q = appliedQuery.trim().toLowerCase();
-    if (!q) return [];
-    const articles = searchLiteratureByScopes(appliedQuery, appliedScopes);
+    const articles = searchLiteratureByScopes(appliedQuery, ALL_SCOPES);
     const articleTitles = new Set(articles.map((item) => item.title));
     const knowledgeHits: SearchHit[] = knowledgeItems
       .filter((item) => item.cat === uploadCat && isMaterialUsable(item))
       .filter((item) => !(item.referenced ?? item.def))
-      .filter((item) => appliedScopes.includes(knowledgeScope(item)))
       .filter((item) => matchesQuery(`${item.title} ${item.meta} ${item.contentText ?? ''}`, q))
       .filter((item) => !articleTitles.has(item.title))
       .map((item) => ({
         key: `knowledge-${item.id}`,
         kind: 'knowledge' as const,
         item,
-        premium: isKnowledgePremium(item),
       }));
 
     const articleHits: SearchHit[] = articles.map((article) => ({
@@ -117,53 +88,44 @@ export function LiteraturePickerModal({
       article,
     }));
 
-    const merged = [...articleHits, ...knowledgeHits];
-    const scopeRank = (hit: SearchHit) => {
-      const scope = hit.kind === 'article' ? inferLiteratureScope(hit.article) : knowledgeScope(hit.item);
-      const premium =
-        hit.kind === 'article' ? Boolean(hit.article.premium && scope === 'cms') : hit.premium;
-      if (premium) return 0;
-      if (scope === 'cms') return 1;
-      if (scope === 'personal') return 2;
-      return 3;
-    };
-    return merged.sort((a, b) => scopeRank(a) - scopeRank(b));
-  }, [appliedQuery, appliedScopes, knowledgeItems, uploadCat]);
-  const visibleResults = results.slice(0, visibleCount);
-  const hasMore = visibleCount < results.length;
+    return [...articleHits, ...knowledgeHits];
+  }, [appliedQuery, knowledgeItems, uploadCat]);
+
+  const columns = useMemo(
+    () =>
+      LITERATURE_SCOPE_OPTIONS.map((option) => ({
+        ...option,
+        hits: results.filter((hit) =>
+          hit.kind === 'article'
+            ? inferLiteratureScope(hit.article) === option.id
+            : knowledgeScope(hit.item) === option.id
+        ),
+      })),
+    [results]
+  );
 
   if (!open) return null;
 
   const runSearch = () => {
     const nextQuery = query.trim();
-    if (!nextQuery) {
-      setAppliedQuery('');
-      return;
-    }
     setSearching(true);
-    setScopeOpen(false);
     window.setTimeout(() => {
       setAppliedQuery(nextQuery);
-      setAppliedScopes(scopes.length ? scopes : []);
       setSearching(false);
     }, 220);
-  };
-
-  const toggleScope = (id: LiteratureScope) => {
-    setScopes((prev) => (prev.includes(id) ? prev.filter((scope) => scope !== id) : [...prev, id]));
   };
 
   const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    const preview = await readFileForPreview(file);
+    const previewFile = await readFileForPreview(file);
     onUpload({
       title: file.name,
       meta: `本地上传 · ${(file.size / 1024).toFixed(0)}KB · 已解析`,
       cat: uploadCat,
       cms: false,
       fileName: file.name,
-      ...preview,
+      ...previewFile,
     });
     event.target.value = '';
     onClose();
@@ -172,6 +134,14 @@ export function LiteraturePickerModal({
   const addedKnowledgeIds = new Set(
     knowledgeItems.filter((item) => item.referenced ?? item.def).map((item) => item.id)
   );
+
+  const previewArticle = preview?.kind === 'article' ? preview.article : null;
+  const previewItem = preview?.kind === 'knowledge' ? preview.item : null;
+  const previewAdded = previewArticle
+    ? addedLiteratureIds.includes(previewArticle.id)
+    : previewItem
+      ? addedKnowledgeIds.has(previewItem.id)
+      : false;
 
   return (
     <div
@@ -191,7 +161,7 @@ export function LiteraturePickerModal({
         <div className="literature-picker-head">
           <div>
             <h3 id="literature-picker-title">添加材料</h3>
-            <p>从 CMS、个人知识收藏与外部知识库检索医学文献</p>
+            <LiteratureThirdPartyHint />
           </div>
           <button type="button" className="literature-picker-close" onClick={onClose} aria-label="关闭">
             <X className="h-4 w-4" strokeWidth={2.2} />
@@ -210,91 +180,56 @@ export function LiteraturePickerModal({
               aria-label="文献关键词"
             />
           </div>
-
-          <div className="literature-scope-wrap" ref={scopeRef}>
-            <button
-              type="button"
-              className="literature-scope-trigger"
-              aria-expanded={scopeOpen}
-              aria-haspopup="listbox"
-              onClick={() => setScopeOpen((openNow) => !openNow)}
-            >
-              <span>{literatureScopeLabel(scopes)}</span>
-              {scopes.length > 0 && <em>{scopes.length}</em>}
-              <ChevronDown className={cn('h-3.5 w-3.5', scopeOpen && 'rotate-180')} />
-            </button>
-            {scopeOpen && (
-              <div className="literature-scope-menu" role="listbox" aria-multiselectable>
-                {LITERATURE_SCOPE_OPTIONS.map((option) => {
-                  const checked = scopes.includes(option.id);
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      role="option"
-                      aria-selected={checked}
-                      className={cn('literature-scope-option', checked && 'is-checked')}
-                      onClick={() => toggleScope(option.id)}
-                    >
-                      <span className="literature-scope-check">{checked ? <Check className="h-3 w-3" /> : null}</span>
-                      {option.label}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
           <button type="button" className="btn primary literature-search-btn" disabled={searching} onClick={runSearch}>
             {searching ? '检索中…' : '确认搜索'}
           </button>
         </div>
 
-        <div className="literature-picker-list" ref={listRef}>
+        <div className="literature-picker-columns" aria-busy={searching}>
           {searching ? (
-            <div className="literature-picker-empty">正在检索文献…</div>
-          ) : !hasSearched ? (
-            <div className="literature-picker-empty">请输入关键词后点击「确认搜索」，例如「医学」。</div>
-          ) : results.length === 0 ? (
-            <div className="literature-picker-empty">当前范围暂无匹配文献，可调整关键词或搜索范围。</div>
+            <div className="literature-picker-empty literature-picker-empty-span">正在检索文献…</div>
           ) : (
-            <>
-              {visibleResults.map((hit) =>
-                hit.kind === 'article' ? (
-                  <LiteratureResultCard
-                    key={hit.key}
-                    article={hit.article}
-                    added={addedLiteratureIds.includes(hit.article.id)}
-                    onAdd={() => onAddLiterature(hit.article)}
-                  />
-                ) : (
-                  <KnowledgeResultCard
-                    key={hit.key}
-                    item={hit.item}
-                    premium={hit.premium}
-                    added={addedKnowledgeIds.has(hit.item.id)}
-                    onAdd={() => onAddKnowledge(hit.item)}
-                  />
-                )
-              )}
-              {hasMore && (
-                <button
-                  type="button"
-                  className="btn soft literature-more-btn"
-                  onClick={() => setVisibleCount((count) => count + LITERATURE_PAGE_SIZE)}
-                >
-                  查看更多文献
-                </button>
-              )}
-            </>
+            columns.map((column) => (
+              <section key={column.id} className="literature-picker-column">
+                <header className="literature-picker-column-head">
+                  <h4>{column.label}</h4>
+                  <em>{column.hits.length}</em>
+                </header>
+                <div className="literature-picker-column-list">
+                  {column.hits.length === 0 ? (
+                    <div className="literature-picker-empty">该来源暂无匹配文献</div>
+                  ) : (
+                    column.hits.map((hit) =>
+                      hit.kind === 'article' ? (
+                        <LiteratureResultCard
+                          key={hit.key}
+                          article={hit.article}
+                          added={addedLiteratureIds.includes(hit.article.id)}
+                          compact
+                          onAdd={() => onAddLiterature(hit.article)}
+                          onPreview={() => setPreview(hit)}
+                        />
+                      ) : (
+                        <KnowledgeResultCard
+                          key={hit.key}
+                          item={hit.item}
+                          added={addedKnowledgeIds.has(hit.item.id)}
+                          compact
+                          onAdd={() => onAddKnowledge(hit.item)}
+                          onPreview={() => setPreview(hit)}
+                        />
+                      )
+                    )
+                  )}
+                </div>
+              </section>
+            ))
           )}
         </div>
 
         <div className="literature-picker-foot">
           <span>
-            {hasSearched
-              ? `已展示 ${visibleResults.length} / 共 ${results.length} 条结果 · 范围：${literatureScopeLabel(appliedScopes)}`
-              : '输入关键词后确认搜索'}
+            {`共 ${results.length} 条 · ${columns.map((column) => `${column.label} ${column.hits.length}`).join(' · ')}`}
           </span>
           <button type="button" className="btn soft literature-upload-btn" onClick={() => fileRef.current?.click()}>
             <Upload className="h-3.5 w-3.5" strokeWidth={2.2} />
@@ -310,129 +245,22 @@ export function LiteraturePickerModal({
           onChange={handleUpload}
         />
       </div>
+
+      {(previewArticle || previewItem) && (
+        <LiteraturePreviewModal
+          article={previewArticle}
+          item={previewItem}
+          added={previewAdded}
+          onAdd={
+            previewArticle
+              ? () => onAddLiterature(previewArticle)
+              : previewItem
+                ? () => onAddKnowledge(previewItem)
+                : undefined
+          }
+          onClose={() => setPreview(null)}
+        />
+      )}
     </div>
-  );
-}
-
-function LiteratureResultCard({
-  article,
-  added,
-  onAdd,
-}: {
-  article: LiteratureArticle;
-  added: boolean;
-  onAdd: () => void;
-}) {
-  const scope = inferLiteratureScope(article);
-  const premium = Boolean(article.premium && scope === 'cms');
-  const sourceLabel = scope === 'personal' ? '个人知识收藏' : article.source;
-  const meta = `${article.journalAbbr || article.publisher} · ${article.year}`;
-  const canAdd = article.access === 'free';
-  const hasOutboundLink = Boolean(article.sourceUrl) && !article.sourceUrl.startsWith('#');
-
-  return (
-    <article className={cn('literature-card literature-picker-card', premium && 'is-premium')}>
-      <div className="literature-card-top">
-        <div className="literature-card-meta">
-          <span className={cn('literature-source-tag', scope === 'external' && 'is-external')}>{sourceLabel}</span>
-          {premium && (
-            <span className="literature-premium-tag">
-              <Star className="h-3 w-3" strokeWidth={2.4} />
-              优质素材
-            </span>
-          )}
-          <span className="literature-journal">{meta}</span>
-        </div>
-        <div className="literature-actions">
-          {canAdd ? (
-            <>
-              {(hasOutboundLink || scope === 'cms') && (
-              <a className="btn soft literature-link-btn" href={article.sourceUrl} target="_blank" rel="noreferrer">
-                <ExternalLink className="h-3.5 w-3.5" strokeWidth={2.2} />
-                查看原文链接
-              </a>
-              )}
-              <button
-                type="button"
-                className={cn('btn literature-add-btn', added ? 'soft' : 'green')}
-                disabled={added}
-                onClick={onAdd}
-              >
-                {added ? (
-                  <>
-                    <Check className="h-3.5 w-3.5" strokeWidth={2.4} />
-                    已添加
-                  </>
-                ) : (
-                  <>
-                    <Plus className="h-3.5 w-3.5" strokeWidth={2.4} />
-                    添加到当前任务
-                  </>
-                )}
-              </button>
-            </>
-          ) : (
-            <a className="btn soft literature-link-btn" href={article.sourceUrl} target="_blank" rel="noreferrer">
-              <Download className="h-3.5 w-3.5" strokeWidth={2.2} />
-              前往原链接下载
-            </a>
-          )}
-        </div>
-      </div>
-      <h5>{article.title}</h5>
-      <p className="literature-abstract">{article.abstract}</p>
-    </article>
-  );
-}
-
-function KnowledgeResultCard({
-  item,
-  premium,
-  added,
-  onAdd,
-}: {
-  item: LibraryItem;
-  premium: boolean;
-  added: boolean;
-  onAdd: () => void;
-}) {
-  const sourceLabel = item.cms ? 'CMS' : '个人知识收藏';
-  return (
-    <article className={cn('literature-card literature-picker-card', premium && 'is-premium')}>
-      <div className="literature-card-top">
-        <div className="literature-card-meta">
-          <span className="literature-source-tag">{sourceLabel}</span>
-          {premium && (
-            <span className="literature-premium-tag">
-              <Star className="h-3 w-3" strokeWidth={2.4} />
-              优质素材
-            </span>
-          )}
-          <span className="literature-journal">{item.meta}</span>
-        </div>
-        <div className="literature-actions">
-          <button
-            type="button"
-            className={cn('btn literature-add-btn', added ? 'soft' : 'green')}
-            disabled={added}
-            onClick={onAdd}
-          >
-            {added ? (
-              <>
-                <Check className="h-3.5 w-3.5" strokeWidth={2.4} />
-                已添加
-              </>
-            ) : (
-              <>
-                <Plus className="h-3.5 w-3.5" strokeWidth={2.4} />
-                添加到当前任务
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-      <h5>{item.title}</h5>
-      <p className="literature-abstract">{item.contentText || item.meta}</p>
-    </article>
   );
 }

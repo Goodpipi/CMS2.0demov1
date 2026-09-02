@@ -51,8 +51,10 @@ import {
 import { useSpeechRecognition } from '@/lib/useSpeechRecognition';
 import {
   searchLiteratureMock,
+  buildLiteratureFullText,
   type LiteratureArticle,
 } from '@/lib/literatureMocks';
+import { citedLibraryItemIds, resolveOutlineCitations } from '@/lib/literatureCite';
 import {
   MOCK_KV_VERSIONS,
   MOCK_MOBILE_VERSIONS,
@@ -118,10 +120,18 @@ import {
 import { ImageTemplatePickerModal } from '@/app/components/ImageTemplatePickerModal';
 import { MaterialPickerModal, type PickedMaterial } from '@/app/components/MaterialPickerModal';
 import { LiteraturePickerModal } from '@/app/components/LiteraturePickerModal';
+import {
+  LiteraturePreviewModal,
+  LiteratureResultCard,
+  LiteratureThirdPartyHint,
+} from '@/app/components/literatureUi';
 import { ContentFlowNav } from '@/app/components/ContentFlowNav';
 import {
+  flowEntryFromSource,
   flowEntryFromTab,
   inferFlowEntryFromTabs,
+  nextLockedFlowEntry,
+  omitsBriefLiterature,
   type ContentFlowEntry,
   type ContentFlowProgress,
   type ContentFlowStep,
@@ -137,6 +147,7 @@ import { groupImagesByCopy } from '@/lib/imageUtils';
 import { buildPreviewFieldsFromTitle, readFileForPreview } from '@/lib/materialContent';
 import {
   normalizeOutline,
+  outlinePageCount,
   parseAudience,
   parseScenario,
   slideToPreviewUrl,
@@ -239,7 +250,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Database,
-  ExternalLink,
   FolderOpen,
   Image as ImageIcon,
   ImagePlus,
@@ -302,7 +312,7 @@ import type {
   TabKey,
 } from '@/types/session';
 
-const cats = ['热点洞察', '合规手册', '参考知识', '品牌策略', 'Brief', '模板', '品牌元素', '视觉参考', '会议信息', '目标解读材料', '其他参考知识'];
+const cats = ['热点洞察', '合规手册', '参考知识', '参考文献', '品牌策略', 'Brief', '模板', '品牌元素', '视觉参考', '会议信息', '目标解读材料', '其他参考知识'];
 const HOME_TASK_PAGE_SIZE = 7;
 
 const HOME_WORKFLOW_ACTIONS: {
@@ -890,11 +900,8 @@ export default function App() {
     setSelectedProduct(w.selectedProduct ?? null);
     setFlowEntry(
       w.flowEntry ??
-        (w.entryContext?.source === 'poster'
-          ? 'conferencePoster'
-          : w.entryContext?.source === 'promo'
-            ? 'script'
-            : inferFlowEntryFromTabs(normalizedTabs))
+        flowEntryFromSource(w.entryContext?.source) ??
+        inferFlowEntryFromTabs(normalizedTabs)
     );
     setEntryContext(w.entryContext);
     setPptWizard(w.pptWizard);
@@ -1632,9 +1639,7 @@ export default function App() {
     setCopyRevisionBase('');
     setWorkspacePreviewMaterial(null);
     setSelectedProduct(null);
-    setFlowEntry(
-      entry?.source === 'poster' ? 'conferencePoster' : entry?.source === 'promo' ? 'script' : null
-    );
+    setFlowEntry(flowEntryFromSource(entry?.source));
     pendingTopicInsightNoteRef.current = '';
     topicInsightUploadPendingRef.current = false;
 
@@ -1692,7 +1697,7 @@ export default function App() {
       id: now,
       cat: '生成图片',
       title,
-      meta: '本地 Mock 数据 · 可预览版本并修改',
+      meta: '本地 Mock 数据',
       cms: false,
       def: false,
       addedAt: now,
@@ -1782,7 +1787,7 @@ export default function App() {
         : '已根据检索意图完成文献检索';
     addMsg(
       'ai',
-      `${basedOnAttachments}，来源覆盖 <strong>${sources}</strong>，共推荐 <strong>${results.length}</strong> 篇文献。请在中间「推荐文献」中查看刊物、年份、标题、摘要与来源，并将合适文献添加到当前任务。`,
+      `${basedOnAttachments}，来源覆盖 <strong>${sources}</strong>，共推荐 <strong>${results.length}</strong> 篇文献。`,
       '文献检索'
     );
   };
@@ -1795,7 +1800,7 @@ export default function App() {
       id: GENERATED_BRIEF_ID,
       cat: 'Brief',
       title: '任务 Brief',
-      meta: '由洞察或提示词生成 · 可编辑',
+      meta: '由洞察或提示词生成',
       cms: false,
       def: false,
       referenced: true,
@@ -1848,7 +1853,7 @@ export default function App() {
         : '已根据你的生成请求';
     addMsg(
       'ai',
-      `${basedOnAttachments}生成话题洞察报告，共 6 个心内科话题方向。请在中间「话题洞察」中查看，并可一键复制全文。`,
+      `${basedOnAttachments}生成话题洞察报告，共 6 个心内科话题方向。`,
       '话题洞察'
     );
   };
@@ -1859,7 +1864,9 @@ export default function App() {
     const cat =
       pickerCat === '视觉参考' || pickerCat === '目标解读材料' || pickerCat === '其他参考知识'
         ? pickerCat
-        : '参考知识';
+        : entryContext?.source === 'promo' || pickerCat === '参考文献'
+          ? '参考文献'
+          : '参考知识';
     const item: LibraryItem = {
       id: now,
       cat,
@@ -1870,14 +1877,8 @@ export default function App() {
       referenced: true,
       addedAt: now,
       contentType: 'text',
-      contentText: [
-        article.title,
-        `${article.publisher} (${article.year})`,
-        '',
-        article.abstract,
-        '',
-        `Source: ${article.source} · ${article.sourceUrl}`,
-      ].join('\n'),
+      contentText: buildLiteratureFullText(article),
+      literatureId: article.id,
     };
     setLibrary((prev) => [item, ...prev]);
     setAddedLiteratureIds((prev) => [...prev, article.id]);
@@ -1914,11 +1915,11 @@ export default function App() {
     });
     const html = opts?.switched
       ? named
-        ? `已切换为「${tpl?.name}」模板并重新生成长图。可继续点选元素、手动调整，或再次切换模板。`
-        : '已切换为空白模板并重新生成长图。可继续点选元素、手动调整，或再次切换模板。'
+        ? `已切换为「${tpl?.name}」模板并重新生成长图。`
+        : '已切换为空白模板并重新生成长图。'
       : named
-        ? `长图已按「${tpl?.name}」模板生成。可在中间区域点选文字或图片元素，也可点击「手动调整」进入页面编辑；下方支持导出为图片或 PPTX，也可切换模板。`
-        : '长图已按大纲结构生成。可在中间区域点选文字或图片元素，也可点击「手动调整」进入页面编辑；下方支持导出为图片或 PPTX，也可切换模板。';
+        ? `长图已按「${tpl?.name}」模板生成。`
+        : '长图已按大纲结构生成。';
     setMessages((prev) => [
       ...prev,
       {
@@ -1927,12 +1928,22 @@ export default function App() {
         model: '本地 Mock',
         imageUrl,
         imageTitle,
-        imageActionLabel: '手动调整',
+        imageActionLabel: '手动编辑',
       },
     ]);
   };
 
   const runWorkspaceMockCommand = (text: string): boolean => {
+    if (
+      omitsBriefLiterature(flowEntry, entryContext?.source) &&
+      (/检索文献|搜索文献|文献检索|search\s*literature|find\s*papers/i.test(text) ||
+        isGenerateBriefIntent(text) ||
+        text.trim() === '查看 Brief')
+    ) {
+      toast('病例内容与学术证据解读不包含 Brief / 文献步骤');
+      return true;
+    }
+
     if (/检索文献|搜索文献|文献检索|search\s*literature|find\s*papers/i.test(text)) {
       runLiteratureSearch(text);
       return true;
@@ -1972,8 +1983,8 @@ export default function App() {
       addMsg(
         'ai',
         attachments.length > 0
-          ? `已结合当前 ${attachments.length} 个附件生成话术总结。可在中间直接修改纯文字，并导出为 DOCX；也可提交团队意见收集或 Veeva 审批。`
-          : '话术总结已生成。可在中间直接修改纯文字，并导出为 DOCX；也可提交团队意见收集或 Veeva 审批。',
+          ? `已结合当前 ${attachments.length} 个附件生成话术总结。`
+          : '话术总结已生成。',
         '本地 Mock',
         ['提交当前话术到Veeva Vault']
       );
@@ -1985,8 +1996,8 @@ export default function App() {
       publishChatImage({
         html:
           attachments.length > 0
-            ? `已结合当前 ${attachments.length} 个附件生成主 KV。点击图片或下方「修改主KV」，可在中间区域用画笔圈定修改，并导出为图片。`
-            : '主 KV 已生成。点击图片或下方「修改主KV」，可在中间区域用画笔圈定修改，并导出为图片。',
+            ? `已结合当前 ${attachments.length} 个附件生成主 KV。`
+            : '主 KV 已生成。',
         imageUrl: MOCK_KV_VERSIONS.current.dataUrl,
         imageTitle: MOCK_KV_VERSIONS.current.title,
         assetKey: 'kv',
@@ -2003,7 +2014,7 @@ export default function App() {
       }
       const asset = latestVisualAsset('kv');
       openMockImageInPreview(asset.url, asset.title, 'kv');
-      addMsg('ai', '已在中间区域打开主 KV，可用画笔圈定需要修改的区域，或导出为图片。', '本地 Mock');
+      addMsg('ai', '已在中间区域打开主 KV。', '本地 Mock');
       return true;
     }
 
@@ -2012,13 +2023,12 @@ export default function App() {
       seedVisualTasks('poster');
       publishChatImage({
         html: hasKeyVisual
-          ? '已根据主 KV 延展生成会议海报。点击图片或「修改海报」在中间区域点选元素、手动调整；支持导出图片 / PPTX / PSD，也可导入本地版本。'
-          : '会议海报已生成。点击图片或「修改海报」在中间区域点选元素、手动调整；支持导出图片 / PPTX / PSD，也可导入本地版本。',
+          ? '已根据主 KV 延展生成会议海报。'
+          : '会议海报已生成。',
         imageUrl: MOCK_POSTER_VERSIONS.current.dataUrl,
         imageTitle: MOCK_POSTER_VERSIONS.current.title,
         assetKey: 'poster',
         actionLabel: '修改海报',
-        quick: ['一键手机'],
       });
       return true;
     }
@@ -2030,7 +2040,7 @@ export default function App() {
       }
       const asset = latestVisualAsset('poster');
       openMockImageInPreview(asset.url, asset.title, 'poster');
-      addMsg('ai', '已在中间区域打开会议海报。可点选元素或点击「手动调整」；下方支持导出与导入本地版本。', '本地 Mock');
+      addMsg('ai', '已在中间区域打开会议海报。', '本地 Mock');
       return true;
     }
 
@@ -2041,7 +2051,7 @@ export default function App() {
       }
       seedVisualTasks('mobile');
       publishChatImage({
-        html: '已将会议海报适配为手机竖版。可在中间区域点选元素、手动调整，并导出为图片 / PPTX / PSD。',
+        html: '已将会议海报适配为手机竖版。',
         imageUrl: MOCK_MOBILE_VERSIONS.current.dataUrl,
         imageTitle: MOCK_MOBILE_VERSIONS.current.title,
         assetKey: 'mobile',
@@ -2119,7 +2129,7 @@ export default function App() {
       setWorkspacePreviewMaterial((current) =>
         current?.cat === '生成图片' && current.contentType === 'image' ? current : null
       );
-      setPptOutline(WORKSPACE_MOCK_PPT_OUTLINE);
+      setPptOutline(resolveOutlineCitations(WORKSPACE_MOCK_PPT_OUTLINE, library));
       setPptWizard(null);
       setState((prev) => ({
         ...prev,
@@ -2129,7 +2139,7 @@ export default function App() {
       }));
       addMsg(
         'ai',
-        `PPT 大纲已生成，共 ${WORKSPACE_MOCK_PPT_OUTLINE.chapters.length} 节。已在中间区域以卡片展示，可拖拽调整顺序，或点击「修改本页」让 AI 调整该页。`,
+        `PPT 大纲已生成，共 ${outlinePageCount(WORKSPACE_MOCK_PPT_OUTLINE)} 页。`,
         '本地 Mock'
       );
       return true;
@@ -2139,7 +2149,7 @@ export default function App() {
       setWorkspacePreviewMaterial((current) =>
         current?.cat === '生成图片' && current.contentType === 'image' ? current : null
       );
-      setPptOutline(WORKSPACE_MOCK_PPT_OUTLINE);
+      setPptOutline(resolveOutlineCitations(WORKSPACE_MOCK_PPT_OUTLINE, library));
       setPptVersions([WORKSPACE_MOCK_PPT]);
       setSelectedPptVersionId(WORKSPACE_MOCK_PPT.id);
       setPptResult({
@@ -2156,7 +2166,7 @@ export default function App() {
       }));
       addMsg(
         'ai',
-        `PPT 已生成，共 ${WORKSPACE_MOCK_PPT.slides.length} 页。已在中间区域展示，可逐页预览、编辑或导出。`,
+        `PPT 已生成，共 ${WORKSPACE_MOCK_PPT.slides.length} 页。`,
         '本地 Mock'
       );
       return true;
@@ -2179,7 +2189,7 @@ export default function App() {
       }));
       addMsg(
         'ai',
-        `长图大纲已生成，共 ${WORKSPACE_MOCK_LONG_IMAGE_OUTLINE.chapters.length} 个章节。已在中间区域以卡片展示，可拖拽调整顺序，或点击「修改本页」让 AI 调整该章；请在下方选择图片模板后再生成长图。`,
+        `长图大纲已生成，共 ${WORKSPACE_MOCK_LONG_IMAGE_OUTLINE.chapters.length} 个章节。`,
         '本地 Mock'
       );
       return true;
@@ -2199,7 +2209,7 @@ export default function App() {
       }));
       addMsg(
         'ai',
-        `推文大纲已生成，共 ${WORKSPACE_MOCK_ARTICLE_OUTLINE.chapters.length} 个章节。已在中间区域以卡片展示，可拖拽调整顺序，或点击「修改本页」让 AI 调整该章。`,
+        `推文大纲已生成，共 ${WORKSPACE_MOCK_ARTICLE_OUTLINE.chapters.length} 个章节。`,
         '本地 Mock'
       );
       return true;
@@ -2219,7 +2229,7 @@ export default function App() {
       }));
       addMsg(
         'ai',
-        '病例解读已生成。中间可直接修改文字；配图支持点击替换，也可拖拽调整顺序。',
+        '病例解读已生成。',
         '本地 Mock'
       );
       return true;
@@ -2235,7 +2245,7 @@ export default function App() {
         ...prev,
         {
           role: 'ai',
-          html: '图片已生成。你可以先在对话中查看，点击「修改此图片」后在中间区域进行预览和修改。',
+          html: '图片已生成。',
           model: '本地 Mock',
           imageUrl: WORKSPACE_MOCK_IMAGE.dataUrl,
           imageTitle: WORKSPACE_MOCK_IMAGE.title,
@@ -3326,6 +3336,10 @@ export default function App() {
     return t.includes('生成大纲');
   }
 
+  const commitPptOutline = (outline: PptOutline) => {
+    setPptOutline(resolveOutlineCitations(outline, library));
+  };
+
   const generatePptDirectly = async (
     userNote: string,
     audience: string,
@@ -3343,7 +3357,7 @@ export default function App() {
         userNote,
       });
       notifyMockIfNeeded(raw);
-      const outline = normalizeOutline(raw, audience, scenario);
+      const outline = resolveOutlineCitations(normalizeOutline(raw, audience, scenario), library);
       setPptOutline(outline);
 
       const designs = await api.generatePptDesigns(outline, audience, scenario, null);
@@ -3387,12 +3401,12 @@ export default function App() {
       });
       notifyMockIfNeeded(raw);
       const outline = normalizeOutline(raw, audience, scenario);
-      setPptOutline(outline);
+      commitPptOutline(outline);
       setState((prev) => ({ ...prev, pptOutline: true, active: 'ppt-outline' }));
       addTab('ppt-outline');
       addMsg(
         'ai',
-        `已为「${outline.title}」生成大纲，共 ${outline.chapters.length} 节。请在中间「PPT大纲」中查看各页卡片，可拖拽调整顺序，或点击「修改本页」让 AI 调整该页。确认后点击「按模板生成 PPT」。`,
+        `已为「${outline.title}」生成大纲，共 ${outlinePageCount(outline)} 页。`,
         'DeepSeek-V3.1｜PPT 大纲',
         ['查看大纲']
       );
@@ -3513,7 +3527,7 @@ export default function App() {
       });
       notifyMockIfNeeded(raw);
       const outline = normalizeOutline(raw, audience, scenario);
-      setPptOutline(outline);
+      commitPptOutline(outline);
       setState((prev) => ({ ...prev, pptOutline: true, active: 'ppt-outline' }));
       addTab('ppt-outline');
       toast('已根据文案更新大纲');
@@ -3883,7 +3897,7 @@ export default function App() {
 
   const lockFlowEntry = (next: ContentFlowEntry | null) => {
     if (!next) return;
-    setFlowEntry((prev) => prev ?? next);
+    setFlowEntry((prev) => nextLockedFlowEntry(prev, next));
   };
 
   const addTab = (key: TabKey) => {
@@ -4353,7 +4367,7 @@ export default function App() {
     if (wasHidden) {
       addMsg(
         'ai',
-        `已在中间展示「PPT大纲」，共 ${pptOutline.chapters.length} 节。可拖拽调整各页顺序，或点击「修改本页」让 AI 调整该页；修改后可在「PPT生成」中重新生成设计稿。`,
+        `已打开「PPT大纲」，共 ${outlinePageCount(pptOutline)} 页。`,
         'DeepSeek-V3.1',
         ['生成设计', '返回 PPT 生成']
       );
@@ -5176,6 +5190,10 @@ export default function App() {
     .filter((x) => !libSearch || `${x.title} ${x.meta} ${x.cat} ${x.brand || ''}`.toLowerCase().includes(libSearch.toLowerCase()));
   const libraryUploadCat = libCatFilter === '全部' ? activeCat : libCatFilter;
   const morePptTemplates = useMemo(() => catalogPptTemplates(), []);
+  const citedLiteratureItemIds = useMemo(
+    () => (pptOutline ? [...citedLibraryItemIds(library, pptOutline)] : []),
+    [library, pptOutline]
+  );
   const recommendedPptTemplates = useMemo(
     () =>
       recommendPptTemplates(
@@ -6548,6 +6566,7 @@ export default function App() {
                 <div className="context-scroll">
                   <ContextMaterialsPanel
                     library={library}
+                    citedItemIds={citedLiteratureItemIds}
                     variant={
                       entryContext?.source === 'case'
                         ? 'case'
@@ -6557,7 +6576,9 @@ export default function App() {
                             ? 'evidence'
                             : entryContext?.source === 'insight'
                               ? 'insight'
-                              : 'default'
+                              : entryContext?.source === 'promo'
+                                ? 'promo'
+                                : 'default'
                     }
                     onOpenPicker={(category) => {
                       setPickerTarget('workspace');
@@ -7280,13 +7301,6 @@ export default function App() {
                     <div className="small">
                       {ROLE_PROFILES[userRole].dept}审阅 · 截止 {activeReviewTask.deadline.replace('T', ' ')} · 分配人 {activeReviewTask.assignerName}
                     </div>
-                    <div className="small" style={{ marginTop: 6 }}>
-                      {activeReviewTask.contentType === 'ppt'
-                        ? '请在「PPT大纲」中查看各页卡片，可拖拽调整顺序或点击「修改本页」后保存；无需生成 PPT 成品。'
-                        : isCommentableContentType(activeReviewTask.contentType)
-                          ? '请在中间预览中查看内容，并在右侧批注栏添加意见。'
-                          : '请仅修改右侧已生成的内容；保存后运营可在任务中查看修改详情。'}
-                    </div>
                   </div>
                   <div className="quick-row">
                     <button type="button" className="btn primary" onClick={completeReviewTask}>
@@ -7435,6 +7449,25 @@ export default function App() {
             hasConferenceMobile={hasVisualAsset('mobile')}
             onImportLocalPoster={() => posterImportInputRef.current?.click()}
             onSelectFlowStep={(step) => {
+              if (step.id === 'team') {
+                const type: TeamContentType =
+                  flowEntry === 'conferencePoster' ||
+                  flowEntry === 'visual' ||
+                  flowEntry === 'longImageOutline' ||
+                  entryContext?.source === 'poster'
+                    ? 'visual'
+                    : flowEntry === 'articleOutline'
+                      ? 'rich-text'
+                      : flowEntry === 'video'
+                        ? 'video'
+                        : flowEntry === 'script' || flowEntry === 'copy' || entryContext?.source === 'promo'
+                          ? 'copy'
+                          : flowEntry === 'ppt' || flowEntry === 'outline' || flowEntry === 'insight'
+                            ? 'ppt'
+                            : resolveTeamReviewType('', state.active);
+                openTeamReview(type);
+                return;
+              }
               if (flowEntry === 'script' || entryContext?.source === 'promo') {
                 if (step.id === 'copy') {
                   if (!scriptContent.trim()) {
@@ -7464,31 +7497,17 @@ export default function App() {
                   openMockImageInPreview(asset.url, asset.title, 'poster');
                   return;
                 }
-                if (step.id === 'mobile') {
-                  if (!hasVisualAsset('poster')) {
-                    toast('请先生成会议海报，再使用「一键手机」');
-                    return;
-                  }
-                  if (!hasVisualAsset('mobile')) {
-                    seedVisualTasks('mobile');
-                    publishChatImage({
-                      html: '已将会议海报适配为手机竖版。可在中间区域点选元素、手动调整，并导出为图片 / PPTX / PSD。',
-                      imageUrl: MOCK_MOBILE_VERSIONS.current.dataUrl,
-                      imageTitle: MOCK_MOBILE_VERSIONS.current.title,
-                      assetKey: 'mobile',
-                      actionLabel: '修改手机版',
-                    });
-                  }
-                  const asset = latestVisualAsset('mobile');
-                  openMockImageInPreview(asset.url, asset.title, 'mobile');
-                  return;
-                }
               }
               if (!step.tab) {
                 setState((prev) => ({ ...prev, active: null }));
                 return;
               }
-              if (step.id === 'ppt' && !contentBrief && !pptOutline) {
+              if (
+                step.id === 'ppt' &&
+                !contentBrief &&
+                !pptOutline &&
+                !omitsBriefLiterature(flowEntry, entryContext?.source)
+              ) {
                 toast('从 0 到 1 生成 PPT 前，请先完成 Brief 与大纲');
               }
               addTab(step.tab);
@@ -7866,6 +7885,7 @@ export default function App() {
 
       {pickerOpen && pickerMode === 'reference' && (
         pickerCat === '参考知识' ||
+        pickerCat === '参考文献' ||
         pickerCat === '视觉参考' ||
         pickerCat === '目标解读材料' ||
         pickerCat === '其他参考知识'
@@ -8625,9 +8645,7 @@ function WorkspaceRightPanel({
           id: -1,
           cat: '生成图片',
           title: generatedImageMeta[0]?.copyTitle || (longImageOutline ? '生成长图' : '生成图片'),
-          meta: longImageOutline
-            ? 'AI 生成长图 · 可点选元素或手动调整'
-            : 'AI 生成图片 · 可预览和修改',
+          meta: longImageOutline ? 'AI 生成长图' : 'AI 生成图片',
           cms: false,
           def: false,
           addedAt: Date.now(),
@@ -8645,28 +8663,28 @@ function WorkspaceRightPanel({
   const isSelectableImageProduct = isLongImageProduct || isPosterCanvas;
   const conferenceFlowCurrentId =
     flowEntry === 'conferencePoster'
-      ? previewedImageAssetKey === 'mobile'
-        ? 'mobile'
-        : previewedImageAssetKey === 'poster'
-          ? 'poster'
-          : previewedImageAssetKey === 'kv'
-            ? 'kv'
-            : hasConferenceMobile
-              ? 'mobile'
-              : hasConferencePoster
-                ? 'poster'
-                : hasConferenceKv || state.active === 'visual'
-                  ? 'kv'
-                  : undefined
+      ? previewedImageAssetKey === 'poster' || previewedImageAssetKey === 'mobile'
+        ? 'poster'
+        : previewedImageAssetKey === 'kv'
+          ? 'kv'
+          : hasConferencePoster
+            ? 'poster'
+            : hasConferenceKv || state.active === 'visual'
+              ? 'kv'
+              : undefined
       : flowEntry === 'script' && (scriptContent.trim() || state.active === 'copy')
         ? 'copy'
         : undefined;
+  const hideContentFlowNav = entryContext?.source === 'insight';
+  const showPreviewTabs =
+    Boolean(previewFile && !isGeneratedImagePreview) || reviewerMode || !hideContentFlowNav;
   const [selectedCopyRevisionIndex, setSelectedCopyRevisionIndex] = useState<number | null>(null);
   const [previewHistoryId, setPreviewHistoryId] = useState<string | null>(null);
   const [restoredFrom, setRestoredFrom] = useState<string | null>(null);
   const [majorVersions, setMajorVersions] = useState(PPT_MAJOR_VERSION_SEED);
   const [slideVersionId, setSlideVersionId] = useState('current');
   const [literatureVisibleCount, setLiteratureVisibleCount] = useState(30);
+  const [literaturePreview, setLiteraturePreview] = useState<LiteratureArticle | null>(null);
   const [pptSwitchTemplateOpen, setPptSwitchTemplateOpen] = useState(false);
   const [longImageSwitchTemplateOpen, setLongImageSwitchTemplateOpen] = useState(false);
   const [imageVersionId, setImageVersionId] = useState('current');
@@ -8892,9 +8910,9 @@ function WorkspaceRightPanel({
             {entryContext?.source === 'case'
               ? '请您上传脱敏后的病例原始素材，如需生成专家点评，请上传过往专家点评示例'
               : entryContext?.source === 'poster'
-                ? '请先输入「生成主KV」，确认主视觉后再输入「生成海报」。海报可手动调整并导出图片 / PPTX / PSD，也可一键适配手机版后提交 Veeva 审批。会议信息可先下载模板填写后上传。'
+                ? '请先输入「生成主KV」，确认主视觉后再输入「生成海报」。会议信息可先下载模板填写后上传。'
                 : entryContext?.source === 'promo'
-                  ? '请先添加参考知识或品牌策略，再输入「生成话术」。生成后可在中间直接修改，并导出 DOCX。'
+                  ? '请先添加参考知识或品牌策略，再输入「生成话术」。'
                   : entryContext?.source === 'evidence'
                   ? '请添加待解读的目标材料，也可补充其他参考知识。'
                   : entryContext?.source === 'insight'
@@ -9041,7 +9059,7 @@ function WorkspaceRightPanel({
           <>
             <div className="detail-card">
               <h4>话题洞察详情</h4>
-              <div className="small">{insightSummary || '基于默认素材与 DeepSeek 生成。点击话题查看详情，勾选后继续生成文案。'}</div>
+              <div className="small">{insightSummary || '基于默认素材与 DeepSeek 生成。'}</div>
             </div>
             <label className="option" style={{ marginBottom: '10px' }}>
               <input
@@ -9142,17 +9160,7 @@ function WorkspaceRightPanel({
           return (
             <div className="detail-card">
               <h4>推荐文献</h4>
-              <div className="small literature-more-hint">
-                如需检索更多文献，请访问
-                <a href="https://www.cnki.net/" target="_blank" rel="noreferrer">
-                  CNKI
-                </a>
-                ，
-                <a href="https://med.wanfangdata.com.cn/" target="_blank" rel="noreferrer">
-                  万方医学
-                </a>
-                等三方知识库。
-              </div>
+              <LiteratureThirdPartyHint />
             </div>
           );
         }
@@ -9161,17 +9169,7 @@ function WorkspaceRightPanel({
             <div className="literature-panel-head">
               <div>
                 <h4>推荐文献</h4>
-                <div className="small literature-more-hint">
-                  如需检索更多文献，请访问
-                  <a href="https://www.cnki.net/" target="_blank" rel="noreferrer">
-                    CNKI
-                  </a>
-                  ，
-                  <a href="https://med.wanfangdata.com.cn/" target="_blank" rel="noreferrer">
-                    万方医学
-                  </a>
-                  等三方知识库。
-                </div>
+                <LiteratureThirdPartyHint />
               </div>
               <button
                 type="button"
@@ -9183,63 +9181,15 @@ function WorkspaceRightPanel({
               </button>
             </div>
             <div className="literature-list">
-              {literatureResults.slice(0, literatureVisibleCount).map((article) => {
-                const added = addedLiteratureIds.includes(article.id);
-                return (
-                  <article key={article.id} className="literature-card">
-                    <div className="literature-card-top">
-                      <div className="literature-card-meta">
-                        <span className="literature-source-tag">{article.source}</span>
-                        <span className="literature-journal">
-                          {article.journalAbbr || article.publisher} · {article.year}
-                        </span>
-                      </div>
-                      <div className="literature-actions">
-                        {article.access === 'free' ? (
-                          <>
-                            <a
-                              className="btn soft literature-link-btn"
-                              href={article.sourceUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              <ExternalLink className="h-3.5 w-3.5" strokeWidth={2.2} />
-                              查看原文章链接
-                            </a>
-                            <button
-                              type="button"
-                              className={`btn ${added ? 'soft' : 'primary'} literature-add-btn`}
-                              disabled={added}
-                              onClick={() => onAddLiteratureToTask(article)}
-                            >
-                              {added ? (
-                                <>
-                                  <Check className="h-3.5 w-3.5" strokeWidth={2.4} />
-                                  已添加
-                                </>
-                              ) : (
-                                '添加到当前任务'
-                              )}
-                            </button>
-                          </>
-                        ) : (
-                          <a
-                            className="btn soft literature-link-btn"
-                            href={article.sourceUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            <ExternalLink className="h-3.5 w-3.5" strokeWidth={2.2} />
-                            前往原链接下载
-                          </a>
-                        )}
-                      </div>
-                    </div>
-                    <h5>{article.title}</h5>
-                    <p className="literature-abstract">{article.abstract}</p>
-                  </article>
-                );
-              })}
+              {literatureResults.slice(0, literatureVisibleCount).map((article) => (
+                <LiteratureResultCard
+                  key={article.id}
+                  article={article}
+                  added={addedLiteratureIds.includes(article.id)}
+                  onAdd={() => onAddLiteratureToTask(article)}
+                  onPreview={() => setLiteraturePreview(article)}
+                />
+              ))}
               {literatureVisibleCount < literatureResults.length && (
                 <button
                   type="button"
@@ -9250,6 +9200,14 @@ function WorkspaceRightPanel({
                 </button>
               )}
             </div>
+            {literaturePreview && (
+              <LiteraturePreviewModal
+                article={literaturePreview}
+                added={addedLiteratureIds.includes(literaturePreview.id)}
+                onAdd={() => onAddLiteratureToTask(literaturePreview)}
+                onClose={() => setLiteraturePreview(null)}
+              />
+            )}
           </div>
         );
 
@@ -9293,7 +9251,7 @@ function WorkspaceRightPanel({
             return (
               <div className="detail-card">
                 <h4>话术总结</h4>
-                <div className="small">请在对话中输入「生成话术」，将在此展示可直接修改的纯文字总结。</div>
+                <div className="small">请在对话中输入「生成话术」。</div>
                 <button type="button" className="btn primary" style={{ marginTop: 12 }} onClick={() => fillQuick('生成话术')}>
                   生成话术
                 </button>
@@ -9593,7 +9551,7 @@ function WorkspaceRightPanel({
               <h4>图片生成详情</h4>
               <div className="small">
                 {hasGenerated
-                  ? `已生成 ${generatedImages.length} 张配图，按 ${groupImagesByCopy(generatedImages, generatedImageMeta).length} 篇文案分类。勾选后提交团队意见收集；点击图片可进入编辑。`
+                  ? `已生成 ${generatedImages.length} 张配图，按 ${groupImagesByCopy(generatedImages, generatedImageMeta).length} 篇文案分类。`
                   : '尚未生成配图，以下为示意预览。请先在对话中生成图片，并说明每个文案想生成几张。'}
               </div>
             </div>
@@ -9655,7 +9613,6 @@ function WorkspaceRightPanel({
                             <span className="img-review-badge rejected">已恢复原图</span>
                           )}
                           <img className="generated-img" src={img} alt={`生成的图片 ${idx + 1}`} />
-                          <span className="img-edit-hint">点击进入图片编辑</span>
                           {alignedStatuses[idx] === 'pending' && (
                             <div
                               className="img-review-inline-actions"
@@ -9693,7 +9650,6 @@ function WorkspaceRightPanel({
                   onClick={() => onOpenImageEditor(img, idx)}
                 >
                   <img className="generated-img" src={img} alt={`生成的图片 ${idx + 1}`} />
-                  <span className="img-edit-hint">点击进入图片编辑</span>
                 </div>
               </label>
             ))}
@@ -9806,7 +9762,7 @@ function WorkspaceRightPanel({
           <>
             <div className="detail-card detail-card-ppt-design">
               <h4>视频预览</h4>
-              <div className="small">共 {videoVersions.length} 套方案，可勾选、拖拽排序并合并导出。</div>
+              <div className="small">共 {videoVersions.length} 套方案</div>
               <div className="quick-row" style={{ marginTop: 10 }}>
                 <button type="button" className="btn primary" onClick={onExportMergedVideos}>
                   合并导出已勾选视频
@@ -10196,7 +10152,7 @@ function WorkspaceRightPanel({
                         className="creator-ppt-tool primary"
                         onClick={() => onOpenPptSlideEditor(creatorActivePageIndex)}
                       >
-                        手动调整
+                        手动编辑
                       </button>
                     )}
                   </div>
@@ -10307,7 +10263,7 @@ function WorkspaceRightPanel({
                     <div className="creator-ppt-speaker-notes">
                       <div className="creator-ppt-speaker-notes-head">
                         <strong>Speaker Notes</strong>
-                        <span>{viewingHistoricalVersion ? '历史版本只读' : '可直接编辑'}</span>
+                        {viewingHistoricalVersion ? <span>历史版本只读</span> : null}
                       </div>
                       <textarea
                         value={creatorActiveSlide.speakerNotes || ''}
@@ -10430,32 +10386,35 @@ function WorkspaceRightPanel({
             <h3 className="workspace-preview-title workspace-panel-title-text">内容预览</h3>
           </div>
         </div>
-        <div className="tabs">
-          <div className="tabs-list">
-            {previewFile && !isGeneratedImagePreview ? (
-              <span className="tab active">文件预览</span>
-            ) : reviewerMode ? (
-              visibleTabs.map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  className={`tab ${state.active === k ? 'active' : ''}`}
-                  onClick={() => setState((prev) => ({ ...prev, active: k }))}
-                >
-                  {tabNames[k]}
-                </button>
-              ))
-            ) : (
-              <ContentFlowNav
-                entry={flowEntry ?? null}
-                progress={flowProgress}
-                activeTab={state.active}
-                currentStepId={conferenceFlowCurrentId}
-                onSelect={onSelectFlowStep}
-              />
-            )}
+        {showPreviewTabs && (
+          <div className="tabs">
+            <div className="tabs-list">
+              {previewFile && !isGeneratedImagePreview ? (
+                <span className="tab active">文件预览</span>
+              ) : reviewerMode ? (
+                visibleTabs.map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    className={`tab ${state.active === k ? 'active' : ''}`}
+                    onClick={() => setState((prev) => ({ ...prev, active: k }))}
+                  >
+                    {tabNames[k]}
+                  </button>
+                ))
+              ) : hideContentFlowNav ? null : (
+                <ContentFlowNav
+                  entry={flowEntry ?? null}
+                  progress={flowProgress}
+                  activeTab={state.active}
+                  currentStepId={conferenceFlowCurrentId}
+                  source={entryContext?.source}
+                  onSelect={onSelectFlowStep}
+                />
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
       <div className="detail">
         {selectedHistory && (
@@ -10503,7 +10462,7 @@ function WorkspaceRightPanel({
                                 onOpenImageEditor(previewedImageItem.contentUrl || '', 0)
                               }
                             >
-                              手动调整
+                              手动编辑
                             </button>
                           )}
                         </div>
@@ -10730,7 +10689,7 @@ function WorkspaceRightPanel({
                         disabled={teamModificationInProgress}
                         onClick={() => !teamModificationInProgress && onOpenTeamReview('visual')}
                       >
-                        {teamModificationInProgress ? '意见收集中...' : '提交团队意见收集'}
+                        {teamModificationInProgress ? '意见收集中...' : '意见收集'}
                       </button>
                       <button
                         type="button"
@@ -10770,7 +10729,6 @@ function WorkspaceRightPanel({
         templates={switchPptTemplates}
         selectedId={selectedPptTemplateId}
         title="切换 PPT 模板"
-        description="选择一套模板后，将按当前大纲重新生成 PPT。"
         confirmLabel="切换并重新生成"
         onClose={() => setPptSwitchTemplateOpen(false)}
         onConfirm={applySwitchPptTemplate}
@@ -10780,7 +10738,6 @@ function WorkspaceRightPanel({
         templates={switchLongImageTemplates}
         selectedId={selectedLongImageTemplateId}
         title="切换图片模板"
-        description="选择一套模板后，将按当前大纲重新生成长图。"
         confirmLabel="切换并重新生成"
         className="is-image-templates"
         onClose={() => setLongImageSwitchTemplateOpen(false)}
