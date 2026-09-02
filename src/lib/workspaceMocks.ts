@@ -1,4 +1,4 @@
-import type { PptDesignVersion, PptOutline, PptSlide } from '@/types/content';
+import type { ArticleOutline, PptDesignVersion, PptOutline, PptSlide } from '@/types/content';
 
 function slideSvg(title: string, subtitle: string, index: number, accent: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540">
@@ -495,6 +495,85 @@ export const WORKSPACE_MOCK_PPT_RESTYLED_EN: PptDesignVersion = {
   fileName: 'Integrated-CKD-Management-Template-Style-EN.pptx',
 };
 
+export const WORKSPACE_MOCK_ARTICLE_OUTLINE: ArticleOutline = {
+  title: '病例解读：CKD 合并代谢风险患者管理',
+  chapters: [
+    {
+      id: 'article-ch-1',
+      title: '患者概况',
+      core:
+        '女性，58 岁。2 型糖尿病病史 9 年，近期体检提示 eGFR 下降。主诉乏力、夜尿增多，对肾脏健康风险认知不足，既往未建立规律的肾功能随访。',
+      imageUrl: '/demo-assets/CaseCard_Result_01.PNG',
+      imageAlt: 'CKD 合并代谢风险病例配图',
+      tmsh:
+        'T：糖尿病病程较长时，肾功能指标变化不能只当一次体检结果\nM：症状不突出不等于肾脏风险消失\nS：eGFR 下降提示需把肾脏随访纳入既有慢病管理\nH：先讲清当前指标意义，再给出下次复查动作',
+      references: ['中华肾脏病杂志, 2024. 早期筛查路径真实世界研究.'],
+    },
+    {
+      id: 'article-ch-2',
+      title: '关键指标',
+      core:
+        '年龄 / 性别：58 岁，女性。糖尿病病程 9 年。eGFR 较前下降，提示需关注慢性肾脏病进展风险。代谢风险因素并存，需结合血糖、血压与体重综合评估。',
+      imageUrl: '/other/vegf-pathway.svg',
+      imageAlt: '关键指标示意',
+      tmsh:
+        'T：把 eGFR、UACR 与代谢指标放在同一张随访清单里\nM：肾脏保护不能只盯单一数值\nS：血糖、血压、体重都会影响肾脏预后\nH：列出需要持续记录的检查结果',
+      references: ['Nephrol Dial Transplant, 2023. eGFR trajectories and HCP communication.'],
+    },
+    {
+      id: 'article-ch-3',
+      title: '临床解读',
+      core:
+        '该患者处于糖尿病长期管理阶段，近期出现肾功能指标变化，提示不能仅以“症状不明显”判断风险高低。乏力与夜尿增多可能与血糖控制、肾功能变化或生活方式有关，需要把肾脏指标纳入既有慢病随访。',
+      imageUrl: '/other/her2-signaling.svg',
+      imageAlt: '临床解读机制示意',
+      tmsh:
+        'T：早期肾脏损伤信号应被识别，而不是等症状明显再处理\nM：孤立体检结果要转成可追踪的临床信号\nS：关注 eGFR 与 UACR 的变化趋势\nH：说明为何需要把肾脏指标纳入常规随访',
+      references: ['Lancet Diabetes Endocrinol, 2024. SGLT2 inhibitors and kidney outcomes.'],
+    },
+    {
+      id: 'article-ch-4',
+      title: '管理思路',
+      core:
+        '建立肾功能指标的长期监测计划；围绕血糖、血压、体重与生活方式综合管理；向患者说明“症状稳定不等于风险消失”；指标继续异常或出现水肿、尿液明显改变时及时复诊。',
+      imageUrl: '/image-templates/confidence-talk.png',
+      imageAlt: '随访管理沟通示意',
+      tmsh:
+        'T：管理目标是可执行的随访，而不是一次性宣教\nM：综合管理优于单指标干预\nS：复查节奏、生活方式与复诊指征要一起讲清\nH：给出下次复查时间和预警信号',
+      references: ['KDIGO 2024. Clinical Practice Guideline for the Evaluation and Management of Chronic Kidney Disease.'],
+    },
+    {
+      id: 'article-ch-5',
+      title: '专家点评',
+      core:
+        '张三教授：把“体检发现 eGFR 下降”转成需要持续追踪的临床信号。李四副主任医师：血糖管理与肾脏保护不能分开讨论，门诊沟通应把复查节奏和复诊指征讲清楚。',
+      imageUrl: '/demo-assets/Poster_Result_01.PNG',
+      imageAlt: '专家点评配图',
+      tmsh:
+        'T：专家视角强调早期随访窗口\nM：代谢管理与肾脏保护必须同屏出现\nS：即使症状不突出，也应尽早纳入 eGFR、UACR 随访\nH：帮助患者理解长期随访的意义',
+      references: [
+        '中华肾脏病杂志, 2024. 早期筛查路径真实世界研究.',
+        'KDIGO 2024. Clinical Practice Guideline for the Evaluation and Management of Chronic Kidney Disease.',
+      ],
+    },
+  ],
+  references: [
+    'Lancet Diabetes Endocrinol, 2024. SGLT2 inhibitors and kidney outcomes.',
+    '中华肾脏病杂志, 2024. 早期筛查路径真实世界研究.',
+    'Nephrol Dial Transplant, 2023. eGFR trajectories and HCP communication.',
+    'KDIGO 2024. Clinical Practice Guideline for the Evaluation and Management of Chronic Kidney Disease.',
+  ],
+};
+
+export const WORKSPACE_MOCK_LONG_IMAGE_OUTLINE: ArticleOutline = {
+  title: 'CKD 合并代谢风险患者管理要点长图',
+  chapters: WORKSPACE_MOCK_ARTICLE_OUTLINE.chapters.map((chapter) => ({
+    ...chapter,
+    id: chapter.id.replace('article-ch', 'longimg-ch'),
+  })),
+  references: [...WORKSPACE_MOCK_ARTICLE_OUTLINE.references],
+};
+
 export const WORKSPACE_MOCK_RICH_TEXT = `
   <h1>病例解读：CKD 合并代谢风险患者管理</h1>
   <p class="rich-text-lead">本解读用于学术沟通演示，围绕一例 2 型糖尿病合并肾功能下降的门诊患者，梳理关键指标、风险识别与随访管理思路。</p>
@@ -527,6 +606,45 @@ export const WORKSPACE_MOCK_RICH_TEXT = `
   <p><strong>李四 副主任医师｜北京**医院 糖尿病专病门诊</strong><br/>从代谢管理角度看，本例提醒我们：血糖管理与肾脏保护不能分开讨论。门诊沟通中，建议把复查节奏、生活方式调整和复诊指征讲清楚，帮助患者理解长期随访的意义，而不是只关注单次化验数值。</p>
   <p class="rich-text-disclaimer">仅供医学专业人士学术交流  ·  不构成诊疗建议  ·  不用于对公众宣传</p>
 `;
+
+export function isGenerateScriptIntent(text: string): boolean {
+  const t = text.replace(/\s+/g, '');
+  return /生成话术|帮我生成话术|话术总结|做一份话术|写一份话术/i.test(t);
+}
+
+export function buildMockScriptSummary(productName = '优思明'): string {
+  return `${productName} 科室拜访话术总结
+
+一、开场（30 秒）
+老师您好，感谢抽出时间。今天想用 3 分钟对齐 ${productName} 在门诊沟通中的核心口径，方便后续随访时表述一致。
+
+二、核心信息
+1. 先确认患者需求与当前治疗路径，再引入 ${productName} 的获批适应症与使用场景，避免一上来讲产品。
+2. 强调个体化评估：适应症、禁忌、合并用药与随访节奏需要一并说清。
+3. 把“为什么选、怎么用、何时复查”讲成一条线，便于医生转述给患者或下级医生。
+
+三、推荐沟通结构
+• 患者是谁：年龄、生育计划、周期相关主诉、合并疾病。
+• 当前方案：正在使用的方法、依从性、不满意点。
+• 方案选择：${productName} 适合放在哪一类患者路径中讨论。
+• 随访安排：下次复诊时间、需要观察的不适与复查项目。
+
+四、常见问题回应
+Q：和现有方案比，沟通重点是什么？
+A：重点不是比较疗效口号，而是把获批信息、适用人群和随访要求讲清楚，让科室口径可追溯。
+
+Q：患者最常问什么？
+A：怎么吃、漏服怎么办、哪些情况需要提前复诊。建议用说明书与科室常规随访话术回答，不自行承诺效果。
+
+Q：如何避免过度宣传？
+A：只用获批适应症和说明书信息，不延伸未批准用途，不对公众渠道做疗效承诺。
+
+五、收尾
+今天对齐的是沟通结构，不是处方建议。如需，我可以把这份话术导出为 Word，方便科室内部培训使用。
+
+合规提醒
+仅供医学专业人士学术交流，不构成诊疗建议，不用于对公众宣传。使用前请与获批说明书及内部合规口径核对。`;
+}
 
 const MOCK_IMAGE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 1125">
   <defs>

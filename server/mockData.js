@@ -246,7 +246,7 @@ export function getMockData(kind, userNote = '') {
       return note ? `可申达｜${note.slice(0, 18)}` : '可申达｜肾脏健康科普';
 
     case 'chat':
-      return '（演示模式）我可以帮你生成话题洞察、文案、图片、视频或 PPT。DeepSeek 恢复后将使用真实 AI 生成。';
+      return '我可以帮你生成话题洞察、文案、图片、视频或 PPT。直接说明你想做的内容即可。';
 
     default:
       return { message: '演示数据' };

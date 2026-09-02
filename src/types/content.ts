@@ -137,3 +137,20 @@ export interface GeneratedImageMeta {
   copyIndex: number;
   imageIndex: number;
 }
+
+export interface ArticleOutlineChapter {
+  id: string;
+  title: string;
+  core: string;
+  imageUrl: string;
+  imageAlt?: string;
+  tmsh: string;
+  /** 本章参考文献，展示在对应卡片内 */
+  references?: string[];
+}
+
+export interface ArticleOutline {
+  title: string;
+  chapters: ArticleOutlineChapter[];
+  references: string[];
+}

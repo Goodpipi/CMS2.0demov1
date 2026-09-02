@@ -61,6 +61,7 @@ export function buildTeamReviewPayload(
     selectedCopies: boolean[];
     getCopyBody: () => string;
     richTextContent: string;
+    scriptContent?: string;
     generatedImages: string[];
     selectedImages: boolean[];
     videoResult: VideoResult | null;
@@ -70,6 +71,9 @@ export function buildTeamReviewPayload(
 ): { body: string; title: string } | null {
   switch (type) {
     case 'copy': {
+      if (ctx.scriptContent?.trim()) {
+        return { title: '话术总结', body: ctx.scriptContent };
+      }
       const selected = ctx.copies.filter((_, i) => ctx.selectedCopies[i]);
       const list = selected.length > 0 ? selected : ctx.copies;
       const body = list

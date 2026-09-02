@@ -6,6 +6,7 @@ import type {
   VideoRenderVersion,
   PptResult,
   PptOutline,
+  ArticleOutline,
   PptDesignVersion,
   GeneratedImageMeta,
   ContentBrief,
@@ -30,6 +31,8 @@ export type TabKey =
   | 'video-script'
   | 'video-render'
   | 'ppt-outline'
+  | 'article-outline'
+  | 'long-image-outline'
   | 'ppt-design'
   | 'brief'
   | 'submit';
@@ -61,6 +64,8 @@ export interface SessionAppState {
   videoScript: boolean;
   videoRender: boolean;
   pptOutline: boolean;
+  articleOutline: boolean;
+  longImageOutline: boolean;
   pptDesign: boolean;
   brief: boolean;
   submit: boolean;
@@ -76,6 +81,9 @@ export interface SessionWorkspace {
   selectedVideoVersionId: string | null;
   pptResult: PptResult | null;
   pptOutline: PptOutline | null;
+  articleOutline?: ArticleOutline | null;
+  longImageOutline?: ArticleOutline | null;
+  selectedLongImageTemplateId?: string | null;
   pptVersions: PptDesignVersion[];
   selectedPptVersionId: string | null;
   selectedPptTemplateId: string | null;
@@ -96,6 +104,7 @@ export interface SessionWorkspace {
   selectedCopies: boolean[];
   copyRevisions: CopyRevision[];
   copyRevisionBase: string;
+  scriptContent?: string;
   selectedProduct?: TaskProduct | null;
   /** 用户首次内容操作锁定的流程第二步 */
   flowEntry?: import('@/lib/contentFlow').ContentFlowEntry | null;

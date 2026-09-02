@@ -17,9 +17,46 @@ export type HomeEntryIntent =
   | 'visual-template'
   | 'ppt-template';
 
+export type HomeEntrySource =
+  | 'case'
+  | 'promo'
+  | 'evidence'
+  | 'poster'
+  | 'insight'
+  | 'more';
+
 export interface HomeEntryContext {
   intent: HomeEntryIntent;
   templateTitle?: string;
+  /** 首页入口来源，用于按业务场景定制工作台结构，不会自动发送为用户消息。 */
+  source?: HomeEntrySource;
+}
+
+export const HOME_ENTRY_SOURCE_LABELS: Record<HomeEntrySource, string> = {
+  case: '病例内容',
+  promo: '医学与推广内容',
+  evidence: '学术证据解读',
+  poster: '会议海报',
+  insight: '话题洞察',
+  more: '更多内容',
+};
+
+export function inferHomeEntrySource(ctx?: HomeEntryContext | null): HomeEntrySource {
+  if (ctx?.source) return ctx.source;
+  switch (ctx?.intent) {
+    case 'insight':
+      return 'insight';
+    case 'visual':
+    case 'visual-template':
+      return 'poster';
+    case 'ppt':
+    case 'ppt-template':
+      return 'case';
+    case 'copy':
+      return 'promo';
+    default:
+      return 'more';
+  }
 }
 
 export function isPptEntryIntent(ctx?: HomeEntryContext | null): boolean {
@@ -146,7 +183,49 @@ export function getHomeInputGuidance(
 }
 
 export function getEntryWelcome(ctx: HomeEntryContext): { html: string; chips: string[] } {
-  const { intent, templateTitle } = ctx;
+  const { intent, templateTitle, source } = ctx;
+
+  if (source === 'case') {
+    return {
+      html: '您好！请您上传脱敏后的病例原始素材，如需生成专家点评，请上传过往专家点评示例',
+      chips: ['生成图文大纲', '生成长图大纲', '生成PPT大纲', '直接生成PPT'],
+    };
+  }
+
+  if (source === 'poster') {
+    return {
+      html: '您好！请先输入「生成主KV」，确认主视觉后再输入「生成海报」。海报支持手动调整与导出，也可一键适配手机版后提交 Veeva 审批。',
+      chips: ['生成主KV', '生成海报'],
+    };
+  }
+
+  if (source === 'promo') {
+    return {
+      html: '您好！请先添加参考知识或品牌策略，再输入「生成话术」。生成后可在中间直接修改纯文字总结，并导出为 DOCX，也可提交团队意见收集与 Veeva 审批。',
+      chips: ['生成话术'],
+    };
+  }
+
+  if (source === 'evidence') {
+    return {
+      html: '您好！请添加待解读的目标材料，如指南、文献或研究原文；也可补充其他参考知识。',
+      chips: ['生成PPT大纲', '直接生成PPT', '生成图文大纲'],
+    };
+  }
+
+  if (source === 'insight') {
+    return {
+      html: '您好！请添加参考知识或品牌策略，描述想洞察的主题与受众后即可生成话题洞察。',
+      chips: ['基于素材生成话题洞察', '直接生成文案', '直接生成图片', '直接生成PPT'],
+    };
+  }
+
+  if (source === 'more') {
+    return {
+      html: '您好！可先添加参考知识、品牌策略或 Brief，再描述你想生成的内容。',
+      chips: FLEXIBLE_WORKFLOW_CHIPS,
+    };
+  }
 
   switch (intent) {
     case 'insight':

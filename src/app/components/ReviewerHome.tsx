@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { ChatSession } from '@/types/session';
 import type { ReviewTask } from '@/types/review';
 import { ROLE_PROFILES } from '@/types/review';
-import { formatSessionTime, deriveSessionSubtitle } from '@/lib/chatSessions';
+import { formatSessionTime, deriveSessionSubtitle, sessionEntryLabel, sessionEntrySource } from '@/lib/chatSessions';
 import { collectTaskStatusLabel } from '@/lib/reviewTasks';
 import { TEAM_CONTENT_LABELS } from '@/app/components/teamReviewUtils';
 import { ArrowRight, Presentation } from 'lucide-react';
@@ -109,8 +109,13 @@ export function ReviewerHome({
                   <Presentation className="h-4 w-4 text-white" strokeWidth={2.4} />
                 </span>
                 <span className="home-task-card-copy">
-                  <strong>{session.title}</strong>
-                  <span>
+                  <span className="home-task-card-title-row">
+                    <strong>{session.title}</strong>
+                    <em className={`home-task-entry-tag is-${sessionEntrySource(session)}`}>
+                      {sessionEntryLabel(session)}
+                    </em>
+                  </span>
+                  <span className="home-task-card-meta">
                     {deriveSessionSubtitle(session)} · {formatSessionTime(session.updatedAt)}
                   </span>
                 </span>

@@ -8,6 +8,22 @@ export interface ImageBuiltinTemplate {
   previewImg?: string;
   gradient: string;
   accent: string;
+  isBlank?: boolean;
+}
+
+export const BLANK_IMAGE_TEMPLATE: ImageBuiltinTemplate = {
+  id: 'blank',
+  name: '空白模板',
+  description: '无预设版式与装饰，按大纲结构直接生成',
+  styleHint: '留白 · 通用',
+  layoutHint: '按章节顺序直出长图',
+  gradient: 'linear-gradient(135deg, #f4f7fb 0%, #eef2f6 100%)',
+  accent: '#94a3b8',
+  isBlank: true,
+};
+
+export function isBlankImageTemplate(template: ImageBuiltinTemplate | undefined | null): boolean {
+  return Boolean(template?.isBlank || template?.id === 'blank');
 }
 
 export const IMAGE_BUILTIN_TEMPLATES: ImageBuiltinTemplate[] = [
@@ -55,7 +71,27 @@ const TITLE_TO_ID: Record<string, string> = Object.fromEntries(
 
 export function getImageTemplate(id: string | null | undefined): ImageBuiltinTemplate | undefined {
   if (!id) return undefined;
+  if (id === BLANK_IMAGE_TEMPLATE.id) return BLANK_IMAGE_TEMPLATE;
   return IMAGE_BUILTIN_TEMPLATES.find((t) => t.id === id);
+}
+
+export function recommendImageTemplates(context = ''): ImageBuiltinTemplate[] {
+  const text = context.toLowerCase();
+  const priorityId = /房颤|卒中|心房颤/.test(text)
+    ? 'afib-stroke'
+    : /confidence|周周谈|非奈利酮|sglt|ckd|肾/.test(text)
+      ? 'confidence-talk'
+      : /radimetrics|剂量|核药/.test(text)
+        ? 'radimetrics'
+        : 'confidence-talk';
+  const ranked = [...IMAGE_BUILTIN_TEMPLATES].sort((a, b) =>
+    a.id === priorityId ? -1 : b.id === priorityId ? 1 : 0
+  );
+  return [BLANK_IMAGE_TEMPLATE, ...ranked];
+}
+
+export function catalogImageTemplates(): ImageBuiltinTemplate[] {
+  return [...IMAGE_BUILTIN_TEMPLATES];
 }
 
 export function imageTemplateIdFromTitle(title: string): string | null {

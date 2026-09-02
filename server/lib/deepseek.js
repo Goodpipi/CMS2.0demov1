@@ -27,7 +27,7 @@ function friendlyApiError(status, bodyText) {
     return 'DeepSeek 服务当前繁忙，请稍等 1–2 分钟后重试。';
   }
   if (status === 401 || (bodyText.includes('invalid') && bodyText.includes('api'))) {
-    return 'DeepSeek API Key 无效，请检查 .env 中的 DEEPSEEK_API_KEY。';
+    return '生成服务暂时不可用，请稍后重试。';
   }
   if (status === 429) {
     return 'DeepSeek 请求过于频繁，请稍后再试。';
@@ -38,7 +38,7 @@ function friendlyApiError(status, bodyText) {
 async function chatCompletionOnce({ messages, temperature = 0.7, jsonMode = false }) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
-    const err = new Error('未配置 DEEPSEEK_API_KEY，请在项目根目录创建 .env 文件');
+    const err = new Error('生成服务暂时不可用，请稍后重试');
     err.status = 503;
     throw err;
   }

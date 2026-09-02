@@ -16,6 +16,8 @@ import {
 } from './pptUtils';
 import { PPT_BUILTIN_TEMPLATES, isBlankPptTemplate, type PptBuiltinTemplate } from './pptTemplates';
 import { PptTemplatePickerModal, PptTemplateThumb } from './PptTemplatePickerModal';
+import { OutlinePageEditModal, OutlineStaticField, OutlineStaticList } from './OutlinePageEditModal';
+import { mockRevisePptPage } from '@/lib/outlineEditMock';
 
 interface PptOutlineEditorProps {
   outline: PptOutline;
@@ -125,6 +127,7 @@ export function PptOutlineEditor({
   const [dropPageKey, setDropPageKey] = useState<string | null>(null);
   const [collapsedChapters, setCollapsedChapters] = useState<Record<string, boolean>>({});
   const [moreOpen, setMoreOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<{ chId: string; pgId: string } | null>(null);
 
   useEffect(() => {
     const next = ensureOutlineDeckStructure(outline);
@@ -406,67 +409,34 @@ export function PptOutlineEditor({
                             <DragHandle label="拖拽排序页面" />
                           </span>
                           )}
-                          <input
-                            className="ppt-page-title input"
-                            value={pg.title}
-                            onChange={(e) => updatePage(ch.id, pg.id, { title: e.target.value })}
-                          />
+                          <div className="ppt-page-title-text">{pg.title || '未命名页面'}</div>
+                          <button
+                            type="button"
+                            className="ppt-page-edit-btn"
+                            onClick={() => setEditTarget({ chId: ch.id, pgId: pg.id })}
+                          >
+                            修改本页
+                          </button>
                           {ch.pages.length > 1 && (
                             <DeleteButton title="删除页面" onClick={() => removePage(ch.id, pg.id)} />
                           )}
                         </div>
                         {pg.kind === 'toc' && (
-                        <label className="ppt-page-field">
-                          <span>目录条目</span>
-                          <textarea
-                            className="ppt-page-bullets"
-                            value={pg.bullets.join('\n')}
-                            placeholder="每行一节"
-                            onChange={(e) =>
-                              updatePage(ch.id, pg.id, {
-                                bullets: e.target.value.split('\n').filter(Boolean),
-                              })
-                            }
-                          />
-                        </label>
+                          <OutlineStaticList label="目录条目" items={pg.bullets} empty="暂无目录条目" />
                         )}
                         {!structural && pg.kind !== 'toc' && (
                         <>
-                        <label className="ppt-page-field">
-                          <span>页面核心内容</span>
-                          <textarea
-                            className="ppt-page-bullets"
-                            value={pg.bullets.join('\n')}
-                            placeholder="每行一条核心内容"
-                            onChange={(e) =>
-                              updatePage(ch.id, pg.id, {
-                                bullets: e.target.value.split('\n').filter(Boolean),
-                              })
-                            }
+                          <OutlineStaticList label="页面核心内容" items={pg.bullets} empty="暂无核心内容" />
+                          <OutlineStaticField
+                            label="页面可视化建议"
+                            value={pg.visualSuggestion}
+                            empty="暂无可视化建议"
                           />
-                        </label>
-                        <label className="ppt-page-field">
-                          <span>页面可视化建议</span>
-                          <textarea
-                            className="ppt-page-visual"
-                            value={pg.visualSuggestion || ''}
-                            placeholder="版式、图表或配图建议"
-                            onChange={(e) => updatePage(ch.id, pg.id, { visualSuggestion: e.target.value })}
+                          <OutlineStaticList
+                            label="当前页面参考文献"
+                            items={pg.references}
+                            empty="暂无参考文献"
                           />
-                        </label>
-                        <label className="ppt-page-field">
-                          <span>当前页面参考文献</span>
-                          <textarea
-                            className="ppt-page-refs"
-                            value={(pg.references || []).join('\n')}
-                            placeholder="每行一条文献"
-                            onChange={(e) =>
-                              updatePage(ch.id, pg.id, {
-                                references: e.target.value.split('\n').filter(Boolean),
-                              })
-                            }
-                          />
-                        </label>
                         </>
                         )}
                       </div>
@@ -538,7 +508,7 @@ export function PptOutlineEditor({
               保存大纲修改
             </button>
             <div className="small">
-              仅需修改各节与页面要点，无需生成 PPT。保存后内容运营可在同一会话「PPT大纲」中查看。
+              可拖拽调整各页顺序，或点击「修改本页」告知 AI 如何调整该页。保存后内容运营可在同一会话「PPT大纲」中查看。
             </div>
           </footer>
         ) : showGenerateFooter ? (
@@ -550,6 +520,17 @@ export function PptOutlineEditor({
           />
         ) : null}
       </div>
+      <OutlinePageEditModal
+        open={Boolean(editTarget)}
+        onCancel={() => setEditTarget(null)}
+        onConfirm={(instruction) => {
+          if (!editTarget) return;
+          const chapter = outline.chapters.find((item) => item.id === editTarget.chId);
+          const page = chapter?.pages.find((item) => item.id === editTarget.pgId);
+          if (page) updatePage(editTarget.chId, editTarget.pgId, mockRevisePptPage(page, instruction));
+          setEditTarget(null);
+        }}
+      />
     </div>
   );
 }

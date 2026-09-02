@@ -22,6 +22,7 @@ interface LiteraturePickerModalProps {
   open: boolean;
   knowledgeItems?: LibraryItem[];
   addedLiteratureIds: string[];
+  uploadCat?: string;
   onClose: () => void;
   onAddLiterature: (article: LiteratureArticle) => void;
   onAddKnowledge: (item: LibraryItem) => void;
@@ -48,6 +49,7 @@ export function LiteraturePickerModal({
   open,
   knowledgeItems = [],
   addedLiteratureIds,
+  uploadCat = '参考知识',
   onClose,
   onAddLiterature,
   onAddKnowledge,
@@ -97,7 +99,7 @@ export function LiteraturePickerModal({
     const articles = searchLiteratureByScopes(appliedQuery, appliedScopes);
     const articleTitles = new Set(articles.map((item) => item.title));
     const knowledgeHits: SearchHit[] = knowledgeItems
-      .filter((item) => item.cat === '参考知识' && isMaterialUsable(item))
+      .filter((item) => item.cat === uploadCat && isMaterialUsable(item))
       .filter((item) => !(item.referenced ?? item.def))
       .filter((item) => appliedScopes.includes(knowledgeScope(item)))
       .filter((item) => matchesQuery(`${item.title} ${item.meta} ${item.contentText ?? ''}`, q))
@@ -126,7 +128,7 @@ export function LiteraturePickerModal({
       return 3;
     };
     return merged.sort((a, b) => scopeRank(a) - scopeRank(b));
-  }, [appliedQuery, appliedScopes, knowledgeItems]);
+  }, [appliedQuery, appliedScopes, knowledgeItems, uploadCat]);
   const visibleResults = results.slice(0, visibleCount);
   const hasMore = visibleCount < results.length;
 
@@ -158,7 +160,7 @@ export function LiteraturePickerModal({
     onUpload({
       title: file.name,
       meta: `本地上传 · ${(file.size / 1024).toFixed(0)}KB · 已解析`,
-      cat: '参考知识',
+      cat: uploadCat,
       cms: false,
       fileName: file.name,
       ...preview,
@@ -188,7 +190,7 @@ export function LiteraturePickerModal({
       >
         <div className="literature-picker-head">
           <div>
-            <h3 id="literature-picker-title">添加文献</h3>
+            <h3 id="literature-picker-title">添加材料</h3>
             <p>从 CMS、个人知识收藏与外部知识库检索医学文献</p>
           </div>
           <button type="button" className="literature-picker-close" onClick={onClose} aria-label="关闭">

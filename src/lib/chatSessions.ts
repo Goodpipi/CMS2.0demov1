@@ -1,4 +1,9 @@
 import type { ChatMessage, ChatSession, SessionStatus } from '@/types/session';
+import {
+  HOME_ENTRY_SOURCE_LABELS,
+  inferHomeEntrySource,
+  type HomeEntrySource,
+} from '@/app/components/homeGuide';
 
 const STORAGE_KEY = 'acp_chat_sessions_v1';
 export const DEMO_SESSION_ID = 'sess_demo_team';
@@ -94,6 +99,22 @@ export function sessionStatusBadgeClass(status: SessionStatus): string {
   }
 }
 
+const DEMO_ENTRY_SOURCES: Record<string, HomeEntrySource> = {
+  [DEMO_SESSION_ID]: 'promo',
+  sess_demo_hcp: 'evidence',
+  sess_demo_patient: 'poster',
+};
+
+export function sessionEntrySource(session: ChatSession): HomeEntrySource {
+  const stored = session.workspace.entryContext?.source;
+  if (stored) return stored;
+  return DEMO_ENTRY_SOURCES[session.id] ?? inferHomeEntrySource(session.workspace.entryContext);
+}
+
+export function sessionEntryLabel(session: ChatSession): string {
+  return HOME_ENTRY_SOURCE_LABELS[sessionEntrySource(session)];
+}
+
 export function deriveSessionSubtitle(session: ChatSession): string {
   const ctx = session.workspace.entryContext;
   const intent = ctx?.intent;
@@ -156,6 +177,8 @@ export function seedSessionsIfEmpty(): ChatSession[] {
           videoScript: false,
           videoRender: false,
           pptOutline: false,
+          articleOutline: false,
+          longImageOutline: false,
           pptDesign: false,
           brief: false,
           submit: false,
@@ -188,7 +211,7 @@ export function seedSessionsIfEmpty(): ChatSession[] {
         selectedCopies: [],
         copyRevisions: [],
         copyRevisionBase: '',
-        entryContext: { intent: 'copy' },
+        entryContext: { intent: 'copy', source: 'promo' },
         pptWizard: null,
         videoWizard: null,
         visualWizard: null,
@@ -222,6 +245,8 @@ export function seedSessionsIfEmpty(): ChatSession[] {
           videoScript: false,
           videoRender: false,
           pptOutline: false,
+          articleOutline: false,
+          longImageOutline: false,
           pptDesign: false,
           brief: false,
           submit: false,
@@ -247,7 +272,7 @@ export function seedSessionsIfEmpty(): ChatSession[] {
         selectedCopies: [true],
         copyRevisions: [],
         copyRevisionBase: '',
-        entryContext: { intent: 'copy' },
+        entryContext: { intent: 'copy', source: 'evidence' },
         pptWizard: null,
         videoWizard: null,
         visualWizard: null,
@@ -274,6 +299,8 @@ export function seedSessionsIfEmpty(): ChatSession[] {
           videoScript: false,
           videoRender: false,
           pptOutline: false,
+          articleOutline: false,
+          longImageOutline: false,
           pptDesign: false,
           brief: false,
           submit: true,
@@ -299,7 +326,7 @@ export function seedSessionsIfEmpty(): ChatSession[] {
         selectedCopies: [],
         copyRevisions: [],
         copyRevisionBase: '',
-        entryContext: { intent: 'visual' },
+        entryContext: { intent: 'visual', source: 'poster' },
         pptWizard: null,
         videoWizard: null,
         visualWizard: null,

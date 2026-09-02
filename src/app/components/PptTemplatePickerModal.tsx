@@ -34,6 +34,7 @@ interface PptTemplatePickerModalProps {
   title?: string;
   description?: string;
   confirmLabel?: string;
+  className?: string;
 }
 
 export function PptTemplatePickerModal({
@@ -45,6 +46,7 @@ export function PptTemplatePickerModal({
   title = '选择更多模板',
   description = '从模板库挑选一套 PPT 模板，用于本次大纲生成。',
   confirmLabel = '使用此模板',
+  className,
 }: PptTemplatePickerModalProps) {
   const [pickedId, setPickedId] = useState<string | null>(selectedId);
 
@@ -65,7 +67,7 @@ export function PptTemplatePickerModal({
       }}
     >
       <div
-        className="modal ppt-more-template-modal"
+        className={cn('modal ppt-more-template-modal', className)}
         role="dialog"
         aria-modal="true"
         aria-labelledby="ppt-more-template-title"

@@ -392,6 +392,8 @@ export function applyTabForModificationTarget(
     videoScript: boolean;
     videoRender: boolean;
     pptOutline: boolean;
+    articleOutline: boolean;
+    longImageOutline: boolean;
     pptDesign: boolean;
     brief: boolean;
     submit: boolean;
@@ -409,6 +411,8 @@ export function applyTabForModificationTarget(
     'video-script': 'videoScript',
     'video-render': 'videoRender',
     'ppt-outline': 'pptOutline',
+    'article-outline': 'articleOutline',
+    'long-image-outline': 'longImageOutline',
     'ppt-design': 'pptDesign',
     brief: 'brief',
     submit: 'submit',

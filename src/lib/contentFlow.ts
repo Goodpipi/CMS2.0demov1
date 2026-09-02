@@ -6,9 +6,13 @@ export type ContentFlowEntry =
   | 'brief'
   | 'literature'
   | 'outline'
+  | 'articleOutline'
+  | 'longImageOutline'
   | 'ppt'
   | 'copy'
   | 'visual'
+  | 'conferencePoster'
+  | 'script'
   | 'video'
   | 'team'
   | 'general';
@@ -19,9 +23,14 @@ export type ContentFlowStepId =
   | 'brief'
   | 'literature'
   | 'outline'
+  | 'articleOutline'
+  | 'longImageOutline'
   | 'ppt'
   | 'copy'
   | 'visual'
+  | 'kv'
+  | 'poster'
+  | 'mobile'
   | 'video'
   | 'team'
   | 'submit'
@@ -43,9 +52,14 @@ export interface ContentFlowProgress {
   brief: boolean;
   literature: boolean;
   outline: boolean;
+  articleOutline: boolean;
+  longImageOutline: boolean;
   ppt: boolean;
   copy: boolean;
   visual: boolean;
+  kv: boolean;
+  poster: boolean;
+  mobile: boolean;
   video: boolean;
   team: boolean;
   submit: boolean;
@@ -57,18 +71,37 @@ const CORE: Record<Exclude<ContentFlowStepId, 'pending'>, Omit<ContentFlowStep, 
   brief: { id: 'brief', label: 'Brief', tab: 'brief' },
   literature: { id: 'literature', label: '文献', tab: 'literature' },
   outline: { id: 'outline', label: '大纲', tab: 'ppt-outline' },
+  articleOutline: { id: 'articleOutline', label: '推文大纲', tab: 'article-outline' },
+  longImageOutline: { id: 'longImageOutline', label: '长图大纲', tab: 'long-image-outline' },
   ppt: { id: 'ppt', label: 'PPT', tab: 'ppt-design' },
   copy: { id: 'copy', label: '文案', tab: 'copy' },
   visual: { id: 'visual', label: '图片', tab: 'visual' },
+  kv: { id: 'kv', label: '生成主KV', tab: 'visual' },
+  poster: { id: 'poster', label: '生成会议海报', tab: 'visual' },
+  mobile: { id: 'mobile', label: '一键手机', tab: 'visual' },
   video: { id: 'video', label: '视频', tab: 'video-render' },
   team: { id: 'team', label: '意见收集', tab: 'team' },
   submit: { id: 'submit', label: '提交Veeva审批', tab: 'submit' },
 };
 
+function articleCopyStep(required: boolean): ContentFlowStep {
+  return { id: 'copy', label: '图文', tab: 'rich-text', required };
+}
+
+function longImageVisualStep(required: boolean): ContentFlowStep {
+  return { id: 'visual', label: '长图', tab: 'visual', required };
+}
+
+function scriptCopyStep(required: boolean): ContentFlowStep {
+  return { id: 'copy', label: '生成话术', tab: 'copy', required };
+}
+
 export function flowEntryFromTab(tab: TabKey | null | undefined): ContentFlowEntry | null {
   if (tab === 'insight' || tab === 'topic-recommendation') return 'insight';
   if (tab === 'brief') return 'brief';
   if (tab === 'literature') return 'literature';
+  if (tab === 'article-outline') return 'articleOutline';
+  if (tab === 'long-image-outline') return 'longImageOutline';
   if (tab === 'ppt-outline') return 'outline';
   if (tab === 'ppt-design') return 'ppt';
   if (tab === 'copy' || tab === 'rich-text') return 'copy';
@@ -105,7 +138,12 @@ function appendMissing(
 ) {
   if (!steps.some((item) => item.id === id)) {
     const submitAt = steps.findIndex((item) => item.id === 'submit');
-    const next = step(id, required);
+    const next =
+      id === 'copy' && steps.some((item) => item.id === 'articleOutline')
+        ? articleCopyStep(required)
+        : id === 'visual' && steps.some((item) => item.id === 'longImageOutline')
+          ? longImageVisualStep(required)
+          : step(id, required);
     if (submitAt >= 0) steps.splice(submitAt, 0, next);
     else steps.push(next);
   }
@@ -114,7 +152,20 @@ function appendMissing(
 export function buildContentFlowSteps(
   entry: ContentFlowEntry | null,
   extras: Partial<
-    Pick<ContentFlowProgress, 'copy' | 'visual' | 'video' | 'team' | 'insight' | 'brief' | 'literature' | 'outline' | 'ppt'>
+    Pick<
+      ContentFlowProgress,
+      | 'copy'
+      | 'visual'
+      | 'video'
+      | 'team'
+      | 'insight'
+      | 'brief'
+      | 'literature'
+      | 'outline'
+      | 'articleOutline'
+      | 'longImageOutline'
+      | 'ppt'
+    >
   > = {}
 ): ContentFlowStep[] {
   const hasExtras = Boolean(
@@ -122,6 +173,8 @@ export function buildContentFlowSteps(
       extras.brief ||
       extras.literature ||
       extras.outline ||
+      extras.articleOutline ||
+      extras.longImageOutline ||
       extras.ppt ||
       extras.copy ||
       extras.visual ||
@@ -145,12 +198,24 @@ export function buildContentFlowSteps(
     steps.push(step('brief', true), step('literature', false), step('outline', true), step('ppt', true));
   } else if (locked === 'outline') {
     steps.push(step('outline', true), step('ppt', true));
+  } else if (locked === 'articleOutline') {
+    steps.push(step('articleOutline', true), articleCopyStep(true));
+  } else if (locked === 'longImageOutline') {
+    steps.push(step('longImageOutline', true), longImageVisualStep(true));
   } else if (locked === 'ppt') {
     steps.push(step('ppt', true));
   } else if (locked === 'copy') {
     steps.push(step('copy', true));
   } else if (locked === 'visual') {
     steps.push(step('visual', true));
+  } else if (locked === 'conferencePoster') {
+    steps.push(step('kv', true), step('poster', true), step('mobile', true));
+    steps.push(step('submit', true));
+    return steps;
+  } else if (locked === 'script') {
+    steps.push(scriptCopyStep(true));
+    steps.push(step('submit', true));
+    return steps;
   } else if (locked === 'video') {
     steps.push(step('video', true));
   } else if (locked === 'team') {
@@ -163,6 +228,8 @@ export function buildContentFlowSteps(
   if (extras.brief) appendMissing(steps, 'brief');
   if (extras.literature) appendMissing(steps, 'literature');
   if (extras.outline) appendMissing(steps, 'outline');
+  if (extras.articleOutline) appendMissing(steps, 'articleOutline');
+  if (extras.longImageOutline) appendMissing(steps, 'longImageOutline');
   if (extras.ppt) appendMissing(steps, 'ppt');
   if (extras.copy) appendMissing(steps, 'copy');
   if (extras.visual) appendMissing(steps, 'visual');
@@ -178,6 +245,8 @@ export function activeFlowStepId(active: TabKey | null): ContentFlowStepId {
   if (active === 'insight' || active === 'topic-recommendation') return 'insight';
   if (active === 'brief') return 'brief';
   if (active === 'literature') return 'literature';
+  if (active === 'article-outline') return 'articleOutline';
+  if (active === 'long-image-outline') return 'longImageOutline';
   if (active === 'ppt-outline') return 'outline';
   if (active === 'ppt-design') return 'ppt';
   if (active === 'copy' || active === 'rich-text') return 'copy';

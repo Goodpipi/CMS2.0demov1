@@ -7,6 +7,7 @@ import {
   type ContentFlowEntry,
   type ContentFlowProgress,
   type ContentFlowStep,
+  type ContentFlowStepId,
 } from '@/lib/contentFlow';
 import type { TabKey } from '@/types/session';
 
@@ -14,22 +15,31 @@ interface ContentFlowNavProps {
   entry: ContentFlowEntry | null;
   progress: ContentFlowProgress;
   activeTab: TabKey | null;
+  currentStepId?: ContentFlowStepId;
   onSelect: (step: ContentFlowStep) => void;
 }
 
-export function ContentFlowNav({ entry, progress, activeTab, onSelect }: ContentFlowNavProps) {
+export function ContentFlowNav({
+  entry,
+  progress,
+  activeTab,
+  currentStepId,
+  onSelect,
+}: ContentFlowNavProps) {
   const steps = buildContentFlowSteps(entry, {
     insight: progress.insight,
     brief: progress.brief,
     literature: progress.literature,
     outline: progress.outline,
+    articleOutline: progress.articleOutline,
+    longImageOutline: progress.longImageOutline,
     ppt: progress.ppt,
     copy: progress.copy,
     visual: progress.visual,
     video: progress.video,
     team: progress.team,
   });
-  const currentId = activeFlowStepId(activeTab);
+  const currentId = currentStepId ?? activeFlowStepId(activeTab);
 
   return (
     <nav className="content-flow-nav" aria-label="内容生产流程">

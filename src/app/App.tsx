@@ -29,6 +29,7 @@ import type {
   VideoRenderVersion,
   PptResult,
   PptOutline,
+  ArticleOutline,
   PptSlide,
   PptDesignVersion,
   GeneratedImageMeta,
@@ -54,8 +55,12 @@ import {
 } from '@/lib/literatureMocks';
 import {
   MOCK_KV_VERSIONS,
+  MOCK_MOBILE_VERSIONS,
   MOCK_POSTER_VERSIONS,
   createMockVisualTasks,
+  isAdaptPosterMobileIntent,
+  isEditConferencePosterIntent,
+  isEditKeyVisualIntent,
   isGenerateConferencePosterIntent,
   isGenerateKeyVisualIntent,
   type VisualAssetKey,
@@ -75,8 +80,15 @@ import {
 } from '@/app/components/teamReviewUtils';
 import { buildVideoPosterDataUrl } from '@/app/components/videoUtils';
 import { VisualEditor } from '@/app/components/VisualEditor';
-import { parseSvgFromDataUrl } from '@/app/components/svgEditorUtils';
+import { parseSvgFromDataUrl, svgToDataUrl } from '@/app/components/svgEditorUtils';
+import {
+  buildLongImageDataUrl,
+  exportImageAsPsd,
+  exportLongImageAsPng,
+  exportLongImageAsPptx,
+} from '@/app/components/longImageUtils';
 import { PptOutlineEditor, PptOutlineGenerateFooter } from '@/app/components/PptOutlineEditor';
+import { ArticleOutlineEditor } from '@/app/components/ArticleOutlineEditor';
 import { PptTemplatePickerModal } from '@/app/components/PptTemplatePickerModal';
 import { VersionFisheyeTimeline, type VersionTimelineItem } from '@/app/components/VersionFisheyeTimeline';
 import { ContentBriefPanel } from '@/app/components/ContentBriefPanel';
@@ -94,7 +106,15 @@ import {
   recommendPptTemplates,
   type PptBuiltinTemplate,
 } from '@/app/components/pptTemplates';
-import { getImageTemplate, getImageTemplatesByIds } from '@/app/components/imageTemplates';
+import {
+  BLANK_IMAGE_TEMPLATE,
+  catalogImageTemplates,
+  getImageTemplate,
+  getImageTemplatesByIds,
+  isBlankImageTemplate,
+  recommendImageTemplates,
+  type ImageBuiltinTemplate,
+} from '@/app/components/imageTemplates';
 import { ImageTemplatePickerModal } from '@/app/components/ImageTemplatePickerModal';
 import { MaterialPickerModal, type PickedMaterial } from '@/app/components/MaterialPickerModal';
 import { LiteraturePickerModal } from '@/app/components/LiteraturePickerModal';
@@ -114,7 +134,7 @@ import type { LibraryItem } from '@/types/library';
 import { materialAttachmentPill, isMaterialUsable } from '@/lib/libraryUtils';
 import { assignCopyTopicTitles, ensureCopyCount, groupCopiesByTopic } from '@/lib/copyUtils';
 import { groupImagesByCopy } from '@/lib/imageUtils';
-import { buildPreviewFieldsFromTitle } from '@/lib/materialContent';
+import { buildPreviewFieldsFromTitle, readFileForPreview } from '@/lib/materialContent';
 import {
   normalizeOutline,
   parseAudience,
@@ -142,6 +162,8 @@ import { alignImageReviewArrays } from '@/lib/imageReviewUtils';
 import { parseFigmaCaptureId } from '@/lib/figmaCapture';
 import { ReviewerVisualPanel } from '@/app/components/ReviewerVisualPanel';
 import { RichTextEditor } from '@/app/components/RichTextEditor';
+import { ScriptEditor } from '@/app/components/ScriptEditor';
+import { exportPlainTextAsDocx } from '@/app/components/docxUtils';
 import { loadUserRole, saveUserRole, isReviewerRole } from '@/lib/userRole';
 import {
   loadReviewTasks,
@@ -253,7 +275,11 @@ import {
   WORKSPACE_MOCK_PPT_OUTLINE_EN,
   WORKSPACE_MOCK_PPT_RESTYLED,
   WORKSPACE_MOCK_PPT_RESTYLED_EN,
+  WORKSPACE_MOCK_ARTICLE_OUTLINE,
+  WORKSPACE_MOCK_LONG_IMAGE_OUTLINE,
   WORKSPACE_MOCK_RICH_TEXT,
+  isGenerateScriptIntent,
+  buildMockScriptSummary,
 } from '@/lib/workspaceMocks';
 import {
   DEFAULT_SESSION_TITLE,
@@ -266,6 +292,8 @@ import {
   loadAllSessions,
   saveSession,
   seedSessionsIfEmpty,
+  sessionEntryLabel,
+  sessionEntrySource,
 } from '@/lib/chatSessions';
 import type {
   ChatMessage as Message,
@@ -274,7 +302,7 @@ import type {
   TabKey,
 } from '@/types/session';
 
-const cats = ['热点洞察', '合规手册', '参考知识', '品牌策略', 'Brief', '模板', '品牌元素'];
+const cats = ['热点洞察', '合规手册', '参考知识', '品牌策略', 'Brief', '模板', '品牌元素', '视觉参考', '会议信息', '目标解读材料', '其他参考知识'];
 const HOME_TASK_PAGE_SIZE = 7;
 
 const HOME_WORKFLOW_ACTIONS: {
@@ -368,6 +396,12 @@ const initialLibrary: LibraryItem[] = [
   { id: 15, cat: '热点洞察', title: '优迈相关疾病教育话题观察', meta: 'CMS洞察 · 互动趋势', cms: true, def: true, addedAt: Date.now() - 36 * 3600000, validUntil: '2026-12-31', brand: '优迈' },
   { id: 16, cat: '参考知识', title: '爱格希临床证据速览', meta: 'CMS · Approved · 可追溯', cms: true, def: true, addedAt: Date.now() - 5 * 86400000, validUntil: '2027-02-28', brand: '爱格希' },
   { id: 17, cat: '热点洞察', title: '爱格希学术会议热点摘录', meta: '本地上传 · Congress notes', cms: false, def: false, addedAt: Date.now() - 18 * 3600000, brand: '爱格希' },
+  { id: 18, cat: '病例素材', title: 'CKD 合并代谢风险患者病例资料', meta: 'PDF · 病史/检查/诊疗经过', cms: false, def: true, addedAt: Date.now() - 10 * 3600000 },
+  { id: 19, cat: '点评示例', title: '肾内科病例专家点评示例', meta: 'Word · 结构与表达参考', cms: false, def: true, addedAt: Date.now() - 8 * 3600000 },
+  { id: 20, cat: '视觉参考', title: 'CONFIDENCE周周谈海报参考', meta: 'PNG · 视觉参考 · 3:4', cms: false, def: true, addedAt: Date.now() - 6 * 3600000, contentType: 'image', contentUrl: '/image-templates/confidence-talk.png', fileName: 'confidence-talk.png' },
+  { id: 21, cat: '视觉参考', title: 'Radimetrics 剂量管理视觉参考', meta: 'PNG · 视觉参考 · 3:4', cms: false, def: true, addedAt: Date.now() - 5 * 3600000, contentType: 'image', contentUrl: '/image-templates/radimetrics.png', fileName: 'radimetrics.png' },
+  { id: 22, cat: '目标解读材料', title: '2024 KDIGO CKD 临床实践指南（节选）', meta: 'PDF · 指南原文 · 待解读', cms: false, def: true, addedAt: Date.now() - 9 * 3600000 },
+  { id: 23, cat: '目标解读材料', title: 'FIDELIO-DKD 关键终点数据摘要', meta: 'PDF · 研究原文 · 待解读', cms: true, def: true, addedAt: Date.now() - 7 * 3600000, validUntil: '2027-06-30' },
 ];
 
 const tabNames = {
@@ -381,6 +415,8 @@ const tabNames = {
   'video-script': '视频脚本',
   'video-render': '视频生成',
   'ppt-outline': 'PPT大纲',
+  'article-outline': '推文大纲',
+  'long-image-outline': '长图大纲',
   'ppt-design': 'PPT生成',
   brief: 'Brief',
   submit: 'Veeva提交',
@@ -413,6 +449,7 @@ type Screen = 'home' | 'library' | 'assets' | 'workspace';
 
 type EditorTarget =
   | { kind: 'image'; index: number }
+  | { kind: 'long-image'; index: number }
   | { kind: 'ppt-slide'; index: number };
 
 const emptyWorkspaceState = (): AppState => ({
@@ -428,6 +465,8 @@ const emptyWorkspaceState = (): AppState => ({
   videoScript: false,
   videoRender: false,
   pptOutline: false,
+  articleOutline: false,
+  longImageOutline: false,
   pptDesign: false,
   brief: false,
   submit: false,
@@ -478,6 +517,9 @@ export default function App() {
   const [videoScriptEditTargetId, setVideoScriptEditTargetId] = useState<string | null>(null);
   const [pptResult, setPptResult] = useState<PptResult | null>(null);
   const [pptOutline, setPptOutline] = useState<PptOutline | null>(null);
+  const [articleOutline, setArticleOutline] = useState<ArticleOutline | null>(null);
+  const [longImageOutline, setLongImageOutline] = useState<ArticleOutline | null>(null);
+  const [selectedLongImageTemplateId, setSelectedLongImageTemplateId] = useState<string | null>(null);
   const [pptVersions, setPptVersions] = useState<PptDesignVersion[]>([]);
   const [selectedPptVersionId, setSelectedPptVersionId] = useState<string | null>(null);
   const [selectedPptTemplateId, setSelectedPptTemplateId] = useState<string | null>(null);
@@ -505,11 +547,11 @@ export default function App() {
     imagesPerCopy: number;
   } | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [apiReady, setApiReady] = useState<boolean | null>(null);
   const [demoScenario, setDemoScenario] = useState<DemoScenario>(() => loadDemoScenario());
   const [demoScriptStep, setDemoScriptStep] = useState<DemoScriptStep>('idle');
   const [state, setState] = useState<AppState>(emptyWorkspaceState());
   const [richTextContent, setRichTextContent] = useState('');
+  const [scriptContent, setScriptContent] = useState('');
   const [guides, setGuides] = useState<string[]>(['基于默认素材生成话题洞察:']);
   const [selectedPrompt, setSelectedPrompt] = useState('');
   const [toastText, setToastText] = useState('');
@@ -613,6 +655,7 @@ export default function App() {
   const feedRef = useRef<HTMLDivElement>(null);
   const workspaceFileInputRef = useRef<HTMLInputElement>(null);
   const pptImportInputRef = useRef<HTMLInputElement>(null);
+  const posterImportInputRef = useRef<HTMLInputElement>(null);
   const stateRef = useRef(state);
   const pptWizardRef = useRef(pptWizard);
   const videoWizardRef = useRef(videoWizard);
@@ -637,11 +680,15 @@ export default function App() {
       selectedVideoVersionId,
       pptResult,
       pptOutline,
+      articleOutline,
+      longImageOutline,
+      selectedLongImageTemplateId,
       pptVersions,
       selectedPptVersionId,
       selectedPptTemplateId,
       contentBrief,
       richTextContent,
+      scriptContent,
       generatedImages,
       generatedImageMeta,
       imageReviewOrigins,
@@ -673,11 +720,15 @@ export default function App() {
       selectedVideoVersionId,
       pptResult,
       pptOutline,
+      articleOutline,
+      longImageOutline,
+      selectedLongImageTemplateId,
       pptVersions,
       selectedPptVersionId,
       selectedPptTemplateId,
       contentBrief,
       richTextContent,
+      scriptContent,
       generatedImages,
       generatedImageMeta,
       imageReviewOrigins,
@@ -764,6 +815,8 @@ export default function App() {
       literature: legacy.literature ?? false,
       richText: legacy.richText ?? false,
       brief: legacy.brief ?? false,
+      articleOutline: legacy.articleOutline ?? false,
+      longImageOutline: legacy.longImageOutline ?? false,
       active: normalizedActive,
     };
     setState(normalizedState);
@@ -775,6 +828,9 @@ export default function App() {
     setSelectedVideoVersionId(w.selectedVideoVersionId ?? null);
     setPptResult(w.pptResult);
     setPptOutline(w.pptOutline);
+    setArticleOutline(w.articleOutline ?? null);
+    setLongImageOutline(w.longImageOutline ?? null);
+    setSelectedLongImageTemplateId(w.selectedLongImageTemplateId ?? null);
     setPptVersions(w.pptVersions);
     setSelectedPptVersionId(w.selectedPptVersionId);
     const storedPptTasks = (w.modificationTasks || []).filter(isPptDesignModificationTask);
@@ -790,6 +846,7 @@ export default function App() {
     setSelectedPptTemplateId(w.selectedPptTemplateId ?? null);
     setContentBrief(w.contentBrief ?? null);
     setRichTextContent(w.richTextContent ?? '');
+    setScriptContent(w.scriptContent ?? '');
     setGeneratedImages(w.generatedImages);
     setGeneratedImageMeta(w.generatedImageMeta ?? w.generatedImages?.map((_, i) => ({
       copyTitle: '综合内容',
@@ -831,7 +888,14 @@ export default function App() {
     );
     setCopyRevisionBase(revisionBase);
     setSelectedProduct(w.selectedProduct ?? null);
-    setFlowEntry(w.flowEntry ?? inferFlowEntryFromTabs(normalizedTabs));
+    setFlowEntry(
+      w.flowEntry ??
+        (w.entryContext?.source === 'poster'
+          ? 'conferencePoster'
+          : w.entryContext?.source === 'promo'
+            ? 'script'
+            : inferFlowEntryFromTabs(normalizedTabs))
+    );
     setEntryContext(w.entryContext);
     setPptWizard(w.pptWizard);
     setVideoWizard(w.videoWizard ?? null);
@@ -845,11 +909,12 @@ export default function App() {
   }, []);
 
   const getActiveCopyBody = useCallback(() => {
+    if (scriptContent.trim()) return scriptContent;
     if (teamResult?.after) return teamResult.after;
     const idx = selectedCopies.findIndex(Boolean);
     const copy = copies[idx >= 0 ? idx : 0];
     return copy?.body || '';
-  }, [teamResult, selectedCopies, copies]);
+  }, [scriptContent, teamResult, selectedCopies, copies]);
 
   const getSelectedCopyTargets = useCallback(() => {
     return copies
@@ -864,6 +929,7 @@ export default function App() {
         selectedCopies,
         getCopyBody: getActiveCopyBody,
         richTextContent,
+        scriptContent,
         generatedImages,
         selectedImages,
         videoResult,
@@ -875,6 +941,7 @@ export default function App() {
       selectedCopies,
       getActiveCopyBody,
       richTextContent,
+      scriptContent,
       generatedImages,
       selectedImages,
       videoResult,
@@ -1091,25 +1158,6 @@ export default function App() {
       });
     }
   };
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      if (isDemoMode()) {
-        if (!cancelled) setApiReady(true);
-        return;
-      }
-      try {
-        const h = await api.waitForApiHealth();
-        if (!cancelled) setApiReady(h.deepseekConfigured ?? false);
-      } catch {
-        if (!cancelled) setApiReady(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     if (feedRef.current) {
@@ -1370,8 +1418,12 @@ export default function App() {
     });
   };
 
-  const newTask = (_prompt = '', intent: HomeEntryIntent = 'general') => {
-    startFromHome({ intent }, '');
+  const newTask = (
+    _prompt = '',
+    intent: HomeEntryIntent = 'general',
+    source?: HomeEntryContext['source']
+  ) => {
+    startFromHome({ intent, source }, '');
     setProductPickerOpen(true);
   };
 
@@ -1463,7 +1515,21 @@ export default function App() {
         ? `修改「${workspaceElementSel.label}」（${scopeHint}）：例如改成「核心信息」、字号加大…`
         : `修改「${workspaceElementSel.label}」（${scopeHint}）：例如换成绿色、缩小一点…`;
     }
+    const isPosterWorkspace =
+      flowEntry === 'conferencePoster' || entryContext?.source === 'poster';
     if (promptEditScope === 'page') {
+      if (longImageOutline && state.active === 'visual') {
+        return '针对当前长图说明要改什么…';
+      }
+      if (isPosterWorkspace) {
+        if (previewedImageAssetKey === 'kv') return '针对当前主KV说明要改什么，或输入「生成海报」…';
+        if (previewedImageAssetKey === 'poster') return '针对当前海报说明要改什么，或输入「一键手机」…';
+        if (previewedImageAssetKey === 'mobile') return '针对当前手机版海报说明要改什么…';
+        return '输入「生成主KV」或「生成海报」…';
+      }
+      if (flowEntry === 'script' || entryContext?.source === 'promo') {
+        return scriptContent.trim() ? '针对当前话术说明要改什么…' : '输入「生成话术」…';
+      }
       return `针对第 ${creatorPptPageIndex + 1} 页说明要改什么…`;
     }
     const ctx = entryContext;
@@ -1472,10 +1538,12 @@ export default function App() {
       case 'insight':
         return '描述你想洞察的主题，如渠道、疾病领域、受众…';
       case 'copy':
-        return '描述文案类型、受众与核心信息…';
+        return ctx.source === 'promo' ? '输入「生成话术」…' : '描述文案类型、受众与核心信息…';
       case 'visual':
       case 'visual-template':
-        return '描述要生成的图片主题、风格与用途…';
+        return ctx.source === 'poster'
+          ? '输入「生成主KV」或「生成海报」…'
+          : '描述要生成的图片主题、风格与用途…';
       case 'video':
         return '描述视频主题、受众与时长偏好…';
       case 'ppt':
@@ -1532,6 +1600,9 @@ export default function App() {
     setVideoScriptEditTargetId(null);
     setPptResult(null);
     setPptOutline(null);
+    setArticleOutline(null);
+    setLongImageOutline(null);
+    setSelectedLongImageTemplateId(null);
     setPptVersions([]);
     setSelectedPptVersionId(null);
     setModificationTasks((prev) => prev.filter((task) => !isPptDesignModificationTask(task)));
@@ -1540,6 +1611,7 @@ export default function App() {
     setPromptEditScope('page');
     setWorkspaceElementSel(null);
     setRichTextContent('');
+    setScriptContent('');
     setSelectedPptTemplateId(
       entry?.intent === 'ppt-template' && entry.templateTitle
         ? pptTemplateIdFromTitle(entry.templateTitle)
@@ -1560,13 +1632,11 @@ export default function App() {
     setCopyRevisionBase('');
     setWorkspacePreviewMaterial(null);
     setSelectedProduct(null);
-    setFlowEntry(null);
+    setFlowEntry(
+      entry?.source === 'poster' ? 'conferencePoster' : entry?.source === 'promo' ? 'script' : null
+    );
     pendingTopicInsightNoteRef.current = '';
     topicInsightUploadPendingRef.current = false;
-    const apiHint =
-      apiReady === false
-        ? '<br><span style="color:#b72c3e">⚠ 未检测到 DeepSeek API Key，请在项目根目录配置 .env 后重启服务。</span>'
-        : '';
 
     if (opts?.silent) {
       const ctx = entry || { intent: 'general' as const };
@@ -1581,10 +1651,11 @@ export default function App() {
       const ctx: HomeEntryContext = {
         intent: suggestedIntent,
         templateTitle: entry?.templateTitle,
+        source: entry?.source,
       };
       setEntryContext(ctx);
       addMsg('user', opts.homeDraft, selectedModel);
-      addMsg('ai', `${guidance.html}${apiHint}`, 'DeepSeek-V3.1', guidance.chips);
+      addMsg('ai', guidance.html, 'DeepSeek-V3.1', guidance.chips);
     } else if (opts?.attachedMaterials?.length) {
       const ctx = entry || { intent: 'general' as const };
       setEntryContext(ctx);
@@ -1593,7 +1664,7 @@ export default function App() {
       const welcome = getEntryWelcome(ctx);
       addMsg(
         'ai',
-        `已创建新对话，并带入 ${opts.attachedMaterials.length} 项素材：${titles}。默认素材仍会参与生成。<br>${welcome.html}${apiHint}`,
+        `已创建新对话，并带入 ${opts.attachedMaterials.length} 项素材：${titles}。默认素材仍会参与生成。<br>${welcome.html}`,
         'DeepSeek-V3.1',
         welcome.chips
       );
@@ -1601,7 +1672,7 @@ export default function App() {
       const ctx = entry || { intent: 'general' as const };
       setEntryContext(ctx);
       const welcome = getEntryWelcome(ctx);
-      addMsg('ai', `${welcome.html}${apiHint}`, 'DeepSeek-V3.1', welcome.chips);
+      addMsg('ai', welcome.html, 'DeepSeek-V3.1', welcome.chips);
     }
 
   };
@@ -1652,6 +1723,8 @@ export default function App() {
     imageUrl: string;
     imageTitle: string;
     assetKey: VisualAssetKey;
+    actionLabel?: string;
+    quick?: string[];
   }) => {
     setMessages((prev) => [
       ...prev,
@@ -1661,11 +1734,28 @@ export default function App() {
         model: '本地 Mock',
         imageUrl: opts.imageUrl,
         imageTitle: opts.imageTitle,
-        imageActionLabel: '修改此图片',
+        imageActionLabel: opts.actionLabel || (opts.assetKey === 'kv' ? '修改主KV' : opts.assetKey === 'mobile' ? '修改手机版' : '修改海报'),
         imageAssetKey: opts.assetKey,
+        quick: opts.quick,
       },
     ]);
   };
+
+  const latestVisualAsset = (assetKey: VisualAssetKey) => {
+    const fromTasks = [...modificationTasks]
+      .filter((task) => task.assetKey === assetKey && task.imageSnapshot)
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    if (fromTasks?.imageSnapshot) {
+      return { url: fromTasks.imageSnapshot, title: fromTasks.targetLabel || assetKey };
+    }
+    if (assetKey === 'kv') return { url: MOCK_KV_VERSIONS.current.dataUrl, title: MOCK_KV_VERSIONS.current.title };
+    if (assetKey === 'mobile') return { url: MOCK_MOBILE_VERSIONS.current.dataUrl, title: MOCK_MOBILE_VERSIONS.current.title };
+    return { url: MOCK_POSTER_VERSIONS.current.dataUrl, title: MOCK_POSTER_VERSIONS.current.title };
+  };
+
+  const hasVisualAsset = (assetKey: VisualAssetKey) =>
+    modificationTasks.some((task) => task.assetKey === assetKey) ||
+    messages.some((msg) => msg.imageAssetKey === assetKey);
 
   const seedVisualTasks = (assetKey: VisualAssetKey) => {
     const seeded = createMockVisualTasks(assetKey);
@@ -1766,9 +1856,13 @@ export default function App() {
   const addLiteratureToTask = (article: LiteratureArticle) => {
     if (addedLiteratureIds.includes(article.id)) return;
     const now = Date.now();
+    const cat =
+      pickerCat === '视觉参考' || pickerCat === '目标解读材料' || pickerCat === '其他参考知识'
+        ? pickerCat
+        : '参考知识';
     const item: LibraryItem = {
       id: now,
-      cat: '参考知识',
+      cat,
       title: article.title,
       meta: `${article.publisher} · ${article.year} · ${article.source}`,
       cms: article.source === 'CMS',
@@ -1787,7 +1881,55 @@ export default function App() {
     };
     setLibrary((prev) => [item, ...prev]);
     setAddedLiteratureIds((prev) => [...prev, article.id]);
-    toast(`已添加「${article.title}」到参考知识`);
+    toast(`已添加「${article.title}」到${cat}`);
+  };
+
+  const applyLongImageProduct = (templateId?: string | null, opts?: { switched?: boolean }) => {
+    const outline = longImageOutline ?? WORKSPACE_MOCK_LONG_IMAGE_OUTLINE;
+    if (!longImageOutline) setLongImageOutline(outline);
+    if (templateId != null) setSelectedLongImageTemplateId(templateId);
+    const tpl = getImageTemplate(templateId ?? selectedLongImageTemplateId);
+    const named = tpl && !isBlankImageTemplate(tpl);
+    const imageUrl = buildLongImageDataUrl(outline, tpl);
+    const imageTitle = outline.title || (named ? tpl?.name : '长图');
+    setWorkspacePreviewMaterial(null);
+    setGeneratedImages([imageUrl]);
+    setGeneratedImageMeta([{ copyTitle: imageTitle, copyIndex: -1, imageIndex: 0 }]);
+    setSelectedImages([true]);
+    setWorkspaceElementSel(null);
+    setDrawerOpen(false);
+    setImagePageVersionEpoch((value) => value + 1);
+    setFlowEntry((prev) => (prev === 'longImageOutline' ? prev : prev ?? 'longImageOutline'));
+    setState((prev) => {
+      const tabs = [...prev.tabs];
+      if (!tabs.includes('long-image-outline')) tabs.push('long-image-outline');
+      if (!tabs.includes('visual')) tabs.push('visual');
+      return {
+        ...prev,
+        tabs,
+        active: 'visual',
+        visual: true,
+        longImageOutline: true,
+      };
+    });
+    const html = opts?.switched
+      ? named
+        ? `已切换为「${tpl?.name}」模板并重新生成长图。可继续点选元素、手动调整，或再次切换模板。`
+        : '已切换为空白模板并重新生成长图。可继续点选元素、手动调整，或再次切换模板。'
+      : named
+        ? `长图已按「${tpl?.name}」模板生成。可在中间区域点选文字或图片元素，也可点击「手动调整」进入页面编辑；下方支持导出为图片或 PPTX，也可切换模板。`
+        : '长图已按大纲结构生成。可在中间区域点选文字或图片元素，也可点击「手动调整」进入页面编辑；下方支持导出为图片或 PPTX，也可切换模板。';
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: 'ai',
+        html,
+        model: '本地 Mock',
+        imageUrl,
+        imageTitle,
+        imageActionLabel: '手动调整',
+      },
+    ]);
   };
 
   const runWorkspaceMockCommand = (text: string): boolean => {
@@ -1817,30 +1959,94 @@ export default function App() {
 
     const demoScriptBusy = isDemoMode() && demoScriptStep !== 'idle';
 
+    if (!demoScriptBusy && isGenerateScriptIntent(text) && flowEntry !== 'conferencePoster') {
+      const next = buildMockScriptSummary(selectedProduct?.name);
+      setScriptContent(next);
+      setFlowEntry((prev) => (prev === 'conferencePoster' ? prev : 'script'));
+      setState((prev) => ({
+        ...prev,
+        tabs: prev.tabs.includes('copy') ? prev.tabs : [...prev.tabs, 'copy'],
+        active: 'copy',
+        copy: true,
+      }));
+      addMsg(
+        'ai',
+        attachments.length > 0
+          ? `已结合当前 ${attachments.length} 个附件生成话术总结。可在中间直接修改纯文字，并导出为 DOCX；也可提交团队意见收集或 Veeva 审批。`
+          : '话术总结已生成。可在中间直接修改纯文字，并导出为 DOCX；也可提交团队意见收集或 Veeva 审批。',
+        '本地 Mock',
+        ['提交当前话术到Veeva Vault']
+      );
+      return true;
+    }
+
     if (!demoScriptBusy && isGenerateKeyVisualIntent(text)) {
       seedVisualTasks('kv');
       publishChatImage({
         html:
           attachments.length > 0
-            ? `已结合当前 ${attachments.length} 个附件生成主 KV。请先在对话中查看，点击「修改此图片」后可在中间区域预览版本并继续修改。`
-            : '主 KV 已生成。请先在对话中查看，点击「修改此图片」后可在中间区域预览版本并继续修改。',
+            ? `已结合当前 ${attachments.length} 个附件生成主 KV。点击图片或下方「修改主KV」，可在中间区域用画笔圈定修改，并导出为图片。`
+            : '主 KV 已生成。点击图片或下方「修改主KV」，可在中间区域用画笔圈定修改，并导出为图片。',
         imageUrl: MOCK_KV_VERSIONS.current.dataUrl,
         imageTitle: MOCK_KV_VERSIONS.current.title,
         assetKey: 'kv',
+        actionLabel: '修改主KV',
+        quick: ['生成海报'],
       });
       return true;
     }
 
+    if (!demoScriptBusy && isEditKeyVisualIntent(text)) {
+      if (!hasVisualAsset('kv')) {
+        addMsg('ai', '请先输入「生成主KV」。', '本地 Mock', ['生成主KV']);
+        return true;
+      }
+      const asset = latestVisualAsset('kv');
+      openMockImageInPreview(asset.url, asset.title, 'kv');
+      addMsg('ai', '已在中间区域打开主 KV，可用画笔圈定需要修改的区域，或导出为图片。', '本地 Mock');
+      return true;
+    }
+
     if (!demoScriptBusy && isGenerateConferencePosterIntent(text)) {
-      const hasKeyVisual = modificationTasks.some((task) => task.assetKey === 'kv');
+      const hasKeyVisual = hasVisualAsset('kv');
       seedVisualTasks('poster');
       publishChatImage({
         html: hasKeyVisual
-          ? '已根据主 KV 延展生成学术会议海报，包含会议名称、时间地点、嘉宾、亮点与议程。请先在对话中查看，点击「修改此图片」后可在中间区域预览版本。'
-          : '学术会议海报已生成，包含会议名称、时间地点、嘉宾、亮点与议程。请先在对话中查看，点击「修改此图片」后可在中间区域预览版本。',
+          ? '已根据主 KV 延展生成会议海报。点击图片或「修改海报」在中间区域点选元素、手动调整；支持导出图片 / PPTX / PSD，也可导入本地版本。'
+          : '会议海报已生成。点击图片或「修改海报」在中间区域点选元素、手动调整；支持导出图片 / PPTX / PSD，也可导入本地版本。',
         imageUrl: MOCK_POSTER_VERSIONS.current.dataUrl,
         imageTitle: MOCK_POSTER_VERSIONS.current.title,
         assetKey: 'poster',
+        actionLabel: '修改海报',
+        quick: ['一键手机'],
+      });
+      return true;
+    }
+
+    if (!demoScriptBusy && isEditConferencePosterIntent(text)) {
+      if (!hasVisualAsset('poster')) {
+        addMsg('ai', '请先输入「生成海报」。', '本地 Mock', ['生成海报']);
+        return true;
+      }
+      const asset = latestVisualAsset('poster');
+      openMockImageInPreview(asset.url, asset.title, 'poster');
+      addMsg('ai', '已在中间区域打开会议海报。可点选元素或点击「手动调整」；下方支持导出与导入本地版本。', '本地 Mock');
+      return true;
+    }
+
+    if (!demoScriptBusy && isAdaptPosterMobileIntent(text)) {
+      if (!hasVisualAsset('poster')) {
+        addMsg('ai', '请先生成会议海报，再使用「一键手机」。', '本地 Mock', ['生成海报']);
+        return true;
+      }
+      seedVisualTasks('mobile');
+      publishChatImage({
+        html: '已将会议海报适配为手机竖版。可在中间区域点选元素、手动调整，并导出为图片 / PPTX / PSD。',
+        imageUrl: MOCK_MOBILE_VERSIONS.current.dataUrl,
+        imageTitle: MOCK_MOBILE_VERSIONS.current.title,
+        assetKey: 'mobile',
+        actionLabel: '修改手机版',
+        quick: ['提交当前版本到Veeva Vault'],
       });
       return true;
     }
@@ -1923,7 +2129,7 @@ export default function App() {
       }));
       addMsg(
         'ai',
-        `PPT 大纲已生成，共 ${WORKSPACE_MOCK_PPT_OUTLINE.chapters.length} 节。已在中间区域展示，可直接编辑各节与页面要点。`,
+        `PPT 大纲已生成，共 ${WORKSPACE_MOCK_PPT_OUTLINE.chapters.length} 节。已在中间区域以卡片展示，可拖拽调整顺序，或点击「修改本页」让 AI 调整该页。`,
         '本地 Mock'
       );
       return true;
@@ -1956,11 +2162,55 @@ export default function App() {
       return true;
     }
 
+    if (/(生成|创建|制作).*长图大纲/.test(command) || command === '长图大纲') {
+      setWorkspacePreviewMaterial((current) =>
+        current?.cat === '生成图片' && current.contentType === 'image' ? current : null
+      );
+      setLongImageOutline(WORKSPACE_MOCK_LONG_IMAGE_OUTLINE);
+      setSelectedLongImageTemplateId((prev) => prev ?? BLANK_IMAGE_TEMPLATE.id);
+      setFlowEntry((prev) => prev ?? 'longImageOutline');
+      setState((prev) => ({
+        ...prev,
+        tabs: prev.tabs.includes('long-image-outline')
+          ? prev.tabs
+          : [...prev.tabs, 'long-image-outline'],
+        active: 'long-image-outline',
+        longImageOutline: true,
+      }));
+      addMsg(
+        'ai',
+        `长图大纲已生成，共 ${WORKSPACE_MOCK_LONG_IMAGE_OUTLINE.chapters.length} 个章节。已在中间区域以卡片展示，可拖拽调整顺序，或点击「修改本页」让 AI 调整该章；请在下方选择图片模板后再生成长图。`,
+        '本地 Mock'
+      );
+      return true;
+    }
+
+    if (/(生成|创建|制作).*图文大纲/.test(command) || command === '图文大纲') {
+      setWorkspacePreviewMaterial((current) =>
+        current?.cat === '生成图片' && current.contentType === 'image' ? current : null
+      );
+      setArticleOutline(WORKSPACE_MOCK_ARTICLE_OUTLINE);
+      setFlowEntry((prev) => prev ?? 'articleOutline');
+      setState((prev) => ({
+        ...prev,
+        tabs: prev.tabs.includes('article-outline') ? prev.tabs : [...prev.tabs, 'article-outline'],
+        active: 'article-outline',
+        articleOutline: true,
+      }));
+      addMsg(
+        'ai',
+        `推文大纲已生成，共 ${WORKSPACE_MOCK_ARTICLE_OUTLINE.chapters.length} 个章节。已在中间区域以卡片展示，可拖拽调整顺序，或点击「修改本页」让 AI 调整该章。`,
+        '本地 Mock'
+      );
+      return true;
+    }
+
     if (/(生成|创建|制作).*图文/.test(command)) {
       setWorkspacePreviewMaterial((current) =>
         current?.cat === '生成图片' && current.contentType === 'image' ? current : null
       );
       setRichTextContent(WORKSPACE_MOCK_RICH_TEXT);
+      setFlowEntry((prev) => prev ?? 'copy');
       setState((prev) => ({
         ...prev,
         tabs: prev.tabs.includes('rich-text') ? prev.tabs : [...prev.tabs, 'rich-text'],
@@ -1972,6 +2222,11 @@ export default function App() {
         '病例解读已生成。中间可直接修改文字；配图支持点击替换，也可拖拽调整顺序。',
         '本地 Mock'
       );
+      return true;
+    }
+
+    if (/(生成|创建|制作).*长图/.test(command)) {
+      applyLongImageProduct(selectedLongImageTemplateId);
       return true;
     }
 
@@ -2009,9 +2264,19 @@ export default function App() {
       speech.stop();
     }
     if (!text || workspaceElementBusy) return;
-    if (workspaceElementSel) {
+    const isConferencePosterCommand =
+      isGenerateKeyVisualIntent(text) ||
+      isEditKeyVisualIntent(text) ||
+      isGenerateConferencePosterIntent(text) ||
+      isEditConferencePosterIntent(text) ||
+      isAdaptPosterMobileIntent(text);
+    const isScriptCommand = isGenerateScriptIntent(text);
+    if (workspaceElementSel && !isConferencePosterCommand && !isScriptCommand) {
       void applyWorkspaceElementAi(text, promptEditScope);
       return;
+    }
+    if (workspaceElementSel && (isConferencePosterCommand || isScriptCommand)) {
+      setWorkspaceElementSel(null);
     }
     const scopedText = formatScopedUserPrompt(text);
     addMsg('user', scopedText, selectedModel);
@@ -2062,9 +2327,7 @@ export default function App() {
   };
 
   const showLoading = (title: string) => {
-    const statusLine = isDemoMode()
-      ? '正在生成，请稍候…'
-      : '正在调用 DeepSeek，请稍候…';
+    const statusLine = '正在生成，请稍候…';
     const modelLabel = 'GPT-5.5';
     setMessages((prev) => [
       ...prev.filter((m) => !m.loading),
@@ -2077,11 +2340,7 @@ export default function App() {
     ]);
   };
 
-  const notifyMockIfNeeded = (meta?: { mockUsed?: boolean }) => {
-    if (meta?.mockUsed && !isDemoMode()) {
-      toast('DeepSeek 暂不可用，已使用演示数据（可继续体验流程）');
-    }
-  };
+  const notifyMockIfNeeded = (_meta?: { mockUsed?: boolean }) => {};
 
   const runWithAi = async (
     title: string,
@@ -2095,7 +2354,7 @@ export default function App() {
     try {
       await api.waitForApiHealth(6, 300);
     } catch {
-      toast('AI 服务尚未就绪，请确认已启动 API（npm start）后重试');
+      toast('当前无法完成生成，请稍后重试');
       return;
     }
     setIsGenerating(true);
@@ -3133,7 +3392,7 @@ export default function App() {
       addTab('ppt-outline');
       addMsg(
         'ai',
-        `已为「${outline.title}」生成大纲，共 ${outline.chapters.length} 节。请在中间「PPT大纲」中按节编辑，确认后点击「按模板生成 PPT」。`,
+        `已为「${outline.title}」生成大纲，共 ${outline.chapters.length} 节。请在中间「PPT大纲」中查看各页卡片，可拖拽调整顺序，或点击「修改本页」让 AI 调整该页。确认后点击「按模板生成 PPT」。`,
         'DeepSeek-V3.1｜PPT 大纲',
         ['查看大纲']
       );
@@ -3338,6 +3597,19 @@ export default function App() {
     },
       () => confirmPptDesigns(effectiveMode)
     );
+  };
+
+  const confirmLongImageTemplateSwitch = (templateId: string) => {
+    if (isGenerating) {
+      toast('请等待当前 AI 生成完成');
+      return;
+    }
+    if (!longImageOutline) {
+      toast('请先生成并确认长图大纲，再切换模板');
+      setState((prev) => ({ ...prev, active: 'long-image-outline' }));
+      return;
+    }
+    applyLongImageProduct(templateId, { switched: true });
   };
 
   const selectPptVersion = (version: PptDesignVersion) => {
@@ -4081,7 +4353,7 @@ export default function App() {
     if (wasHidden) {
       addMsg(
         'ai',
-        `已在中间展示「PPT大纲」，共 ${pptOutline.chapters.length} 节。可按需编辑结构；修改后可在「PPT生成」中重新生成设计稿。`,
+        `已在中间展示「PPT大纲」，共 ${pptOutline.chapters.length} 节。可拖拽调整各页顺序，或点击「修改本页」让 AI 调整该页；修改后可在「PPT生成」中重新生成设计稿。`,
         'DeepSeek-V3.1',
         ['生成设计', '返回 PPT 生成']
       );
@@ -4155,6 +4427,23 @@ export default function App() {
     toast(`已用「${file.name}」覆盖当前在线版本`);
   };
 
+  const importLocalPosterVersion = (file: File) => {
+    const apply = (imageUrl: string) => {
+      const title = file.name.replace(/\.[^.]+$/, '') || MOCK_POSTER_VERSIONS.current.title;
+      seedVisualTasks('poster');
+      openMockImageInPreview(imageUrl, `${title}（本地导入）`, 'poster');
+      toast(`已导入本地版本「${file.name}」`);
+    };
+    if (file.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|svg)$/i.test(file.name)) {
+      const reader = new FileReader();
+      reader.onload = () => apply(String(reader.result || MOCK_POSTER_VERSIONS.current.dataUrl));
+      reader.onerror = () => toast('读取本地文件失败');
+      reader.readAsDataURL(file);
+      return;
+    }
+    apply(MOCK_POSTER_VERSIONS.current.dataUrl);
+  };
+
   const openVisualEditor = (src: string, target: EditorTarget, initialSvg?: string) => {
     let svg = initialSvg?.trim() || undefined;
     if (!svg && src.startsWith('data:image/svg+xml')) {
@@ -4168,6 +4457,10 @@ export default function App() {
   };
 
   const openImageEditor = (src: string, index: number) => {
+    if (longImageOutline || previewedImageAssetKey === 'poster' || previewedImageAssetKey === 'mobile') {
+      openVisualEditor(src, { kind: 'long-image', index }, parseSvgFromDataUrl(src));
+      return;
+    }
     openVisualEditor(src, { kind: 'image', index });
   };
 
@@ -4362,11 +4655,13 @@ export default function App() {
   };
 
   const handleEditorUpdate = (dataUrl: string, svg?: string) => {
-    if (editorTarget?.kind === 'image') {
+    if (editorTarget?.kind === 'image' || editorTarget?.kind === 'long-image') {
       const index = editorTarget.index;
+      const nextUrl =
+        editorTarget.kind === 'long-image' && svg ? svgToDataUrl(svg) : dataUrl;
       setGeneratedImages((prev) => {
         const oldUrl = prev[index];
-        if (isReviewerRole(userRole) && oldUrl && oldUrl !== dataUrl) {
+        if (isReviewerRole(userRole) && oldUrl && oldUrl !== nextUrl) {
           setImageReviewOrigins((origins) => {
             const { origins: aligned } = alignImageReviewArrays(prev, origins, []);
             const next = [...aligned];
@@ -4382,13 +4677,20 @@ export default function App() {
             return next;
           });
         }
-        return prev.map((img, i) => (i === index ? dataUrl : img));
+        return prev.map((img, i) => (i === index ? nextUrl : img));
       });
+      if (editorTarget.kind === 'long-image') {
+        setWorkspacePreviewMaterial((prev) =>
+          prev?.cat === '生成图片' ? { ...prev, contentUrl: nextUrl } : prev
+        );
+      }
       touchActiveReviewTask();
       toast(
         activeReviewTaskId && isReviewerRole(userRole)
           ? '配图已保存，待内容运营采纳或恢复原图'
-          : '图片已更新'
+          : editorTarget.kind === 'long-image'
+            ? '长图已更新'
+            : '图片已更新'
       );
     } else if (editorTarget?.kind === 'ppt-slide' && pptResult) {
       const idx = editorTarget.index;
@@ -4410,7 +4712,9 @@ export default function App() {
           : `第 ${slides[idx]?.page ?? idx + 1} 页已更新`
       );
     }
-    setEditorSrc(dataUrl);
+    setEditorSrc(
+      editorTarget?.kind === 'long-image' && svg ? svgToDataUrl(svg) : dataUrl
+    );
     if (svg) setEditorSvg(svg);
   };
 
@@ -4419,7 +4723,9 @@ export default function App() {
     const name =
       editorTarget?.kind === 'ppt-slide'
         ? `PPT-第${(editorTarget.index ?? 0) + 1}页.png`
-        : '配图编辑.png';
+        : editorTarget?.kind === 'long-image'
+          ? '长图.png'
+          : '配图编辑.png';
     downloadDataUrl(editorSrc, name);
     toast('已导出 PNG');
   };
@@ -4799,7 +5105,7 @@ export default function App() {
           }
         );
       }
-      toast(`已添加「${item.title}」到参考知识`);
+      toast(`已添加「${item.title}」到${item.cat}`);
       return;
     }
     const libraryItem: LibraryItem = {
@@ -4891,6 +5197,22 @@ export default function App() {
     }
     return recommendedPptTemplates;
   }, [allPptTemplates, recommendedPptTemplates, selectedPptTemplateId]);
+
+  const recommendedImageTemplates = useMemo(
+    () =>
+      recommendImageTemplates(
+        `${longImageOutline?.title || ''} ${longImageOutline?.chapters.map((item) => item.title).join(' ') || ''} ${inputValue}`
+      ),
+    [inputValue, longImageOutline]
+  );
+  const moreImageTemplates = useMemo(() => catalogImageTemplates(), []);
+  const longImageTemplateOptions = useMemo(() => {
+    const extra = moreImageTemplates.find((item) => item.id === selectedLongImageTemplateId);
+    if (extra && !recommendedImageTemplates.some((item) => item.id === extra.id)) {
+      return [...recommendedImageTemplates, extra];
+    }
+    return recommendedImageTemplates;
+  }, [moreImageTemplates, recommendedImageTemplates, selectedLongImageTemplateId]);
 
   useEffect(() => {
     if (!selectedPptTemplateId) {
@@ -4999,7 +5321,8 @@ export default function App() {
       ),
     [modificationTasks, previewedImageAssetKey]
   );
-  const showingVisualTasks = state.active === 'visual' && Boolean(previewedImageAssetKey);
+  const showingVisualTasks =
+    state.active === 'visual' && (Boolean(previewedImageAssetKey) || Boolean(longImageOutline));
   const contextModificationTasks = showingVisualTasks
     ? visualModificationTasks
     : currentPageModificationTasks;
@@ -5329,7 +5652,9 @@ export default function App() {
 
   const applyWorkspaceElementAi = useCallback(
     async (promptText: string, scope: 'page' | 'global' = 'page') => {
-      if (!workspaceElementSel || !promptText.trim() || !pptResult) return;
+      if (!workspaceElementSel || !promptText.trim()) return;
+      const editLongImage = Boolean(longImageOutline) && state.active === 'visual';
+      if (!editLongImage && !pptResult) return;
       const prompt = promptText.trim();
       const target = workspaceElementSel;
       const markup = target.svgMarkup.trim();
@@ -5350,6 +5675,47 @@ export default function App() {
           return;
         }
 
+        if (editLongImage) {
+          const nextUrl = svgToDataUrl(primary.svg);
+          setGeneratedImages((prev) => prev.map((img, i) => (i === 0 ? nextUrl : img)));
+          setWorkspacePreviewMaterial((prev) =>
+            prev?.cat === '生成图片' ? { ...prev, contentUrl: nextUrl } : prev
+          );
+          const now = Date.now();
+          setModificationTasks((prev) => [
+            {
+              id: `mod-task-live-${now}`,
+              prompt,
+              status: 'completed',
+              targetTab: 'visual',
+              pageIndex: 0,
+              targetLabel: `长图 · ${target.label}`,
+              resultSummary: primary.summary,
+              imageSnapshot: nextUrl,
+              createdAt: now,
+              updatedAt: now,
+            },
+            ...prev,
+          ]);
+          setWorkspaceElementSel((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  label: primary.elementLabel,
+                  svgMarkup: primary.svg,
+                }
+              : prev
+          );
+          addMsg(
+            'ai',
+            `已按指令修改长图「${primary.elementLabel}」。<br>${primary.summary}`,
+            selectedModel
+          );
+          toast(primary.summary);
+          return;
+        }
+
+        if (!pptResult) return;
         let changedPages = 1;
         const slides = pptResult.slides.map((item, index) => {
           if (index === target.slideIndex) {
@@ -5428,6 +5794,8 @@ export default function App() {
       selectedModel,
       toast,
       formatScopedUserPrompt,
+      longImageOutline,
+      state.active,
     ]
   );
 
@@ -5440,7 +5808,7 @@ export default function App() {
     return sessions.filter((session) => {
       if (activeProjectId && session.projectId !== activeProjectId) return false;
       if (!query) return true;
-      return `${session.title} ${deriveSessionSubtitle(session)}`.toLowerCase().includes(query);
+      return `${session.title} ${deriveSessionSubtitle(session)} ${sessionEntryLabel(session)}`.toLowerCase().includes(query);
     });
   }, [sessions, activeProjectId, sessionSearch]);
   const homeCollectTasks = useMemo(() => {
@@ -5455,12 +5823,14 @@ export default function App() {
         if (session && session.projectId !== activeProjectId) return false;
       }
       if (!query) return true;
+      const linked = sessions.find((item) => item.id === task.sessionId);
       const hay = [
         task.title,
         TEAM_CONTENT_LABELS[task.contentType],
         ROLE_PROFILES[task.assigneeRole].dept,
         task.assigneeName,
         collectTaskStatusLabel(task.status),
+        linked ? sessionEntryLabel(linked) : '',
       ]
         .join(' ')
         .toLowerCase();
@@ -5614,7 +5984,7 @@ export default function App() {
                             key={title}
                             type="button"
                             className={`home-inspire-action home-task-card art-${art}`}
-                            onClick={() => newTask(prompt, intent)}
+                            onClick={() => newTask(prompt, intent, art)}
                           >
                             <span className="home-inspire-action-icon">
                               <Icon className="h-4 w-4" strokeWidth={2.4} />
@@ -5780,8 +6150,13 @@ export default function App() {
                                       <Presentation className="h-4 w-4 text-white" strokeWidth={2.4} />
                                     </span>
                                     <span className="home-task-card-copy">
-                                      <strong>{session.title}</strong>
-                                      <span>
+                                      <span className="home-task-card-title-row">
+                                        <strong>{session.title}</strong>
+                                        <em className={`home-task-entry-tag is-${sessionEntrySource(session)}`}>
+                                          {sessionEntryLabel(session)}
+                                        </em>
+                                      </span>
+                                      <span className="home-task-card-meta">
                                         {session.id.slice(0, 10)} · {deriveSessionSubtitle(session)} ·{' '}
                                         {formatSessionTime(session.updatedAt)}
                                       </span>
@@ -5851,7 +6226,9 @@ export default function App() {
                       ) : homeHistoryTab === 'collect' && homeCollectTasks.length > 0 ? (
                         <>
                           <div className="home-task-grid home-inspire-history-list">
-                            {pagedHomeCollectTasks.map((task) => (
+                            {pagedHomeCollectTasks.map((task) => {
+                              const linkedSession = sessions.find((item) => item.id === task.sessionId);
+                              return (
                               <article
                                 key={task.id}
                                 className={`home-task-card group ${activeReviewTaskId === task.id ? 'active' : ''}`}
@@ -5871,8 +6248,15 @@ export default function App() {
                                     <MessageSquare className="h-4 w-4 text-white" strokeWidth={2.4} />
                                   </span>
                                   <span className="home-task-card-copy">
-                                    <strong>{task.title}</strong>
-                                    <span>
+                                    <span className="home-task-card-title-row">
+                                      <strong>{task.title}</strong>
+                                      {linkedSession ? (
+                                        <em className={`home-task-entry-tag is-${sessionEntrySource(linkedSession)}`}>
+                                          {sessionEntryLabel(linkedSession)}
+                                        </em>
+                                      ) : null}
+                                    </span>
+                                    <span className="home-task-card-meta">
                                       {TEAM_CONTENT_LABELS[task.contentType]} · {ROLE_PROFILES[task.assigneeRole].dept} ·{' '}
                                       {collectTaskStatusLabel(task.status)} · {formatSessionTime(task.updatedAt)}
                                     </span>
@@ -5880,7 +6264,8 @@ export default function App() {
                                   <ArrowRight className="home-task-card-arrow h-4 w-4" />
                                 </button>
                               </article>
-                            ))}
+                              );
+                            })}
                           </div>
                           {homeTaskPageCount > 1 && (
                             <nav className="home-task-pagination" aria-label="意见收集任务分页">
@@ -6163,11 +6548,34 @@ export default function App() {
                 <div className="context-scroll">
                   <ContextMaterialsPanel
                     library={library}
+                    variant={
+                      entryContext?.source === 'case'
+                        ? 'case'
+                        : entryContext?.source === 'poster'
+                          ? 'poster'
+                          : entryContext?.source === 'evidence'
+                            ? 'evidence'
+                            : entryContext?.source === 'insight'
+                              ? 'insight'
+                              : 'default'
+                    }
                     onOpenPicker={(category) => {
                       setPickerTarget('workspace');
                       setPickerCat(category);
                       setPickerMode('reference');
                       setPickerOpen(true);
+                    }}
+                    onUploadFile={async (file, category) => {
+                      setPickerTarget('workspace');
+                      const preview = await readFileForPreview(file);
+                      handleMaterialPicked({
+                        title: file.name,
+                        meta: `本地上传 · ${(file.size / 1024).toFixed(0)}KB · 已解析`,
+                        cat: category,
+                        cms: false,
+                        fileName: file.name,
+                        ...preview,
+                      });
                     }}
                     onPreview={setPreviewMaterial}
                     onRemove={(item) => {
@@ -6325,18 +6733,30 @@ export default function App() {
                     <div dangerouslySetInnerHTML={{ __html: msg.html }} />
                     {msg.imageUrl && (
                       <div className="chat-generated-image">
-                        <img src={msg.imageUrl} alt={msg.imageTitle || 'AI 生成图片'} />
+                        <button
+                          type="button"
+                          className="chat-generated-image-hit"
+                          onClick={() => {
+                            const url = msg.imageUrl || WORKSPACE_MOCK_IMAGE.dataUrl;
+                            const title = msg.imageTitle || WORKSPACE_MOCK_IMAGE.title;
+                            const assetKey = msg.imageAssetKey as VisualAssetKey | undefined;
+                            openMockImageInPreview(url, title, assetKey);
+                            if (longImageOutline && !assetKey) openImageEditor(url, 0);
+                          }}
+                        >
+                          <img src={msg.imageUrl} alt={msg.imageTitle || 'AI 生成图片'} />
+                        </button>
                         <div className="chat-generated-image-actions">
                           <button
                             type="button"
                             className="btn soft"
-                            onClick={() =>
-                              openMockImageInPreview(
-                                msg.imageUrl || WORKSPACE_MOCK_IMAGE.dataUrl,
-                                msg.imageTitle || WORKSPACE_MOCK_IMAGE.title,
-                                msg.imageAssetKey as VisualAssetKey | undefined
-                              )
-                            }
+                            onClick={() => {
+                              const url = msg.imageUrl || WORKSPACE_MOCK_IMAGE.dataUrl;
+                              const title = msg.imageTitle || WORKSPACE_MOCK_IMAGE.title;
+                              const assetKey = msg.imageAssetKey as VisualAssetKey | undefined;
+                              openMockImageInPreview(url, title, assetKey);
+                              if (longImageOutline && !assetKey) openImageEditor(url, 0);
+                            }}
                           >
                             {msg.imageActionLabel || '修改此图片'}
                           </button>
@@ -6394,7 +6814,9 @@ export default function App() {
               {workspaceElementSel && (
                 <div className="attach-row">
                   <span className="prompt-token">
-                    已选中 · 第 {workspaceElementSel.slideIndex + 1} 页 · {workspaceElementSel.label}
+                    已选中 · {longImageOutline && state.active === 'visual'
+                      ? '长图'
+                      : `第 ${workspaceElementSel.slideIndex + 1} 页`} · {workspaceElementSel.label}
                   </span>
                 </div>
               )}
@@ -6533,7 +6955,13 @@ export default function App() {
                       )}
                       <strong>
                         {showingVisualTasks
-                          ? `${previewedImageAssetKey === 'poster' ? '会议海报' : '主KV'}任务`
+                          ? `${
+                              previewedImageAssetKey === 'mobile'
+                                ? '手机版海报'
+                                : previewedImageAssetKey === 'poster'
+                                  ? '会议海报'
+                                  : '主KV'
+                            }任务`
                           : `第 ${creatorPptPageIndex + 1} 页任务`}
                       </strong>
                     </div>
@@ -6854,7 +7282,7 @@ export default function App() {
                     </div>
                     <div className="small" style={{ marginTop: 6 }}>
                       {activeReviewTask.contentType === 'ppt'
-                        ? '请在「PPT大纲」中修改章节与页面要点并保存；无需生成 PPT 成品。'
+                        ? '请在「PPT大纲」中查看各页卡片，可拖拽调整顺序或点击「修改本页」后保存；无需生成 PPT 成品。'
                         : isCommentableContentType(activeReviewTask.contentType)
                           ? '请在中间预览中查看内容，并在右侧批注栏添加意见。'
                           : '请仅修改右侧已生成的内容；保存后运营可在任务中查看修改详情。'}
@@ -6901,10 +7329,25 @@ export default function App() {
             onRejectAllImageReviews={rejectAllImageReviews}
             topics={topics}
             copies={copies}
+            scriptContent={scriptContent}
+            onScriptContentChange={setScriptContent}
             teamResult={teamResult}
             videoResult={videoResult}
             pptResult={pptResult}
             pptOutline={pptOutline}
+            articleOutline={articleOutline}
+            onArticleOutlineChange={setArticleOutline}
+            onRegenerateArticleOutline={() => setArticleOutline(WORKSPACE_MOCK_ARTICLE_OUTLINE)}
+            onGenerateArticle={() => fillQuick('生成图文')}
+            longImageOutline={longImageOutline}
+            onLongImageOutlineChange={setLongImageOutline}
+            onRegenerateLongImageOutline={() => setLongImageOutline(WORKSPACE_MOCK_LONG_IMAGE_OUTLINE)}
+            onGenerateLongImage={() => fillQuick('生成长图')}
+            selectedLongImageTemplateId={selectedLongImageTemplateId}
+            onSelectLongImageTemplate={setSelectedLongImageTemplateId}
+            onSwitchLongImageTemplate={confirmLongImageTemplateSwitch}
+            longImageTemplateOptions={longImageTemplateOptions}
+            moreImageTemplates={moreImageTemplates}
             pptVersions={pptVersions}
             selectedPptVersionId={selectedPptVersionId}
             selectedPptTemplateId={selectedPptTemplateId}
@@ -6986,7 +7429,61 @@ export default function App() {
             selectedProduct={selectedProduct}
             entryContext={entryContext}
             flowEntry={flowEntry}
+            previewedImageAssetKey={previewedImageAssetKey}
+            hasConferenceKv={hasVisualAsset('kv')}
+            hasConferencePoster={hasVisualAsset('poster')}
+            hasConferenceMobile={hasVisualAsset('mobile')}
+            onImportLocalPoster={() => posterImportInputRef.current?.click()}
             onSelectFlowStep={(step) => {
+              if (flowEntry === 'script' || entryContext?.source === 'promo') {
+                if (step.id === 'copy') {
+                  if (!scriptContent.trim()) {
+                    toast('请先输入「生成话术」');
+                    return;
+                  }
+                  addTab('copy');
+                  return;
+                }
+              }
+              if (flowEntry === 'conferencePoster' || entryContext?.source === 'poster') {
+                if (step.id === 'kv') {
+                  if (!hasVisualAsset('kv')) {
+                    toast('请先输入「生成主KV」');
+                    return;
+                  }
+                  const asset = latestVisualAsset('kv');
+                  openMockImageInPreview(asset.url, asset.title, 'kv');
+                  return;
+                }
+                if (step.id === 'poster') {
+                  if (!hasVisualAsset('poster')) {
+                    toast('请先输入「生成海报」');
+                    return;
+                  }
+                  const asset = latestVisualAsset('poster');
+                  openMockImageInPreview(asset.url, asset.title, 'poster');
+                  return;
+                }
+                if (step.id === 'mobile') {
+                  if (!hasVisualAsset('poster')) {
+                    toast('请先生成会议海报，再使用「一键手机」');
+                    return;
+                  }
+                  if (!hasVisualAsset('mobile')) {
+                    seedVisualTasks('mobile');
+                    publishChatImage({
+                      html: '已将会议海报适配为手机竖版。可在中间区域点选元素、手动调整，并导出为图片 / PPTX / PSD。',
+                      imageUrl: MOCK_MOBILE_VERSIONS.current.dataUrl,
+                      imageTitle: MOCK_MOBILE_VERSIONS.current.title,
+                      assetKey: 'mobile',
+                      actionLabel: '修改手机版',
+                    });
+                  }
+                  const asset = latestVisualAsset('mobile');
+                  openMockImageInPreview(asset.url, asset.title, 'mobile');
+                  return;
+                }
+              }
               if (!step.tab) {
                 setState((prev) => ({ ...prev, active: null }));
                 return;
@@ -7305,8 +7802,8 @@ export default function App() {
                   }
                 }}
                 isGenerating={isGenerating}
-                allowBrush={editorTarget?.kind !== 'ppt-slide'}
-                allowShapes={editorTarget?.kind !== 'ppt-slide'}
+                allowBrush={editorTarget?.kind === 'image'}
+                allowShapes={editorTarget?.kind === 'image'}
               />
             </>
           )}
@@ -7339,6 +7836,19 @@ export default function App() {
           event.currentTarget.value = '';
         }}
       />
+      <input
+        ref={posterImportInputRef}
+        type="file"
+        className="hidden"
+        accept=".png,.jpg,.jpeg,.webp,.svg,.psd,.ppt,.pptx,image/*"
+        aria-hidden
+        tabIndex={-1}
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          if (file) importLocalPosterVersion(file);
+          event.currentTarget.value = '';
+        }}
+      />
 
       <ProductPickerModal
         open={productPickerOpen}
@@ -7354,11 +7864,17 @@ export default function App() {
         onOpenCms={openCmsFileFromHome}
       />
 
-      {pickerOpen && pickerMode === 'reference' && pickerCat === '参考知识' ? (
+      {pickerOpen && pickerMode === 'reference' && (
+        pickerCat === '参考知识' ||
+        pickerCat === '视觉参考' ||
+        pickerCat === '目标解读材料' ||
+        pickerCat === '其他参考知识'
+      ) ? (
         <LiteraturePickerModal
           open
           knowledgeItems={library}
           addedLiteratureIds={addedLiteratureIds}
+          uploadCat={pickerCat}
           onClose={() => {
             setPickerOpen(false);
             setOpenPickedMaterialInPreview(false);
@@ -7822,10 +8338,25 @@ function WorkspaceRightPanel({
   onRejectAllImageReviews,
   topics,
   copies,
+  scriptContent = '',
+  onScriptContentChange,
   teamResult,
   videoResult,
   pptResult,
   pptOutline,
+  articleOutline,
+  onArticleOutlineChange,
+  onRegenerateArticleOutline,
+  onGenerateArticle,
+  longImageOutline,
+  onLongImageOutlineChange,
+  onRegenerateLongImageOutline,
+  onGenerateLongImage,
+  selectedLongImageTemplateId,
+  onSelectLongImageTemplate,
+  onSwitchLongImageTemplate,
+  longImageTemplateOptions,
+  moreImageTemplates,
   pptVersions,
   selectedPptVersionId,
   selectedPptTemplateId,
@@ -7912,6 +8443,11 @@ function WorkspaceRightPanel({
   selectedProduct,
   entryContext,
   flowEntry,
+  previewedImageAssetKey,
+  hasConferenceKv,
+  hasConferencePoster,
+  hasConferenceMobile,
+  onImportLocalPoster,
   onSelectFlowStep,
   onUploadBrief,
 }: {
@@ -7935,10 +8471,25 @@ function WorkspaceRightPanel({
   onRejectAllImageReviews: () => void;
   topics: TopicItem[];
   copies: CopyItem[];
+  scriptContent?: string;
+  onScriptContentChange?: (text: string) => void;
   teamResult: TeamResult | null;
   videoResult: VideoResult | null;
   pptResult: PptResult | null;
   pptOutline: PptOutline | null;
+  articleOutline: ArticleOutline | null;
+  onArticleOutlineChange: (outline: ArticleOutline) => void;
+  onRegenerateArticleOutline: () => void;
+  onGenerateArticle: () => void;
+  longImageOutline: ArticleOutline | null;
+  onLongImageOutlineChange: (outline: ArticleOutline) => void;
+  onRegenerateLongImageOutline: () => void;
+  onGenerateLongImage: () => void;
+  selectedLongImageTemplateId: string | null;
+  onSelectLongImageTemplate: (id: string | null) => void;
+  onSwitchLongImageTemplate: (templateId: string) => void;
+  longImageTemplateOptions: ImageBuiltinTemplate[];
+  moreImageTemplates: ImageBuiltinTemplate[];
   pptVersions: PptDesignVersion[];
   selectedPptVersionId: string | null;
   selectedPptTemplateId: string | null;
@@ -8010,6 +8561,11 @@ function WorkspaceRightPanel({
   selectedProduct?: TaskProduct | null;
   entryContext?: HomeEntryContext | null;
   flowEntry?: ContentFlowEntry | null;
+  previewedImageAssetKey?: VisualAssetKey | null;
+  hasConferenceKv?: boolean;
+  hasConferencePoster?: boolean;
+  hasConferenceMobile?: boolean;
+  onImportLocalPoster?: () => void;
   onSelectFlowStep: (step: ContentFlowStep) => void;
   onUploadBrief?: () => void;
   taskTitle: string;
@@ -8038,9 +8594,14 @@ function WorkspaceRightPanel({
     brief: Boolean(contentBrief),
     literature: literatureResults.length > 0 || addedLiteratureIds.length > 0,
     outline: Boolean(pptOutline),
+    articleOutline: Boolean(articleOutline),
+    longImageOutline: Boolean(longImageOutline),
     ppt: Boolean(pptResult),
-    copy: copies.length > 0,
+    copy: copies.length > 0 || Boolean(richTextContent.trim()) || Boolean(scriptContent.trim()),
     visual: generatedImages.length > 0,
+    kv: Boolean(hasConferenceKv),
+    poster: Boolean(hasConferencePoster),
+    mobile: Boolean(hasConferenceMobile),
     video: Boolean(videoResult || videoVersions.length),
     team: Boolean(teamResult),
     submit: state.submit,
@@ -8063,18 +8624,43 @@ function WorkspaceRightPanel({
       ? {
           id: -1,
           cat: '生成图片',
-          title: generatedImageMeta[0]?.copyTitle || '生成图片',
-          meta: 'AI 生成图片 · 可预览和修改',
+          title: generatedImageMeta[0]?.copyTitle || (longImageOutline ? '生成长图' : '生成图片'),
+          meta: longImageOutline
+            ? 'AI 生成长图 · 可点选元素或手动调整'
+            : 'AI 生成图片 · 可预览和修改',
           cms: false,
           def: false,
           addedAt: Date.now(),
-          fileName: '生成图片.svg',
+          fileName: longImageOutline ? '生成长图.svg' : '生成图片.svg',
           contentType: 'image',
           contentUrl: generatedImages[0],
           mimeType: 'image/svg+xml',
         }
       : null);
   const isGeneratedImagePreview = previewFile?.cat === '生成图片' && previewFile.contentType === 'image';
+  const isLongImageProduct = Boolean(longImageOutline) && isGeneratedImagePreview;
+  const isPosterCanvas =
+    (previewedImageAssetKey === 'poster' || previewedImageAssetKey === 'mobile') && isGeneratedImagePreview;
+  const isKvCanvas = previewedImageAssetKey === 'kv' && isGeneratedImagePreview;
+  const isSelectableImageProduct = isLongImageProduct || isPosterCanvas;
+  const conferenceFlowCurrentId =
+    flowEntry === 'conferencePoster'
+      ? previewedImageAssetKey === 'mobile'
+        ? 'mobile'
+        : previewedImageAssetKey === 'poster'
+          ? 'poster'
+          : previewedImageAssetKey === 'kv'
+            ? 'kv'
+            : hasConferenceMobile
+              ? 'mobile'
+              : hasConferencePoster
+                ? 'poster'
+                : hasConferenceKv || state.active === 'visual'
+                  ? 'kv'
+                  : undefined
+      : flowEntry === 'script' && (scriptContent.trim() || state.active === 'copy')
+        ? 'copy'
+        : undefined;
   const [selectedCopyRevisionIndex, setSelectedCopyRevisionIndex] = useState<number | null>(null);
   const [previewHistoryId, setPreviewHistoryId] = useState<string | null>(null);
   const [restoredFrom, setRestoredFrom] = useState<string | null>(null);
@@ -8082,6 +8668,7 @@ function WorkspaceRightPanel({
   const [slideVersionId, setSlideVersionId] = useState('current');
   const [literatureVisibleCount, setLiteratureVisibleCount] = useState(30);
   const [pptSwitchTemplateOpen, setPptSwitchTemplateOpen] = useState(false);
+  const [longImageSwitchTemplateOpen, setLongImageSwitchTemplateOpen] = useState(false);
   const [imageVersionId, setImageVersionId] = useState('current');
   const [imageDownloadOpen, setImageDownloadOpen] = useState(false);
   const [draggingThumbIndex, setDraggingThumbIndex] = useState<number | null>(null);
@@ -8097,6 +8684,24 @@ function WorkspaceRightPanel({
     }
     return [...map.values()];
   }, [morePptTemplates]);
+  const switchLongImageTemplates = useMemo(() => {
+    const map = new Map<string, PptBuiltinTemplate>();
+    const toPicker = (item: ImageBuiltinTemplate): PptBuiltinTemplate => ({
+      id: item.id,
+      name: item.name,
+      description: item.description,
+      styleTag: item.styleHint,
+      variantIndex: 0,
+      gradient: item.gradient,
+      accent: item.accent,
+      previewUrl: item.previewImg,
+      isBlank: item.isBlank,
+    });
+    for (const item of [BLANK_IMAGE_TEMPLATE, ...moreImageTemplates]) {
+      map.set(item.id, toPicker(item));
+    }
+    return [...map.values()];
+  }, [moreImageTemplates]);
 
   const openSwitchPptTemplate = () => {
     if (isGenerating) {
@@ -8111,10 +8716,28 @@ function WorkspaceRightPanel({
     setPptSwitchTemplateOpen(true);
   };
 
+  const openSwitchLongImageTemplate = () => {
+    if (isGenerating) {
+      toast('请等待当前 AI 生成完成');
+      return;
+    }
+    if (!longImageOutline) {
+      toast('请先生成并确认长图大纲，再切换模板');
+      setState((prev) => ({ ...prev, active: 'long-image-outline' }));
+      return;
+    }
+    setLongImageSwitchTemplateOpen(true);
+  };
+
   const applySwitchPptTemplate = (templateId: string) => {
     setPptSwitchTemplateOpen(false);
     const tpl = switchPptTemplates.find((item) => item.id === templateId);
     onConfirmPptDesigns(isBlankPptTemplate(tpl) ? 'no-template' : 'template', templateId);
+  };
+
+  const applySwitchLongImageTemplate = (templateId: string) => {
+    setLongImageSwitchTemplateOpen(false);
+    onSwitchLongImageTemplate(templateId);
   };
 
   const previewOutline = useMemo(() => {
@@ -8266,8 +8889,17 @@ function WorkspaceRightPanel({
         <div className="detail-card content-flow-task-card">
           <h4>任务已创建</h4>
           <p className="small content-flow-task-hint">
-            您可以先上传品牌策略或其他参考文献进行话题洞察；也可以直接上传
-            brief，开启 PPT 从零到一的制作流程。当然，您也可以选择打开本地文件，基于本地文件进行在线编辑。
+            {entryContext?.source === 'case'
+              ? '请您上传脱敏后的病例原始素材，如需生成专家点评，请上传过往专家点评示例'
+              : entryContext?.source === 'poster'
+                ? '请先输入「生成主KV」，确认主视觉后再输入「生成海报」。海报可手动调整并导出图片 / PPTX / PSD，也可一键适配手机版后提交 Veeva 审批。会议信息可先下载模板填写后上传。'
+                : entryContext?.source === 'promo'
+                  ? '请先添加参考知识或品牌策略，再输入「生成话术」。生成后可在中间直接修改，并导出 DOCX。'
+                  : entryContext?.source === 'evidence'
+                  ? '请添加待解读的目标材料，也可补充其他参考知识。'
+                  : entryContext?.source === 'insight'
+                    ? '请添加参考知识或品牌策略，以便生成话题洞察。'
+                    : '您可以先上传品牌策略或其他参考文献进行话题洞察；也可以直接上传 brief，开启 PPT 从零到一的制作流程。当然，您也可以选择打开本地文件，基于本地文件进行在线编辑。'}
           </p>
           <div className="preview-entry-actions" style={{ marginTop: 12 }}>
             <button type="button" className="btn primary" onClick={onOpenLocalFile}>
@@ -8656,6 +9288,67 @@ function WorkspaceRightPanel({
         );
 
       case 'copy':
+        if (scriptContent.trim() || flowEntry === 'script') {
+          if (!scriptContent.trim() && !reviewerMode) {
+            return (
+              <div className="detail-card">
+                <h4>话术总结</h4>
+                <div className="small">请在对话中输入「生成话术」，将在此展示可直接修改的纯文字总结。</div>
+                <button type="button" className="btn primary" style={{ marginTop: 12 }} onClick={() => fillQuick('生成话术')}>
+                  生成话术
+                </button>
+              </div>
+            );
+          }
+          return (
+            <div className="ppt-design-fit-panel">
+              <ScriptEditor
+                value={scriptContent}
+                onChange={(text) => onScriptContentChange?.(text)}
+                readOnly={reviewerMode}
+                footerActions={
+                  reviewerMode ? null : (
+                    <>
+                      <button
+                        type="button"
+                        className="btn soft"
+                        onClick={() => {
+                          if (!scriptContent.trim()) {
+                            toast('暂无可导出的话术');
+                            return;
+                          }
+                          try {
+                            exportPlainTextAsDocx(scriptContent, '话术总结');
+                            toast('已导出 DOCX');
+                          } catch {
+                            toast('导出 DOCX 失败');
+                          }
+                        }}
+                      >
+                        导出 DOCX 文件
+                      </button>
+                      <button
+                        type="button"
+                        className="btn warn"
+                        disabled={teamModificationInProgress}
+                        onClick={() => !teamModificationInProgress && onOpenTeamReview('copy')}
+                      >
+                        {teamModificationInProgress ? '意见收集中...' : '提交团队意见收集'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn green"
+                        onClick={() => fillQuick('提交当前话术到Veeva Vault审批:')}
+                      >
+                        提交 Veeva Vault 审批
+                      </button>
+                    </>
+                  )
+                }
+              />
+            </div>
+          );
+        }
         if (!copies.length && !reviewerMode) {
           return (
             <div className="detail-card">
@@ -9188,7 +9881,7 @@ function WorkspaceRightPanel({
               <div className="small">
                 {reviewerMode
                   ? '当前任务中还没有 PPT 大纲，请联系内容运营。'
-                  : '在对话中说「生成 PPT」，确认受众与场景后将在此编辑大纲。'}
+                  : '在对话中说「生成 PPT」，确认受众与场景后将在此查看各页大纲卡片。'}
               </div>
               {!reviewerMode && (
                 <button type="button" className="btn primary" style={{ marginTop: 12 }} onClick={onStartPptFlow}>
@@ -9225,6 +9918,82 @@ function WorkspaceRightPanel({
                 />
               </div>
             )}
+          </div>
+        );
+
+      case 'article-outline':
+        if (!articleOutline) {
+          return (
+            <div className="detail-card">
+              <h4>推文大纲</h4>
+              <div className="small">
+                {reviewerMode
+                  ? '当前任务中还没有推文大纲。'
+                  : '在对话中说「生成图文大纲」，将在此查看推文章节卡片。'}
+              </div>
+              {!reviewerMode && (
+              <button
+                type="button"
+                className="btn primary"
+                style={{ marginTop: 12 }}
+                onClick={() => fillQuick('生成图文大纲')}
+              >
+                生成图文大纲
+              </button>
+              )}
+            </div>
+          );
+        }
+        return (
+          <div className="ppt-outline-tab-layout">
+            <ArticleOutlineEditor
+              outline={articleOutline}
+              onChange={onArticleOutlineChange}
+              onRegenerateOutline={onRegenerateArticleOutline}
+              onGenerateArticle={reviewerMode ? undefined : onGenerateArticle}
+              isGenerating={isGenerating}
+            />
+          </div>
+        );
+
+      case 'long-image-outline':
+        if (!longImageOutline) {
+          return (
+            <div className="detail-card">
+              <h4>长图大纲</h4>
+              <div className="small">
+                {reviewerMode
+                  ? '当前任务中还没有长图大纲。'
+                  : '在对话中说「生成长图大纲」，将在此查看长图章节卡片，并选择图片模板。'}
+              </div>
+              {!reviewerMode && (
+                <button
+                  type="button"
+                  className="btn primary"
+                  style={{ marginTop: 12 }}
+                  onClick={() => fillQuick('生成长图大纲')}
+                >
+                  生成长图大纲
+                </button>
+              )}
+            </div>
+          );
+        }
+        return (
+          <div className="ppt-outline-tab-layout">
+            <ArticleOutlineEditor
+              outline={longImageOutline}
+              onChange={onLongImageOutlineChange}
+              onRegenerateOutline={onRegenerateLongImageOutline}
+              onGenerateArticle={reviewerMode ? undefined : onGenerateLongImage}
+              isGenerating={isGenerating}
+              titleLabel="长图标题"
+              generateLabel="按模板生成长图"
+              imageTemplates={reviewerMode ? undefined : longImageTemplateOptions}
+              moreImageTemplates={reviewerMode ? undefined : moreImageTemplates}
+              selectedImageTemplateId={selectedLongImageTemplateId}
+              onSelectImageTemplate={onSelectLongImageTemplate}
+            />
           </div>
         );
 
@@ -9681,6 +10450,7 @@ function WorkspaceRightPanel({
                 entry={flowEntry ?? null}
                 progress={flowProgress}
                 activeTab={state.active}
+                currentStepId={conferenceFlowCurrentId}
                 onSelect={onSelectFlowStep}
               />
             )}
@@ -9706,8 +10476,53 @@ function WorkspaceRightPanel({
           <div className="workspace-file-preview">
             {previewFile.contentType === 'image' && previewFile.contentUrl ? (
               <>
-                <div className="workspace-surface-panel image-preview-stage">
-                  {previewedImageItem && <DrawableImagePreview item={previewedImageItem} />}
+                <div
+                  className={`workspace-surface-panel image-preview-stage ${
+                    isLongImageProduct || isSelectableImageProduct ? 'is-long-image' : ''
+                  }`}
+                >
+                  {isSelectableImageProduct && previewedImageItem ? (
+                    <>
+                      <div className="creator-ppt-toolbar long-image-toolbar">
+                        <div className="creator-ppt-toolbar-page">
+                          <strong>
+                            {isLongImageProduct
+                              ? '长图'
+                              : previewedImageAssetKey === 'mobile'
+                                ? '手机版海报'
+                                : '会议海报'}
+                          </strong>
+                          <span>{previewedImageItem.title}</span>
+                        </div>
+                        <div className="creator-ppt-toolbar-tools" role="toolbar" aria-label="画布操作">
+                          {!viewingHistoricalImage && (
+                            <button
+                              type="button"
+                              className="creator-ppt-tool primary"
+                              onClick={() =>
+                                onOpenImageEditor(previewedImageItem.contentUrl || '', 0)
+                              }
+                            >
+                              手动调整
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="long-image-canvas">
+                        <SelectableSvgPreview
+                          key={`${imageVersionId}-${(previewedImageItem.contentUrl || '').length}`}
+                          svgMarkup={parseSvgFromDataUrl(previewedImageItem.contentUrl || '')}
+                          imageSrc={previewedImageItem.contentUrl || ''}
+                          selectedId={viewingHistoricalImage ? null : workspaceElementId}
+                          disabled={viewingHistoricalImage}
+                          hideToolbar
+                          onSelect={(selection) => onWorkspaceElementSelect(selection, 0)}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    previewedImageItem && <DrawableImagePreview item={previewedImageItem} />
+                  )}
                   {imageVersions.length > 1 && (
                     <VersionFisheyeTimeline
                       items={imageVersions.map((version) => ({
@@ -9740,6 +10555,26 @@ function WorkspaceRightPanel({
                       回溯到该版本
                     </button>
                   )}
+                  {isLongImageProduct && !reviewerMode && (
+                    <button
+                      type="button"
+                      className="btn soft"
+                      disabled={isGenerating}
+                      onClick={openSwitchLongImageTemplate}
+                    >
+                      切换图片模板
+                    </button>
+                  )}
+                  {isPosterCanvas && !reviewerMode && onImportLocalPoster && (
+                    <button
+                      type="button"
+                      className="btn soft"
+                      disabled={isGenerating}
+                      onClick={onImportLocalPoster}
+                    >
+                      导入本地版本
+                    </button>
+                  )}
                   <div className="image-download-control">
                     <button
                       type="button"
@@ -9748,35 +10583,142 @@ function WorkspaceRightPanel({
                       aria-haspopup="menu"
                       onClick={() => setImageDownloadOpen((open) => !open)}
                     >
-                      下载图片
+                      {isLongImageProduct || isPosterCanvas || isKvCanvas ? '导出' : '下载图片'}
                       <ChevronDown className={`h-3.5 w-3.5 transition ${imageDownloadOpen ? 'rotate-180' : ''}`} />
                     </button>
                     {imageDownloadOpen && (
-                      <div className="image-download-menu" role="menu" aria-label="选择下载格式">
-                        <button
-                          type="button"
-                          role="menuitem"
-                          className="image-download-option"
-                          onClick={() => {
-                            setImageDownloadOpen(false);
-                            toast('已开始下载 JPG 格式');
-                          }}
-                        >
-                          <span>JPG 格式</span>
-                          <small>适合预览与分享</small>
-                        </button>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          className="image-download-option"
-                          onClick={() => {
-                            setImageDownloadOpen(false);
-                            toast('已开始下载 PSD 格式');
-                          }}
-                        >
-                          <span>PSD 格式</span>
-                          <small>适合分层继续修改</small>
-                        </button>
+                      <div className="image-download-menu" role="menu" aria-label={isLongImageProduct || isPosterCanvas ? '选择导出格式' : '选择下载格式'}>
+                        {isLongImageProduct || isPosterCanvas ? (
+                          <>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="image-download-option"
+                              onClick={() => {
+                                setImageDownloadOpen(false);
+                                const src = previewedImageItem?.contentUrl;
+                                if (!src) {
+                                  toast('暂无可导出的长图');
+                                  return;
+                                }
+                                void exportLongImageAsPng(
+                                  src,
+                                  previewedImageItem?.title || (isPosterCanvas ? '会议海报' : '长图')
+                                )
+                                  .then(() => toast('已导出图片'))
+                                  .catch(() => toast('导出图片失败'));
+                              }}
+                            >
+                              <span>导出为图片</span>
+                              <small>PNG，适合预览与分享</small>
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="image-download-option"
+                              onClick={() => {
+                                setImageDownloadOpen(false);
+                                const src = previewedImageItem?.contentUrl;
+                                if (!src) {
+                                  toast('暂无可导出的文件');
+                                  return;
+                                }
+                                void exportLongImageAsPptx(
+                                  src,
+                                  previewedImageItem?.title || (isPosterCanvas ? '会议海报' : '长图')
+                                )
+                                  .then(() => toast('已导出 PPTX'))
+                                  .catch(() => toast('导出 PPTX 失败'));
+                              }}
+                            >
+                              <span>导出为 PPTX</span>
+                              <small>可在 PowerPoint 中继续编辑</small>
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="image-download-option"
+                              onClick={() => {
+                                setImageDownloadOpen(false);
+                                const src = previewedImageItem?.contentUrl;
+                                if (!src) {
+                                  toast('暂无可导出的文件');
+                                  return;
+                                }
+                                void exportImageAsPsd(
+                                  src,
+                                  previewedImageItem?.title || (isPosterCanvas ? '会议海报' : '长图')
+                                )
+                                  .then(() => toast('已导出 PSD'))
+                                  .catch(() => toast('导出 PSD 失败'));
+                              }}
+                            >
+                              <span>导出为 PSD</span>
+                              <small>可在 Photoshop 中打开</small>
+                            </button>
+                          </>
+                        ) : isKvCanvas ? (
+                          <button
+                            type="button"
+                            role="menuitem"
+                            className="image-download-option"
+                            onClick={() => {
+                              setImageDownloadOpen(false);
+                              const src = previewedImageItem?.contentUrl;
+                              if (!src) {
+                                toast('暂无可导出的主KV');
+                                return;
+                              }
+                              void exportLongImageAsPng(src, previewedImageItem?.title || '主KV')
+                                .then(() => toast('已导出图片'))
+                                .catch(() => toast('导出图片失败'));
+                            }}
+                          >
+                            <span>导出为图片</span>
+                            <small>PNG，适合预览与分享</small>
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="image-download-option"
+                              onClick={() => {
+                                setImageDownloadOpen(false);
+                                const src = previewedImageItem?.contentUrl;
+                                if (!src) {
+                                  toast('暂无可导出的图片');
+                                  return;
+                                }
+                                void exportLongImageAsPng(src, previewedImageItem?.title || '图片')
+                                  .then(() => toast('已导出图片'))
+                                  .catch(() => toast('导出图片失败'));
+                              }}
+                            >
+                              <span>JPG / PNG</span>
+                              <small>适合预览与分享</small>
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="image-download-option"
+                              onClick={() => {
+                                setImageDownloadOpen(false);
+                                const src = previewedImageItem?.contentUrl;
+                                if (!src) {
+                                  toast('暂无可导出的文件');
+                                  return;
+                                }
+                                void exportImageAsPsd(src, previewedImageItem?.title || '图片')
+                                  .then(() => toast('已导出 PSD'))
+                                  .catch(() => toast('导出 PSD 失败'));
+                              }}
+                            >
+                              <span>PSD 格式</span>
+                              <small>适合分层继续修改</small>
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -9832,6 +10774,17 @@ function WorkspaceRightPanel({
         confirmLabel="切换并重新生成"
         onClose={() => setPptSwitchTemplateOpen(false)}
         onConfirm={applySwitchPptTemplate}
+      />
+      <PptTemplatePickerModal
+        open={longImageSwitchTemplateOpen}
+        templates={switchLongImageTemplates}
+        selectedId={selectedLongImageTemplateId}
+        title="切换图片模板"
+        description="选择一套模板后，将按当前大纲重新生成长图。"
+        confirmLabel="切换并重新生成"
+        className="is-image-templates"
+        onClose={() => setLongImageSwitchTemplateOpen(false)}
+        onConfirm={applySwitchLongImageTemplate}
       />
     </aside>
   );
