@@ -200,12 +200,12 @@ interface MaterialSectionDef {
 const SECTIONS: MaterialSectionDef[] = [
   { title: '参考知识', groupId: 'knowledge', category: '参考知识' },
   { title: '品牌策略', groupId: 'strategy', category: '品牌策略' },
-  { title: 'Brief', groupId: 'brief', category: 'Brief' },
+  { title: '任务提案', groupId: 'brief', category: 'Brief' },
 ];
 
 const PROMO_SECTIONS: MaterialSectionDef[] = [
   { title: '品牌策略', groupId: 'strategy', category: '品牌策略' },
-  { title: 'Brief', groupId: 'brief', category: 'Brief' },
+  { title: '任务提案', groupId: 'brief', category: 'Brief' },
   { title: '参考知识', groupId: 'knowledge', category: '参考知识' },
   { title: '参考文献', groupId: 'literature', category: '参考文献' },
 ];

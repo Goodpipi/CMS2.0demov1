@@ -396,6 +396,7 @@ export function applyTabForModificationTarget(
     longImageOutline: boolean;
     pptDesign: boolean;
     brief: boolean;
+    storyline: boolean;
     submit: boolean;
   },
   targetTab: TabKey
@@ -415,6 +416,7 @@ export function applyTabForModificationTarget(
     'long-image-outline': 'longImageOutline',
     'ppt-design': 'pptDesign',
     brief: 'brief',
+    storyline: 'storyline',
     submit: 'submit',
   };
   const flag = flagMap[targetTab];

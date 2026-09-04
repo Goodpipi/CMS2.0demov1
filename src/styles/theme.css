@@ -6152,6 +6152,61 @@ textarea {
   line-height: 1.7;
 }
 
+.content-flow-start-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.content-flow-start-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.content-flow-start-index {
+  display: grid;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: #e8f6ff;
+  color: #0b66b3;
+  font-size: 12px;
+  font-weight: 750;
+  box-shadow: 0 0 0 3px rgba(84, 185, 249, 0.14);
+}
+
+.content-flow-start-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.content-flow-start-body p {
+  margin: 0;
+  color: #3d5369;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.content-flow-start-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.content-flow-start-actions .btn {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
 .right-head .preview-history-control {
   flex: 0 0 auto;
   margin-left: auto;
@@ -8593,6 +8648,73 @@ textarea {
   color: #6d28d9;
 }
 
+.ppt-page-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.ppt-page-edit-actions-end {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.ppt-page-confirm-btn {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.ppt-page-card.is-editing {
+  box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.18), 0 10px 24px -16px rgba(88, 28, 135, 0.28);
+}
+
+.ppt-page-edit-textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.ppt-page-cite-veil {
+  position: relative;
+  margin-top: 4px;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+.ppt-page-cite-veil-content {
+  pointer-events: none;
+  user-select: none;
+  filter: grayscale(0.4);
+  opacity: 0.42;
+}
+
+.ppt-page-cite-veil-hint {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 18px 20px;
+  border-radius: 12px;
+  background: rgba(241, 245, 249, 0.82);
+  color: #4b6073;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.7;
+  text-align: center;
+}
+
 .ppt-page-static {
   white-space: pre-wrap;
   word-break: break-word;
@@ -8983,7 +9105,8 @@ textarea {
 
 .content-brief-fields {
   display: grid;
-  gap: 12px;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
@@ -8995,10 +9118,39 @@ textarea {
   gap: 6px;
 }
 
+.content-brief-field.is-wide {
+  grid-column: 1 / -1;
+}
+
+.content-brief-title-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.content-brief-title-block h1 {
+  flex: none;
+}
+
+.content-brief-select {
+  min-height: 40px;
+  cursor: pointer;
+}
+
 .content-brief-field > span {
   font-size: 12px;
   font-weight: 700;
   color: #18334d;
+}
+
+.content-brief-required {
+  margin-left: 3px;
+  color: #e11d48;
+  font-style: normal;
+  font-weight: 800;
 }
 
 .content-brief-textarea {
@@ -11829,6 +11981,18 @@ textarea {
   margin-bottom: 14px;
 }
 
+.topic-insight-title-row.is-actions-first {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.topic-insight-title-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .topic-insight-title-row h1 {
   margin: 0;
   min-width: 0;
@@ -11840,9 +12004,18 @@ textarea {
   letter-spacing: -0.01em;
 }
 
+.topic-insight-title-row.is-actions-first h1 {
+  flex: none;
+  width: 100%;
+}
+
 .topic-insight-copy-btn {
   flex: 0 0 auto;
   margin-top: 4px;
+}
+
+.topic-insight-title-actions .topic-insight-copy-btn {
+  margin-top: 0;
 }
 
 .topic-insight-markdown {
@@ -11931,6 +12104,45 @@ textarea {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.literature-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.storyline-panel {
+  gap: 12px;
+  height: 100%;
+  min-height: 0;
+  padding: 18px 22px 22px;
+}
+
+.storyline-editor {
+  display: block;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 560px;
+  height: 100%;
+  resize: vertical;
+  padding: 16px 18px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 14px;
+  background: #fff;
+  color: #24364a;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 14.5px;
+  line-height: 1.85;
+  outline: none;
+  box-shadow: 0 8px 28px rgba(23, 51, 79, 0.08);
+}
+
+.storyline-editor:focus {
+  border-color: rgba(59, 166, 232, 0.45);
+  box-shadow: 0 8px 28px rgba(23, 51, 79, 0.1), 0 0 0 2px rgba(59, 166, 232, 0.16);
 }
 
 .literature-more-hint a {

@@ -5,6 +5,7 @@ export type ContentFlowEntry =
   | 'insight'
   | 'brief'
   | 'literature'
+  | 'storyline'
   | 'outline'
   | 'articleOutline'
   | 'longImageOutline'
@@ -25,6 +26,7 @@ export type ContentFlowStepId =
   | 'insight'
   | 'brief'
   | 'literature'
+  | 'storyline'
   | 'outline'
   | 'articleOutline'
   | 'longImageOutline'
@@ -54,6 +56,7 @@ export interface ContentFlowProgress {
   insight: boolean;
   brief: boolean;
   literature: boolean;
+  storyline: boolean;
   outline: boolean;
   articleOutline: boolean;
   longImageOutline: boolean;
@@ -71,9 +74,10 @@ export interface ContentFlowProgress {
 const CORE: Record<Exclude<ContentFlowStepId, 'pending'>, Omit<ContentFlowStep, 'required'>> = {
   create: { id: 'create', label: '创建任务', tab: null },
   insight: { id: 'insight', label: '话题洞察', tab: 'insight' },
-  brief: { id: 'brief', label: 'Brief', tab: 'brief' },
-  literature: { id: 'literature', label: '文献', tab: 'literature' },
-  outline: { id: 'outline', label: 'PPT大纲', tab: 'ppt-outline' },
+  brief: { id: 'brief', label: '任务提案', tab: 'brief' },
+  literature: { id: 'literature', label: '相关文献推荐', tab: 'literature' },
+  storyline: { id: 'storyline', label: '故事线', tab: 'storyline' },
+  outline: { id: 'outline', label: '页面级大纲', tab: 'ppt-outline' },
   articleOutline: { id: 'articleOutline', label: '推文大纲', tab: 'article-outline' },
   longImageOutline: { id: 'longImageOutline', label: '长图大纲', tab: 'long-image-outline' },
   ppt: { id: 'ppt', label: '生成PPT', tab: 'ppt-design' },
@@ -103,6 +107,7 @@ export function flowEntryFromTab(tab: TabKey | null | undefined): ContentFlowEnt
   if (tab === 'insight' || tab === 'topic-recommendation') return 'insight';
   if (tab === 'brief') return 'brief';
   if (tab === 'literature') return 'literature';
+  if (tab === 'storyline') return 'storyline';
   if (tab === 'article-outline') return 'articleOutline';
   if (tab === 'long-image-outline') return 'longImageOutline';
   if (tab === 'ppt-outline') return 'outline';
@@ -145,9 +150,10 @@ export function isPendingFlowEntry(entry?: ContentFlowEntry | null): boolean {
 }
 
 const FLOW_FAMILIES: Record<ContentFlowEntry, ContentFlowEntry[]> = {
-  insight: ['insight', 'brief', 'literature', 'outline', 'ppt', 'team'],
-  brief: ['brief', 'literature', 'outline', 'ppt', 'team'],
-  literature: ['literature', 'brief', 'outline', 'ppt', 'team'],
+  insight: ['insight', 'brief', 'literature', 'storyline', 'outline', 'ppt', 'team'],
+  brief: ['brief', 'literature', 'storyline', 'outline', 'ppt', 'team'],
+  literature: ['literature', 'brief', 'storyline', 'outline', 'ppt', 'team'],
+  storyline: ['storyline', 'outline', 'ppt', 'team'],
   outline: ['outline', 'ppt', 'team'],
   ppt: ['outline', 'ppt', 'team'],
   articleOutline: ['articleOutline', 'copy', 'team'],
@@ -191,6 +197,7 @@ function inferLockedPath(
   if (extras.insight && !omitsTopicInsight(null, source)) return 'insight';
   if (extras.brief && !omitsBriefLiterature(null, source)) return 'brief';
   if (extras.literature && !omitsBriefLiterature(null, source)) return 'literature';
+  if (extras.storyline) return 'storyline';
   if (extras.articleOutline) return 'articleOutline';
   if (extras.longImageOutline) return 'longImageOutline';
   if (extras.outline || extras.ppt) return 'outline';
@@ -254,6 +261,7 @@ export function buildContentFlowSteps(
       | 'insight'
       | 'brief'
       | 'literature'
+      | 'storyline'
       | 'outline'
       | 'articleOutline'
       | 'longImageOutline'
@@ -274,12 +282,14 @@ export function buildContentFlowSteps(
 
   if (locked === 'insight' && !skipInsight) {
     steps.push(step('insight', true));
-    if (!skipBriefLiterature) steps.push(step('brief', true));
-    steps.push(step('outline', true), step('ppt', true));
+    if (!skipBriefLiterature) steps.push(step('brief', true), step('literature', true));
+    steps.push(step('storyline', true), step('outline', true), step('ppt', true));
   } else if (locked === 'brief' && !skipBriefLiterature) {
-    steps.push(step('brief', true), step('outline', true), step('ppt', true));
+    steps.push(step('brief', true), step('literature', true), step('storyline', true), step('outline', true), step('ppt', true));
   } else if (locked === 'literature' && !skipBriefLiterature) {
-    steps.push(step('literature', true), step('brief', true), step('outline', true), step('ppt', true));
+    steps.push(step('literature', true), step('brief', true), step('storyline', true), step('outline', true), step('ppt', true));
+  } else if (locked === 'storyline') {
+    steps.push(step('storyline', true), step('outline', true), step('ppt', true));
   } else if (locked === 'outline' || locked === 'ppt') {
     steps.push(step('outline', true), step('ppt', true));
   } else if (locked === 'articleOutline') {
@@ -308,6 +318,7 @@ export function activeFlowStepId(active: TabKey | null): ContentFlowStepId {
   if (active === 'insight' || active === 'topic-recommendation') return 'insight';
   if (active === 'brief') return 'brief';
   if (active === 'literature') return 'literature';
+  if (active === 'storyline') return 'storyline';
   if (active === 'article-outline') return 'articleOutline';
   if (active === 'long-image-outline') return 'longImageOutline';
   if (active === 'ppt-outline') return 'outline';

@@ -32,6 +32,7 @@ export function ContentFlowNav({
     insight: progress.insight,
     brief: progress.brief,
     literature: progress.literature,
+    storyline: progress.storyline,
     outline: progress.outline,
     articleOutline: progress.articleOutline,
     longImageOutline: progress.longImageOutline,

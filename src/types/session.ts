@@ -35,6 +35,7 @@ export type TabKey =
   | 'long-image-outline'
   | 'ppt-design'
   | 'brief'
+  | 'storyline'
   | 'submit';
 
 export interface ChatMessage {
@@ -68,6 +69,7 @@ export interface SessionAppState {
   longImageOutline: boolean;
   pptDesign: boolean;
   brief: boolean;
+  storyline: boolean;
   submit: boolean;
 }
 
@@ -88,6 +90,7 @@ export interface SessionWorkspace {
   selectedPptVersionId: string | null;
   selectedPptTemplateId: string | null;
   contentBrief?: ContentBrief | null;
+  storylineContent?: string;
   richTextContent?: string;
   generatedImages: string[];
   generatedImageMeta?: GeneratedImageMeta[];

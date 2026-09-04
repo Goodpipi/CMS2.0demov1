@@ -109,6 +109,7 @@ export interface ContentBrief {
   keyMessage: string;
   length: string;
   notes: string;
+  narrative: string;
 }
 
 export interface PptOutlineChapter {

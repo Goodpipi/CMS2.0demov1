@@ -201,8 +201,8 @@ export function getEntryWelcome(ctx: HomeEntryContext): { html: string; chips: s
 
   if (source === 'promo') {
     return {
-      html: '您好！请先添加参考知识或品牌策略。中间流程会按你的第一步展开：话题洞察、Brief、PPT、推文、长图或话术。',
-      chips: ['基于素材生成话题洞察', '生成 Brief', '生成PPT大纲', '生成图文大纲', '生成长图大纲', '生成话术'],
+      html: '您好！请先添加参考知识或品牌策略。中间流程会按你的第一步展开：话题洞察、任务提案、PPT、推文、长图或话术。',
+      chips: ['基于素材生成话题洞察', '填写任务提案', '生成PPT大纲', '生成图文大纲', '生成长图大纲', '生成话术'],
     };
   }
 
@@ -222,7 +222,7 @@ export function getEntryWelcome(ctx: HomeEntryContext): { html: string; chips: s
 
   if (source === 'more') {
     return {
-      html: '您好！可先添加参考知识、品牌策略或 Brief，再描述你想生成的内容。',
+      html: '您好！可先添加参考知识、品牌策略或任务提案，再描述你想生成的内容。',
       chips: FLEXIBLE_WORKFLOW_CHIPS,
     };
   }

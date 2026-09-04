@@ -94,10 +94,15 @@ import { ArticleOutlineEditor } from '@/app/components/ArticleOutlineEditor';
 import { PptTemplatePickerModal } from '@/app/components/PptTemplatePickerModal';
 import { VersionFisheyeTimeline, type VersionTimelineItem } from '@/app/components/VersionFisheyeTimeline';
 import { ContentBriefPanel } from '@/app/components/ContentBriefPanel';
+import { StorylinePanel } from '@/app/components/StorylinePanel';
+import { STORYLINE_MOCK_TEXT } from '@/lib/storylineMock';
 import {
+  emptyContentBrief,
   formatContentBriefText,
   generateContentBrief,
   isGenerateBriefIntent,
+  missingRequiredBriefLabels,
+  normalizeContentBrief,
 } from '@/lib/contentBrief';
 import {
   pptTemplateIdFromTitle,
@@ -419,17 +424,18 @@ const tabNames = {
   insight: '话题洞察',
   'topic-recommendation': '话题推荐',
   literature: '推荐文献',
+  storyline: '故事线',
   copy: '文案生成',
   'rich-text': '图文',
   team: '团队修改',
   visual: '图片生成',
   'video-script': '视频脚本',
   'video-render': '视频生成',
-  'ppt-outline': 'PPT大纲',
+  'ppt-outline': '页面级大纲',
   'article-outline': '推文大纲',
   'long-image-outline': '长图大纲',
   'ppt-design': 'PPT生成',
-  brief: 'Brief',
+  brief: '任务提案',
   submit: 'Veeva提交',
 };
 
@@ -480,6 +486,7 @@ const emptyWorkspaceState = (): AppState => ({
   longImageOutline: false,
   pptDesign: false,
   brief: false,
+  storyline: false,
   submit: false,
 });
 
@@ -515,6 +522,7 @@ export default function App() {
   const [literatureSearching, setLiteratureSearching] = useState(false);
   const [addedLiteratureIds, setAddedLiteratureIds] = useState<string[]>([]);
   const [contentBrief, setContentBrief] = useState<ContentBrief | null>(null);
+  const [storylineContent, setStorylineContent] = useState('');
   const [topicInsightReportText, setTopicInsightReportText] = useState('');
   const [copies, setCopies] = useState<CopyItem[]>([]);
   const [teamResult, setTeamResult] = useState<TeamResult | null>(null);
@@ -698,6 +706,7 @@ export default function App() {
       selectedPptVersionId,
       selectedPptTemplateId,
       contentBrief,
+      storylineContent,
       richTextContent,
       scriptContent,
       generatedImages,
@@ -738,6 +747,7 @@ export default function App() {
       selectedPptVersionId,
       selectedPptTemplateId,
       contentBrief,
+      storylineContent,
       richTextContent,
       scriptContent,
       generatedImages,
@@ -824,6 +834,7 @@ export default function App() {
       videoRender: legacy.videoRender ?? legacy.videoScript ?? Boolean(legacy.video),
       topicRecommendation: legacy.topicRecommendation ?? false,
       literature: legacy.literature ?? false,
+      storyline: legacy.storyline ?? false,
       richText: legacy.richText ?? false,
       brief: legacy.brief ?? false,
       articleOutline: legacy.articleOutline ?? false,
@@ -855,7 +866,8 @@ export default function App() {
       return keepOthers;
     });
     setSelectedPptTemplateId(w.selectedPptTemplateId ?? null);
-    setContentBrief(w.contentBrief ?? null);
+    setContentBrief(normalizeContentBrief(w.contentBrief));
+    setStorylineContent(w.storylineContent ?? '');
     setRichTextContent(w.richTextContent ?? '');
     setScriptContent(w.scriptContent ?? '');
     setGeneratedImages(w.generatedImages);
@@ -1640,6 +1652,7 @@ export default function App() {
     setLiteratureResults([]);
     setAddedLiteratureIds([]);
     setContentBrief(null);
+    setStorylineContent('');
     setSelectedTopics([]);
     setSelectedCopies([]);
     setCopyRevisions([]);
@@ -1806,7 +1819,7 @@ export default function App() {
     const item: LibraryItem = {
       id: GENERATED_BRIEF_ID,
       cat: 'Brief',
-      title: '任务 Brief',
+      title: '任务提案',
       meta: '由洞察或提示词生成',
       cms: false,
       def: false,
@@ -1837,11 +1850,69 @@ export default function App() {
     addMsg(
       'ai',
       topicInsightReportText.trim()
-        ? '已基于当前话题洞察报告生成 Brief。请点击「Brief」标签查看，支持在线编辑与一键复制。'
-        : '已根据你的提示词生成 Brief。请点击「Brief」标签查看，支持在线编辑与一键复制。',
-      'Brief',
-      ['查看 Brief', '生成PPT大纲', '检索文献']
+        ? '已基于当前话题洞察报告生成任务提案。请点击「任务提案」查看，支持在线编辑与一键复制。'
+        : '已根据你的提示词生成任务提案。请点击「任务提案」查看，支持在线编辑与一键复制。',
+      '任务提案',
+      ['查看任务提案', '生成PPT大纲', '检索文献']
     );
+  };
+
+  const startTaskProposal = () => {
+    setContentBrief((prev) => prev ?? emptyContentBrief());
+    setFlowEntry((prev) => nextLockedFlowEntry(prev, 'brief'));
+    setState((prev) => ({
+      ...prev,
+      tabs: prev.tabs.includes('brief') ? prev.tabs : [...prev.tabs, 'brief'],
+      active: 'brief',
+      brief: true,
+    }));
+  };
+
+  const openLiteratureRecommend = (brief?: ContentBrief | null) => {
+    const source = brief ?? contentBrief;
+    if (!source) {
+      toast('请先填写任务提案');
+      return;
+    }
+    const missing = missingRequiredBriefLabels(source);
+    if (missing.length) {
+      toast(`请先填写必填项：${missing.join('、')}`);
+      return;
+    }
+    const query = [source.audience, source.scenario, source.keyMessage, source.goal, source.format]
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .join(' ');
+    setFlowEntry((prev) => nextLockedFlowEntry(prev, 'literature'));
+    runLiteratureSearch(query || '相关文献推荐');
+  };
+
+  const openStoryline = () => {
+    setStorylineContent((prev) => prev.trim() || STORYLINE_MOCK_TEXT);
+    setFlowEntry((prev) => nextLockedFlowEntry(prev, 'storyline'));
+    setState((prev) => ({
+      ...prev,
+      tabs: prev.tabs.includes('storyline') ? prev.tabs : [...prev.tabs, 'storyline'],
+      active: 'storyline',
+      storyline: true,
+    }));
+  };
+
+  const openInsightWorkspace = () => {
+    setFlowEntry((prev) => nextLockedFlowEntry(prev, 'insight'));
+    setState((prev) => ({
+      ...prev,
+      tabs: prev.tabs.includes('insight') ? prev.tabs : [...prev.tabs, 'insight'],
+      active: 'insight',
+      insight: true,
+    }));
+  };
+
+  const openReferenceMaterials = () => {
+    setPickerTarget('workspace');
+    setPickerCat('参考知识');
+    setPickerMode('reference');
+    setPickerOpen(true);
   };
 
   const runTopicInsightReport = () => {
@@ -1947,9 +2018,10 @@ export default function App() {
       omitsBriefLiterature(flowEntry, entryContext?.source) &&
       (/检索文献|搜索文献|文献检索|search\s*literature|find\s*papers/i.test(text) ||
         isGenerateBriefIntent(text) ||
-        text.trim() === '查看 Brief')
+        text.trim() === '查看 Brief' ||
+        text.trim() === '查看任务提案')
     ) {
-      toast('病例内容与学术证据解读不包含 Brief / 文献步骤');
+      toast('病例内容与学术证据解读不包含任务提案 / 文献步骤');
       return true;
     }
 
@@ -1969,8 +2041,18 @@ export default function App() {
       return true;
     }
 
-    if (isGenerateBriefIntent(text) || text.trim() === '查看 Brief') {
-      if (text.trim() === '查看 Brief' && contentBrief) {
+    if (text.trim() === '填写任务提案') {
+      startTaskProposal();
+      return true;
+    }
+
+    if (text.trim() === '生成故事线' || text.trim() === '下一步：生成故事线') {
+      openStoryline();
+      return true;
+    }
+
+    if (isGenerateBriefIntent(text) || text.trim() === '查看 Brief' || text.trim() === '查看任务提案') {
+      if ((text.trim() === '查看 Brief' || text.trim() === '查看任务提案') && contentBrief) {
         setState((prev) => ({
           ...prev,
           tabs: prev.tabs.includes('brief') ? prev.tabs : [...prev.tabs, 'brief'],
@@ -3681,6 +3763,14 @@ export default function App() {
       toast('请等待当前 AI 生成完成');
       return;
     }
+    if (text === '填写任务提案') {
+      startTaskProposal();
+      return;
+    }
+    if (text === '生成故事线' || text === '下一步：生成故事线') {
+      openStoryline();
+      return;
+    }
     if (text === '切换到 Agent 模式') {
       toast('已在执行模式，可直接下达修改或生成指令');
       return;
@@ -5135,17 +5225,7 @@ export default function App() {
       if (item.cat === 'Brief') {
         lockFlowEntry('brief');
         addTab('brief');
-        setContentBrief((prev) =>
-          prev ?? {
-            audience: '',
-            scenario: '',
-            format: 'PPT 演示文稿',
-            goal: '',
-            keyMessage: item.title,
-            length: '',
-            notes: `已引用 Brief「${item.title}」`,
-          }
-        );
+        setContentBrief((prev) => prev ?? emptyContentBrief());
       }
       toast(`已添加「${item.title}」到${item.cat}`);
       return;
@@ -5170,17 +5250,7 @@ export default function App() {
     if (item.cat === 'Brief') {
       lockFlowEntry('brief');
       addTab('brief');
-      setContentBrief((prev) =>
-        prev ?? {
-          audience: '',
-          scenario: '',
-          format: 'PPT 演示文稿',
-          goal: '',
-          keyMessage: item.title,
-          length: '',
-          notes: `已上传 Brief「${item.title}」`,
-        }
-      );
+      setContentBrief((prev) => prev ?? emptyContentBrief());
     }
     const pill = materialAttachmentPill(item);
     setAttachments((prev) => [...prev.filter((p) => !p.endsWith('×')), pill]);
@@ -7470,6 +7540,8 @@ export default function App() {
               setContentBrief(next);
               syncBriefToLibrary(next);
             }}
+            storylineContent={storylineContent}
+            onStorylineChange={setStorylineContent}
             onImportLocalPpt={() => pptImportInputRef.current?.click()}
             taskTitle={taskTitle}
             selectedProduct={selectedProduct}
@@ -7528,6 +7600,10 @@ export default function App() {
                   return;
                 }
               }
+              if (step.id === 'storyline') {
+                openStoryline();
+                return;
+              }
               if (!step.tab) {
                 setState((prev) => ({ ...prev, active: null }));
                 return;
@@ -7538,11 +7614,17 @@ export default function App() {
                 !pptOutline &&
                 !omitsBriefLiterature(flowEntry, entryContext?.source)
               ) {
-                toast('从 0 到 1 生成 PPT 前，请先完成 Brief 与大纲');
+                toast('从 0 到 1 生成 PPT 前，请先完成任务提案与大纲');
               }
               addTab(step.tab);
             }}
             onUploadBrief={() => openMaterialPicker('workspace', 'Brief')}
+            onFillTaskProposal={startTaskProposal}
+            onOpenInsightStep={openInsightWorkspace}
+            onOpenReferenceMaterials={openReferenceMaterials}
+            onGenerateInsightReport={runTopicInsightReport}
+            onRecommendLiterature={() => openLiteratureRecommend()}
+            onOpenStoryline={openStoryline}
             onDownloadInsightReport={() => {
               if (!hotInsightReport) {
                 toast('暂无洞察报告可下载');
@@ -8489,6 +8571,8 @@ function WorkspaceRightPanel({
   onResearchLiterature,
   contentBrief,
   onContentBriefChange,
+  storylineContent,
+  onStorylineChange,
   onImportLocalPpt,
   selectedProduct,
   entryContext,
@@ -8500,6 +8584,12 @@ function WorkspaceRightPanel({
   onImportLocalPoster,
   onSelectFlowStep,
   onUploadBrief,
+  onFillTaskProposal,
+  onOpenInsightStep,
+  onOpenReferenceMaterials,
+  onGenerateInsightReport,
+  onRecommendLiterature,
+  onOpenStoryline,
 }: {
   state: AppState;
   setState: React.Dispatch<React.SetStateAction<AppState>>;
@@ -8607,6 +8697,8 @@ function WorkspaceRightPanel({
   onResearchLiterature?: () => void;
   contentBrief?: ContentBrief | null;
   onContentBriefChange?: (brief: ContentBrief) => void;
+  storylineContent?: string;
+  onStorylineChange?: (text: string) => void;
   onImportLocalPpt?: () => void;
   selectedProduct?: TaskProduct | null;
   entryContext?: HomeEntryContext | null;
@@ -8618,6 +8710,12 @@ function WorkspaceRightPanel({
   onImportLocalPoster?: () => void;
   onSelectFlowStep: (step: ContentFlowStep) => void;
   onUploadBrief?: () => void;
+  onFillTaskProposal?: () => void;
+  onOpenInsightStep?: () => void;
+  onOpenReferenceMaterials?: () => void;
+  onGenerateInsightReport?: () => void;
+  onRecommendLiterature?: () => void;
+  onOpenStoryline?: () => void;
   taskTitle: string;
   onDownloadInsightReport: () => void;
   onStartVisualFlow: () => void;
@@ -8643,6 +8741,7 @@ function WorkspaceRightPanel({
     insight: Boolean(topicInsightReportText.trim() || insightSummary.trim() || hotInsightReport),
     brief: Boolean(contentBrief),
     literature: literatureResults.length > 0 || addedLiteratureIds.length > 0,
+    storyline: Boolean(storylineContent?.trim()),
     outline: Boolean(pptOutline),
     articleOutline: Boolean(articleOutline),
     longImageOutline: Boolean(longImageOutline),
@@ -8933,6 +9032,63 @@ function WorkspaceRightPanel({
           </div>
         );
       }
+      if (entryContext?.source === 'promo') {
+        return (
+          <div className="detail-card content-flow-task-card">
+            <h4>任务已创建</h4>
+            <ol className="content-flow-start-steps">
+              <li className="content-flow-start-step">
+                <span className="content-flow-start-index" aria-hidden>
+                  1
+                </span>
+                <div className="content-flow-start-body">
+                  <p>可以先上传品牌策略或其他参考资料，基于以上资料生成话题洞察。</p>
+                  <div className="content-flow-start-actions">
+                    <button
+                      type="button"
+                      className="btn primary"
+                      onClick={() => onOpenInsightStep?.()}
+                    >
+                      话题洞察
+                    </button>
+                  </div>
+                </div>
+              </li>
+              <li className="content-flow-start-step">
+                <span className="content-flow-start-index" aria-hidden>
+                  2
+                </span>
+                <div className="content-flow-start-body">
+                  <p>可以直接填写任务提案，开始从零到一制作 PPT 的流程。</p>
+                  <div className="content-flow-start-actions">
+                    <button type="button" className="btn primary" onClick={() => onFillTaskProposal?.()}>
+                      填写任务提案
+                    </button>
+                  </div>
+                </div>
+              </li>
+              <li className="content-flow-start-step">
+                <span className="content-flow-start-index" aria-hidden>
+                  3
+                </span>
+                <div className="content-flow-start-body">
+                  <p>可以打开已有文件，针对已有文件进行进一步编辑。</p>
+                  <div className="content-flow-start-actions">
+                    <button type="button" className="btn primary" onClick={onOpenLocalFile}>
+                      <FolderOpen className="h-4 w-4" />
+                      打开本地文件
+                    </button>
+                    <button type="button" className="btn primary" onClick={onOpenCmsFile}>
+                      <Database className="h-4 w-4" />
+                      打开 CMS 文件
+                    </button>
+                  </div>
+                </div>
+              </li>
+            </ol>
+          </div>
+        );
+      }
       return (
         <div className="detail-card content-flow-task-card">
           <h4>任务已创建</h4>
@@ -8941,9 +9097,7 @@ function WorkspaceRightPanel({
               ? '请您上传脱敏后的病例原始素材，如需生成专家点评，请上传过往专家点评示例'
               : entryContext?.source === 'poster'
                 ? '请先输入「生成主KV」，确认主视觉后再输入「生成海报」。会议信息可先下载模板填写后上传。'
-                : entryContext?.source === 'promo'
-                  ? '请先添加参考知识或品牌策略。流程会按你的第一步展开，可先做话题洞察、Brief、PPT、推文、长图或话术。'
-                  : entryContext?.source === 'evidence'
+                : entryContext?.source === 'evidence'
                   ? '请添加待解读的目标材料，也可补充其他参考知识。'
                   : entryContext?.source === 'insight'
                     ? '请添加参考知识或品牌策略，以便生成话题洞察。'
@@ -9028,20 +9182,29 @@ function WorkspaceRightPanel({
             <div className="workspace-surface-panel topic-insight-preview-panel">
               <div className="topic-insight-title-row">
                 <h1 dangerouslySetInnerHTML={{ __html: titleHtml }} />
-                <button
-                  type="button"
-                  className="btn primary topic-insight-copy-btn"
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(htmlToPlainText(insightHtml));
-                      toast('话题洞察已复制');
-                    } catch {
-                      toast('复制失败，请手动选择文本复制');
-                    }
-                  }}
-                >
-                  一键复制
-                </button>
+                <div className="topic-insight-title-actions">
+                  <button
+                    type="button"
+                    className="btn primary topic-insight-copy-btn"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(htmlToPlainText(insightHtml));
+                        toast('话题洞察已复制');
+                      } catch {
+                        toast('复制失败，请手动选择文本复制');
+                      }
+                    }}
+                  >
+                    一键复制
+                  </button>
+                  <button
+                    type="button"
+                    className="btn primary topic-insight-copy-btn"
+                    onClick={() => onFillTaskProposal?.()}
+                  >
+                    填写任务提案
+                  </button>
+                </div>
               </div>
               <div
                 className="topic-insight-markdown"
@@ -9052,18 +9215,19 @@ function WorkspaceRightPanel({
         }
         if (!topics.length && !hotInsightReport) {
           return (
-            <div className="detail-card">
+            <div className="detail-card content-flow-task-card">
               <h4>话题洞察</h4>
-              <div className="small">
-                在对话区输入「帮我生成五到六个话题」（可有可无附件），即可在此查看话题洞察报告。
+              <p className="small content-flow-task-hint">
+                您可以上传品牌策略或其他参考知识，基于以上知识形成话题洞察。
+              </p>
+              <div className="content-flow-start-actions" style={{ marginTop: 12 }}>
+                <button type="button" className="btn primary" onClick={() => onOpenReferenceMaterials?.()}>
+                  上传参考素材
+                </button>
+                <button type="button" className="btn primary" onClick={() => onGenerateInsightReport?.()}>
+                  生成话题洞察报告
+                </button>
               </div>
-              <button
-                className="btn primary"
-                style={{ marginTop: 12 }}
-                onClick={() => runTopicInsightAgent('基于素材生成话题洞察')}
-              >
-                基于素材生成话题洞察
-              </button>
             </div>
           );
         }
@@ -9201,14 +9365,23 @@ function WorkspaceRightPanel({
                 <h4>推荐文献</h4>
                 <LiteratureThirdPartyHint />
               </div>
-              <button
-                type="button"
-                className="btn primary"
-                disabled={literatureSearching}
-                onClick={() => onResearchLiterature?.()}
-              >
-                {literatureSearching ? '检索中…' : '重新检索文献'}
-              </button>
+              <div className="literature-panel-actions">
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={literatureSearching}
+                  onClick={() => onResearchLiterature?.()}
+                >
+                  {literatureSearching ? '检索中…' : '重新检索文献'}
+                </button>
+                <button
+                  type="button"
+                  className="btn primary"
+                  onClick={() => onOpenStoryline?.()}
+                >
+                  下一步：生成故事线
+                </button>
+              </div>
             </div>
             <div className="literature-list">
               {literatureResults.slice(0, literatureVisibleCount).map((article) => (
@@ -9241,20 +9414,29 @@ function WorkspaceRightPanel({
           </div>
         );
 
+      case 'storyline':
+        return (
+          <StorylinePanel
+            value={storylineContent || ''}
+            onChange={(text) => onStorylineChange?.(text)}
+            onNext={() => fillQuick('生成PPT大纲')}
+          />
+        );
+
       case 'brief':
         if (!contentBrief) {
           return (
             <div className="detail-card">
-              <h4>生成 / 上传 Brief</h4>
+              <h4>填写 / 上传任务提案</h4>
               <div className="small">
-                这是从 0 到 1 生成 PPT 的必要步骤。可在对话中输入「生成 Brief」，或上传已有 Brief。
+                这是从 0 到 1 生成 PPT 的必要步骤。可直接填写任务提案，或上传已有提案。
               </div>
               <div className="quick-row" style={{ marginTop: 12 }}>
-                <button type="button" className="btn primary" onClick={() => fillQuick('生成 Brief')}>
-                  生成 Brief
+                <button type="button" className="btn primary" onClick={() => onFillTaskProposal?.()}>
+                  填写任务提案
                 </button>
                 <button type="button" className="btn soft" onClick={() => onUploadBrief?.()}>
-                  上传 Brief
+                  上传任务提案
                 </button>
               </div>
             </div>
@@ -9264,14 +9446,8 @@ function WorkspaceRightPanel({
           <ContentBriefPanel
             brief={contentBrief}
             onChange={(next) => onContentBriefChange?.(next)}
-            onCopy={async () => {
-              try {
-                await navigator.clipboard.writeText(formatContentBriefText(contentBrief));
-                toast('Brief 已复制');
-              } catch {
-                toast('复制失败，请手动选择文本复制');
-              }
-            }}
+            onUpload={() => onUploadBrief?.()}
+            onNext={() => onRecommendLiterature?.()}
           />
         );
 
@@ -9863,7 +10039,7 @@ function WorkspaceRightPanel({
         if (!pptOutline) {
           return (
             <div className="detail-card">
-              <h4>PPT 大纲</h4>
+              <h4>页面级大纲</h4>
               <div className="small">
                 {reviewerMode
                   ? '当前任务中还没有 PPT 大纲，请联系内容运营。'
