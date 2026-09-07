@@ -723,6 +723,11 @@ button, input, textarea, select {
   border-color: transparent;
 }
 
+.btn.blue {
+  color: #fff;
+  border-color: transparent;
+}
+
 .btn.soft {
   background: var(--sky);
   color: #1952a0;
@@ -6490,6 +6495,51 @@ textarea {
   touch-action: none;
 }
 
+.image-draw-layer.is-eraser {
+  cursor: cell;
+}
+
+.meeting-kv-stage {
+  position: relative;
+}
+
+.meeting-kv-stage .meeting-preview-frame {
+  position: relative;
+  min-height: 320px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.meeting-kv-tools {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.meeting-kv-tools .btn {
+  box-shadow: 0 8px 20px rgba(16, 24, 40, 0.14);
+  backdrop-filter: blur(8px);
+}
+
+.meeting-kv-stage .image-draw-editor {
+  padding: 0;
+  background: transparent;
+}
+
+.meeting-kv-stage .image-draw-canvas {
+  background: transparent;
+  box-shadow: none;
+}
+
+.meeting-kv-stage .selectable-svg-host {
+  width: 100%;
+}
+
 .image-draw-stroke {
   fill: none;
   stroke: #e52f55;
@@ -8683,36 +8733,126 @@ textarea {
   line-height: 1.65;
 }
 
-.ppt-page-cite-veil {
-  position: relative;
-  margin-top: 4px;
-  isolation: isolate;
-  overflow: hidden;
-  border-radius: 12px;
+.ppt-page-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
-.ppt-page-cite-veil-content {
-  pointer-events: none;
-  user-select: none;
-  filter: grayscale(0.4);
-  opacity: 0.42;
+.ppt-page-field-head > span {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
 }
 
-.ppt-page-cite-veil-hint {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
-  display: grid;
-  place-items: center;
-  margin: 0;
-  padding: 18px 20px;
-  border-radius: 12px;
-  background: rgba(241, 245, 249, 0.82);
-  color: #4b6073;
-  font-size: 13px;
+.ppt-page-ai-btn {
+  flex-shrink: 0;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid #e4d4f5;
+  border-radius: 7px;
+  background: #f8f4ff;
+  color: #7c3aed;
+  font-size: 11px;
   font-weight: 650;
-  line-height: 1.7;
-  text-align: center;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ppt-page-ai-btn:hover,
+.ppt-page-ai-btn.is-active {
+  background: #efe7ff;
+  border-color: #c4a6f0;
+  color: #6d28d9;
+}
+
+.ppt-page-field.is-ai-active,
+.ppt-page-title-text.is-ai-active {
+  border-radius: 10px;
+}
+
+.ppt-page-field.is-ai-active {
+  padding: 8px 10px 10px;
+  border: 1px solid rgba(124, 58, 237, 0.22);
+  background: rgba(248, 244, 255, 0.55);
+}
+
+.outline-ai-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.outline-ai-prompt-input {
+  width: 100%;
+  min-height: 72px;
+  padding: 8px 10px;
+  border: 1px solid #e4edf5;
+  border-radius: 10px;
+  background: #fff;
+  color: #24364a;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.outline-ai-prompt-input:focus {
+  outline: none;
+  border-color: rgba(124, 58, 237, 0.45);
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.12);
+}
+
+.outline-ai-prompt-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.outline-manual-image-btn {
+  margin-top: 8px;
+  align-self: flex-start;
+}
+
+.outline-manual-image-form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px dashed rgba(124, 58, 237, 0.28);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.outline-manual-image-form > strong {
+  color: #18334d;
+  font-size: 13px;
+}
+
+.outline-manual-image-upload {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.outline-manual-image-upload em {
+  color: #7b8ea3;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.outline-manual-image-preview {
+  display: block;
+  width: min(240px, 100%);
+  max-height: 140px;
+  margin-top: 8px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid #e4edf5;
 }
 
 .ppt-page-static {
@@ -9133,6 +9273,25 @@ textarea {
 
 .content-brief-title-block h1 {
   flex: none;
+}
+
+.content-brief-title-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.content-brief-title-heading h1 {
+  flex: none;
+}
+
+.content-brief-title-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .content-brief-select {
@@ -12009,6 +12168,19 @@ textarea {
   width: 100%;
 }
 
+.topic-insight-title-row .content-brief-title-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+  flex: 1;
+}
+
+.topic-insight-title-row .content-brief-title-heading h1 {
+  flex: none;
+}
+
 .topic-insight-copy-btn {
   flex: 0 0 auto;
   margin-top: 4px;
@@ -12289,13 +12461,22 @@ textarea {
   opacity: 1;
 }
 
+.literature-picker-bg {
+  z-index: 36;
+  align-items: flex-start;
+  padding: 10vh 16px 24px;
+  background: rgba(16, 34, 56, 0.16);
+}
+
 .literature-picker-modal {
   display: flex;
   flex-direction: column;
-  width: min(1280px, 96vw);
-  max-height: min(88vh, 88dvh);
-  padding: 20px 20px 16px;
+  width: min(640px, 92vw);
+  max-height: min(64vh, 620px);
+  padding: 14px 14px 12px;
   overflow: hidden;
+  border-radius: 16px;
+  box-shadow: 0 18px 48px rgba(16, 34, 56, 0.18);
 }
 
 .literature-picker-head {
@@ -12308,7 +12489,7 @@ textarea {
 
 .literature-picker-head h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
@@ -12483,11 +12664,11 @@ textarea {
 
 .literature-picker-columns {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   min-height: 0;
   flex: 1;
-  margin-top: 14px;
+  margin-top: 12px;
   overflow: hidden;
 }
 
@@ -12553,6 +12734,38 @@ textarea {
   margin-top: 14px;
   padding-right: 4px;
   overflow: auto;
+}
+
+.literature-picker-personal {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+  margin-top: 14px;
+  border: 1px solid rgba(226, 236, 246, .95);
+  border-radius: 14px;
+  background: rgba(248, 251, 255, .72);
+}
+
+.literature-picker-personal .literature-picker-list {
+  margin-top: 0;
+  padding: 8px 10px 10px;
+}
+
+.literature-picker-list .literature-abstract,
+.literature-picker-column-list .literature-abstract {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.literature-picker-card.is-compact .literature-abstract {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.55;
 }
 
 .literature-picker-card {
@@ -12651,8 +12864,64 @@ textarea {
   color: #3f7a12;
 }
 
+.literature-recommend-bg {
+  z-index: 36;
+  align-items: flex-start;
+  padding: 10vh 16px 24px;
+  background: rgba(16, 34, 56, 0.16);
+}
+
+.literature-recommend-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 92vw);
+  max-height: min(62vh, 560px);
+  padding: 14px 14px 12px;
+  overflow: hidden;
+  border-radius: 16px;
+  box-shadow: 0 18px 48px rgba(16, 34, 56, 0.18);
+}
+
+.literature-recommend-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  flex: 0 0 auto;
+}
+
+.literature-recommend-head h3 {
+  margin: 2px 0 0;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.literature-recommend-body {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  height: auto;
+  padding: 0;
+  overflow: hidden;
+}
+
+.literature-recommend-modal .literature-panel {
+  padding: 6px 0 0;
+}
+
+.literature-recommend-modal .literature-panel-head h4 {
+  display: none;
+}
+
+.literature-recommend-empty {
+  padding: 18px 4px 8px;
+}
+
 .literature-preview-bg {
-  z-index: 40;
+  z-index: 42;
 }
 
 .literature-preview-modal {
@@ -12720,9 +12989,9 @@ textarea {
   font-size: 12px;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 560px) {
   .literature-picker-columns {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
   }
 }
 
@@ -12755,5 +13024,264 @@ textarea {
   gap: 6px;
   min-height: 34px;
   margin-left: auto;
+}
+
+.meeting-surface-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding: 18px 22px 16px;
+}
+
+.meeting-surface-panel:has(.meeting-folder-chrome) {
+  overflow: hidden;
+}
+
+.meeting-folder-chrome {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  padding-top: 8px;
+  border-radius: 12px;
+  background: #e8eef4;
+}
+
+.meeting-folder-tabs {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 0 10px;
+}
+
+.meeting-folder-tab {
+  position: relative;
+  z-index: 0;
+  margin-bottom: -1px;
+  min-height: 36px;
+  padding: 8px 18px 11px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 10px 10px 0 0;
+  background: transparent;
+  color: #5b6f86;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.meeting-folder-tab:hover {
+  color: #1d3348;
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.meeting-folder-tab.active {
+  z-index: 1;
+  background: #fff;
+  border-color: rgba(148, 163, 184, 0.28);
+  color: #103c8f;
+  box-shadow: 0 1px 0 #fff;
+}
+
+.meeting-folder-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 14px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 0 12px 12px 12px;
+  background: #fff;
+}
+
+.meeting-poster-workspace,
+.meeting-folder-body .ppt-design-fit-panel,
+.meeting-folder-body .meeting-poster-workspace {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.meeting-poster-stage {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 360px;
+}
+
+.meeting-folder-body .ppt-design-fit-panel {
+  gap: 8px;
+}
+
+.meeting-folder-body .ppt-design-fit-panel > .creator-ppt-preview-card {
+  min-height: 420px;
+}
+
+.meeting-folder-body .image-preview-submit-actions {
+  padding: 0;
+  background: transparent;
+}
+
+.meeting-surface-hint {
+  color: #5b6f86;
+  line-height: 1.7;
+}
+
+.meeting-preview-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 280px;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.meeting-preview-frame img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+.meeting-preview-frame.is-poster img {
+  max-height: 640px;
+}
+
+.meeting-preview-frame.is-ppt img {
+  width: 100%;
+  max-width: 860px;
+}
+
+.meeting-action-row,
+.meeting-session-toolbar,
+.meeting-ppt-toolbar,
+.meeting-ppt-pager,
+.meeting-session-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.meeting-action-row {
+  margin-top: 4px;
+}
+
+.meeting-subtabs {
+  display: flex;
+  gap: 8px;
+}
+
+.meeting-ppt-toolbar,
+.meeting-session-toolbar {
+  justify-content: space-between;
+}
+
+.meeting-session-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #3d5268;
+}
+
+.meeting-session-select .input {
+  min-width: 160px;
+}
+
+.meeting-section-title {
+  margin: 0;
+  font-size: 18px;
+  color: #1d3348;
+}
+
+.meeting-info-preview {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #31475c;
+  font-size: 13.5px;
+  line-height: 1.65;
+}
+
+.meeting-info-preview strong {
+  display: inline-block;
+  min-width: 72px;
+  color: #5b6f86;
+  font-weight: 650;
+}
+
+.meeting-info-form,
+.meeting-session-field {
+  display: grid;
+  gap: 8px;
+}
+
+.meeting-session-field span {
+  font-size: 13px;
+  color: #4a6076;
+}
+
+.meeting-session-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.meeting-session-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 16px;
+  background: #fff;
+}
+
+.meeting-session-thumbs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  min-height: 88px;
+}
+
+.meeting-session-thumbs img,
+.meeting-session-thumbs span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 88px;
+  border-radius: 10px;
+  background: #f6f8fb;
+  color: #8aa0b3;
+  font-size: 12px;
+  overflow: hidden;
+}
+
+.meeting-session-thumbs img {
+  width: 100%;
+  height: 88px;
+  object-fit: cover;
+}
+
+.meeting-empty-block {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+  padding: 24px 4px;
+}
+
+.meeting-welcome-card {
+  max-width: 640px;
 }
 

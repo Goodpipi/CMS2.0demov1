@@ -5,21 +5,33 @@ interface ContentBriefPanelProps {
   brief: ContentBrief;
   onChange: (brief: ContentBrief) => void;
   onUpload: () => void;
+  onRecommendLiterature: () => void;
   onNext: () => void;
 }
 
-export function ContentBriefPanel({ brief, onChange, onUpload, onNext }: ContentBriefPanelProps) {
+export function ContentBriefPanel({
+  brief,
+  onChange,
+  onUpload,
+  onRecommendLiterature,
+  onNext,
+}: ContentBriefPanelProps) {
   return (
     <div className="workspace-surface-panel content-brief-panel">
       <div className="topic-insight-title-row">
-        <div className="content-brief-title-block">
+        <div className="content-brief-title-heading">
           <h1>任务提案</h1>
-          <button type="button" className="btn primary" onClick={onUpload}>
-            上传任务提案
-          </button>
+          <div className="content-brief-title-tools">
+            <button type="button" className="btn green" onClick={onRecommendLiterature}>
+              相关文献推荐
+            </button>
+            <button type="button" className="btn blue" onClick={onUpload}>
+              上传任务提案
+            </button>
+          </div>
         </div>
         <button type="button" className="btn primary topic-insight-copy-btn" onClick={onNext}>
-          下一步：相关文献推荐
+          下一步：生成故事线
         </button>
       </div>
       <div className="content-brief-fields">

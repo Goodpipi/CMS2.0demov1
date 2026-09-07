@@ -36,6 +36,8 @@ export type ContentFlowStepId =
   | 'kv'
   | 'poster'
   | 'mobile'
+  | 'meetingTemplates'
+  | 'sessionMaterials'
   | 'video'
   | 'team'
   | 'submit'
@@ -66,6 +68,8 @@ export interface ContentFlowProgress {
   kv: boolean;
   poster: boolean;
   mobile: boolean;
+  meetingTemplates: boolean;
+  sessionMaterials: boolean;
   video: boolean;
   team: boolean;
   submit: boolean;
@@ -86,6 +90,8 @@ const CORE: Record<Exclude<ContentFlowStepId, 'pending'>, Omit<ContentFlowStep, 
   kv: { id: 'kv', label: '生成主KV', tab: 'visual' },
   poster: { id: 'poster', label: '生成会议海报', tab: 'visual' },
   mobile: { id: 'mobile', label: '一键手机', tab: 'visual' },
+  meetingTemplates: { id: 'meetingTemplates', label: '生成会议模板', tab: 'meeting-templates' },
+  sessionMaterials: { id: 'sessionMaterials', label: '生成场次物料', tab: 'meeting-sessions' },
   video: { id: 'video', label: '视频', tab: 'video-render' },
   team: { id: 'team', label: '意见收集', tab: 'team' },
   submit: { id: 'submit', label: '提交Veeva审批', tab: 'submit' },
@@ -115,6 +121,7 @@ export function flowEntryFromTab(tab: TabKey | null | undefined): ContentFlowEnt
   if (tab === 'copy') return 'copy';
   if (tab === 'rich-text') return 'articleOutline';
   if (tab === 'visual') return 'visual';
+  if (tab === 'meeting-templates' || tab === 'meeting-sessions') return 'conferencePoster';
   if (tab === 'video-render' || tab === 'video-script') return 'video';
   if (tab === 'team') return 'team';
   return null;
@@ -150,9 +157,9 @@ export function isPendingFlowEntry(entry?: ContentFlowEntry | null): boolean {
 }
 
 const FLOW_FAMILIES: Record<ContentFlowEntry, ContentFlowEntry[]> = {
-  insight: ['insight', 'brief', 'literature', 'storyline', 'outline', 'ppt', 'team'],
-  brief: ['brief', 'literature', 'storyline', 'outline', 'ppt', 'team'],
-  literature: ['literature', 'brief', 'storyline', 'outline', 'ppt', 'team'],
+  insight: ['insight', 'brief', 'storyline', 'outline', 'ppt', 'team'],
+  brief: ['brief', 'storyline', 'outline', 'ppt', 'team'],
+  literature: ['brief', 'storyline', 'outline', 'ppt', 'team'],
   storyline: ['storyline', 'outline', 'ppt', 'team'],
   outline: ['outline', 'ppt', 'team'],
   ppt: ['outline', 'ppt', 'team'],
@@ -196,7 +203,6 @@ function inferLockedPath(
 ): ContentFlowEntry | null {
   if (extras.insight && !omitsTopicInsight(null, source)) return 'insight';
   if (extras.brief && !omitsBriefLiterature(null, source)) return 'brief';
-  if (extras.literature && !omitsBriefLiterature(null, source)) return 'literature';
   if (extras.storyline) return 'storyline';
   if (extras.articleOutline) return 'articleOutline';
   if (extras.longImageOutline) return 'longImageOutline';
@@ -282,12 +288,10 @@ export function buildContentFlowSteps(
 
   if (locked === 'insight' && !skipInsight) {
     steps.push(step('insight', true));
-    if (!skipBriefLiterature) steps.push(step('brief', true), step('literature', true));
+    if (!skipBriefLiterature) steps.push(step('brief', true));
     steps.push(step('storyline', true), step('outline', true), step('ppt', true));
-  } else if (locked === 'brief' && !skipBriefLiterature) {
-    steps.push(step('brief', true), step('literature', true), step('storyline', true), step('outline', true), step('ppt', true));
-  } else if (locked === 'literature' && !skipBriefLiterature) {
-    steps.push(step('literature', true), step('brief', true), step('storyline', true), step('outline', true), step('ppt', true));
+  } else if ((locked === 'brief' || locked === 'literature') && !skipBriefLiterature) {
+    steps.push(step('brief', true), step('storyline', true), step('outline', true), step('ppt', true));
   } else if (locked === 'storyline') {
     steps.push(step('storyline', true), step('outline', true), step('ppt', true));
   } else if (locked === 'outline' || locked === 'ppt') {
@@ -301,7 +305,7 @@ export function buildContentFlowSteps(
   } else if (locked === 'copy') {
     steps.push(step('copy', true));
   } else if (locked === 'conferencePoster') {
-    steps.push(step('kv', true), step('poster', true));
+    steps.push(step('kv', true), step('meetingTemplates', true), step('sessionMaterials', true));
   } else if (locked === 'video') {
     steps.push(step('video', true));
   } else if (locked === 'team') {
@@ -316,8 +320,7 @@ export function buildContentFlowSteps(
 export function activeFlowStepId(active: TabKey | null): ContentFlowStepId {
   if (!active) return 'create';
   if (active === 'insight' || active === 'topic-recommendation') return 'insight';
-  if (active === 'brief') return 'brief';
-  if (active === 'literature') return 'literature';
+  if (active === 'brief' || active === 'literature') return 'brief';
   if (active === 'storyline') return 'storyline';
   if (active === 'article-outline') return 'articleOutline';
   if (active === 'long-image-outline') return 'longImageOutline';
@@ -325,6 +328,8 @@ export function activeFlowStepId(active: TabKey | null): ContentFlowStepId {
   if (active === 'ppt-design') return 'ppt';
   if (active === 'copy' || active === 'rich-text') return 'copy';
   if (active === 'visual') return 'visual';
+  if (active === 'meeting-templates') return 'meetingTemplates';
+  if (active === 'meeting-sessions') return 'sessionMaterials';
   if (active === 'video-render' || active === 'video-script') return 'video';
   if (active === 'team') return 'team';
   if (active === 'submit') return 'submit';

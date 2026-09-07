@@ -26,13 +26,16 @@ export interface SelectableSvgSelection {
 
 export interface SelectableSvgToolState {
   brushActive: boolean;
+  eraserActive: boolean;
   canClear: boolean;
 }
 
 export interface SelectableSvgPreviewHandle {
   toggleBrush: () => void;
   setBrushActive: (active: boolean) => void;
+  setEraserActive: (active: boolean) => void;
   clearStrokes: () => void;
+  cancelTools: () => void;
   getToolState: () => SelectableSvgToolState;
 }
 
@@ -47,6 +50,8 @@ interface SelectableSvgPreviewProps {
   className?: string;
   /** 隐藏内置工具条，改由外部 Toolbar 控制 */
   hideToolbar?: boolean;
+  /** 禁止点选 SVG 元素，仅保留画笔圈选 */
+  disableSelect?: boolean;
   onToolStateChange?: (state: SelectableSvgToolState) => void;
 }
 
@@ -66,6 +71,7 @@ export const SelectableSvgPreview = forwardRef<
     disabled = false,
     className = '',
     hideToolbar = false,
+    disableSelect = false,
     onToolStateChange,
   },
   ref
@@ -73,6 +79,7 @@ export const SelectableSvgPreview = forwardRef<
   const hostRef = useRef<HTMLDivElement>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [brushActive, setBrushActive] = useState(false);
+  const [eraserActive, setEraserActive] = useState(false);
   const [strokes, setStrokes] = useState<string[]>([]);
   const [activeStroke, setActiveStroke] = useState('');
   const drawingRef = useRef(false);
@@ -86,6 +93,8 @@ export const SelectableSvgPreview = forwardRef<
 
   const canClear = strokes.length > 0 || Boolean(activeStroke);
 
+  const drawActive = brushActive || eraserActive;
+
   const clearStrokes = useCallback(() => {
     setStrokes([]);
     activeStrokeRef.current = '';
@@ -96,10 +105,28 @@ export const SelectableSvgPreview = forwardRef<
   const setBrush = useCallback(
     (active: boolean) => {
       setBrushActive(active);
-      if (active) onSelect(null);
+      if (active) {
+        setEraserActive(false);
+        onSelect(null);
+      }
     },
     [onSelect]
   );
+
+  const setEraser = useCallback((active: boolean) => {
+    setEraserActive(active);
+    if (active) {
+      setBrushActive(false);
+      onSelect(null);
+    }
+  }, [onSelect]);
+
+  const cancelTools = useCallback(() => {
+    setBrushActive(false);
+    setEraserActive(false);
+    clearStrokes();
+    onSelect(null);
+  }, [clearStrokes, onSelect]);
 
   const toggleBrush = useCallback(() => {
     setBrush(!brushActive);
@@ -110,15 +137,17 @@ export const SelectableSvgPreview = forwardRef<
     () => ({
       toggleBrush,
       setBrushActive: setBrush,
+      setEraserActive: setEraser,
       clearStrokes,
-      getToolState: () => ({ brushActive, canClear }),
+      cancelTools,
+      getToolState: () => ({ brushActive, eraserActive, canClear }),
     }),
-    [toggleBrush, setBrush, clearStrokes, brushActive, canClear]
+    [toggleBrush, setBrush, setEraser, clearStrokes, cancelTools, brushActive, eraserActive, canClear]
   );
 
   useEffect(() => {
-    onToolStateChange?.({ brushActive, canClear });
-  }, [brushActive, canClear, onToolStateChange]);
+    onToolStateChange?.({ brushActive, eraserActive, canClear });
+  }, [brushActive, eraserActive, canClear, onToolStateChange]);
 
   useEffect(() => {
     setLoadFailed(!prepared);
@@ -126,6 +155,7 @@ export const SelectableSvgPreview = forwardRef<
 
   useEffect(() => {
     setBrushActive(false);
+    setEraserActive(false);
     setStrokes([]);
     activeStrokeRef.current = '';
     setActiveStroke('');
@@ -150,11 +180,11 @@ export const SelectableSvgPreview = forwardRef<
     host.querySelectorAll('[data-edit-id]').forEach((node) => {
       const svgNode = node as SVGElement;
       const locked = isLockedBackground(svgNode);
-      svgNode.style.pointerEvents = locked || brushActive ? 'none' : 'all';
-      svgNode.style.cursor = locked || brushActive ? 'default' : 'pointer';
+      svgNode.style.pointerEvents = locked || drawActive || disableSelect ? 'none' : 'all';
+      svgNode.style.cursor = locked || drawActive || disableSelect ? 'default' : 'pointer';
     });
 
-    if (brushActive) return;
+    if (drawActive || disableSelect) return;
 
     const onClick = (event: MouseEvent) => {
       const target = (event.target as Element | null)?.closest?.('[data-edit-id]');
@@ -189,13 +219,26 @@ export const SelectableSvgPreview = forwardRef<
 
     host.addEventListener('click', onClick);
     return () => host.removeEventListener('click', onClick);
-  }, [prepared, disabled, onSelect, brushActive, selectedId]);
+  }, [prepared, disabled, onSelect, drawActive, disableSelect, selectedId]);
 
   const pointFromEvent = (event: React.PointerEvent<SVGSVGElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     const x = ((event.clientX - rect.left) / rect.width) * 1000;
     const y = ((event.clientY - rect.top) / rect.height) * 1000;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
+  };
+
+  const eraseNear = (point: string) => {
+    const [x, y] = point.split(',').map(Number);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    setStrokes((prev) =>
+      prev.filter((item) =>
+        item.split(/\s+/).every((pair) => {
+          const [px, py] = pair.split(',').map(Number);
+          return !Number.isFinite(px) || Math.hypot(px - x, py - y) >= 46;
+        })
+      )
+    );
   };
 
   const finishStroke = () => {
@@ -254,18 +297,31 @@ export const SelectableSvgPreview = forwardRef<
         <svg
           viewBox="0 0 1000 1000"
           preserveAspectRatio="none"
-          className={`image-draw-layer ${brushActive ? 'active' : ''}`}
+          className={`image-draw-layer ${drawActive ? 'active' : ''} ${eraserActive ? 'is-eraser' : ''}`}
           onPointerDown={(event) => {
-            if (!brushActive || disabled) return;
+            if (disabled) return;
+            const point = pointFromEvent(event);
+            if (eraserActive) {
+              event.currentTarget.setPointerCapture(event.pointerId);
+              drawingRef.current = true;
+              eraseNear(point);
+              return;
+            }
+            if (!brushActive) return;
             event.currentTarget.setPointerCapture(event.pointerId);
             drawingRef.current = true;
-            const point = pointFromEvent(event);
             activeStrokeRef.current = point;
             setActiveStroke(point);
           }}
           onPointerMove={(event) => {
-            if (!brushActive || !drawingRef.current) return;
-            activeStrokeRef.current = `${activeStrokeRef.current} ${pointFromEvent(event)}`;
+            if (!drawingRef.current) return;
+            const point = pointFromEvent(event);
+            if (eraserActive) {
+              eraseNear(point);
+              return;
+            }
+            if (!brushActive) return;
+            activeStrokeRef.current = `${activeStrokeRef.current} ${point}`;
             setActiveStroke(activeStrokeRef.current);
           }}
           onPointerUp={finishStroke}

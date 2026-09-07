@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { LibraryItem } from '@/types/library';
 import {
   filterMaterialsByGroup,
@@ -8,7 +8,7 @@ import {
   materialFormatLabel,
   materialSourceLabel,
 } from '@/lib/libraryUtils';
-import { BookMarked, ChevronDown, ChevronRight, Download, Plus, Trash2, Upload } from 'lucide-react';
+import { BookMarked, ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 
 interface ContextMaterialsPanelProps {
@@ -18,7 +18,6 @@ interface ContextMaterialsPanelProps {
   onOpenPicker: (cat: string) => void;
   onPreview: (item: LibraryItem) => void;
   onRemove: (item: LibraryItem) => void;
-  onUploadFile?: (file: File, category: string) => void;
 }
 
 function toneClasses(item: LibraryItem) {
@@ -218,7 +217,6 @@ const CASE_SECTIONS: MaterialSectionDef[] = [
 
 const POSTER_SECTIONS: MaterialSectionDef[] = [
   { title: '视觉参考', cats: ['视觉参考'], category: '视觉参考' },
-  { title: '会议信息', cats: ['会议信息'], category: '会议信息' },
 ];
 
 const EVIDENCE_SECTIONS: MaterialSectionDef[] = [
@@ -262,20 +260,6 @@ function sectionItems(section: MaterialSectionDef, referencedMaterials: LibraryI
   return section.groupId ? byGroup : byCats;
 }
 
-function downloadConferenceInfoTemplate() {
-  const csv = [
-    '会议名称,会议时间,会议地点,主办方,会议主题,嘉宾,议程要点,备注',
-    'CKD患者肾脏保护新进展研讨会,2026-10-18 09:00,上海国际会议中心,拜耳医药保健,肾脏保护新进展,张三教授；李四主任,开场致辞 | 主题报告 | 圆桌讨论,请按实际会议信息替换本行后上传',
-  ].join('\r\n');
-  const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = '会议信息模板.csv';
-  a.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
-}
-
 export function ContextMaterialsPanel({
   library,
   variant = 'default',
@@ -283,9 +267,7 @@ export function ContextMaterialsPanel({
   onOpenPicker,
   onPreview,
   onRemove,
-  onUploadFile,
 }: ContextMaterialsPanelProps) {
-  const conferenceFileRef = useRef<HTMLInputElement>(null);
   const referencedMaterials = library.filter((item) => item.referenced ?? item.def);
   const sections = sectionsForVariant(variant);
 
@@ -304,7 +286,6 @@ export function ContextMaterialsPanel({
       </button>
       {sections.map((section) => {
         const items = sectionItems(section, referencedMaterials);
-        const isConference = variant === 'poster' && section.category === '会议信息';
         const isLiterature = section.category === '参考文献' || section.groupId === 'literature';
         return (
           <AssetSection
@@ -322,50 +303,9 @@ export function ContextMaterialsPanel({
                 <p className="context-literature-limit-hint">{LITERATURE_CONTEXT_HINT}</p>
               ) : undefined
             }
-            emptyText={
-              isConference ? '暂无会议信息。可先下载模板填写后上传。' : undefined
-            }
-            extraActions={
-              isConference ? (
-                <div
-                  className="context-material-section-actions"
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <button
-                    type="button"
-                    className="context-material-section-action"
-                    onClick={downloadConferenceInfoTemplate}
-                  >
-                    <Download className="h-3 w-3" strokeWidth={2.4} />
-                    下载模板
-                  </button>
-                  <button
-                    type="button"
-                    className="context-material-section-action"
-                    onClick={() => conferenceFileRef.current?.click()}
-                  >
-                    <Upload className="h-3 w-3" strokeWidth={2.4} />
-                    上传
-                  </button>
-                </div>
-              ) : undefined
-            }
           />
         );
       })}
-      {variant === 'poster' && (
-        <input
-          ref={conferenceFileRef}
-          type="file"
-          hidden
-          accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt,.md"
-          onChange={(event) => {
-            const file = event.currentTarget.files?.[0];
-            if (file) onUploadFile?.(file, '会议信息');
-            event.currentTarget.value = '';
-          }}
-        />
-      )}
     </div>
   );
 }

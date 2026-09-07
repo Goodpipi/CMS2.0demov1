@@ -3,8 +3,13 @@ import type { PptOutline, PptOutlinePage, PptOutlinePageKind } from '@/types/con
 import { genId, makeOutlinePage, movePageInOutline, outlinePageCount } from './pptUtils';
 import { PPT_BUILTIN_TEMPLATES, isBlankPptTemplate, type PptBuiltinTemplate } from './pptTemplates';
 import { PptTemplatePickerModal, PptTemplateThumb } from './PptTemplatePickerModal';
-import { OutlinePageEditModal, OutlineReferencedImages, OutlineStaticField, OutlineStaticList } from './OutlinePageEditModal';
-import { mockRevisePptPage } from '@/lib/outlineEditMock';
+import { OutlineAiPrompt, OutlineManualCiteImageForm, OutlineReferencedImages, OutlineStaticField, OutlineStaticList } from './OutlinePageEditModal';
+import {
+  appendManualCiteImage,
+  mockRevisePptPageRegion,
+  rematchPageCitations,
+  type PptPageAiRegion,
+} from '@/lib/outlineEditMock';
 
 interface PptOutlineEditorProps {
   outline: PptOutline;
@@ -118,13 +123,14 @@ export function PptOutlineEditor({
   const [draggingPageKey, setDraggingPageKey] = useState<string | null>(null);
   const [dropPageKey, setDropPageKey] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
-  const [pageDraft, setPageDraft] = useState<{
+  const [pageEdit, setPageEdit] = useState<{
     chId: string;
     pgId: string;
-    core: string;
-    visual: string;
+    snapshot: PptOutlinePage;
   } | null>(null);
-  const [smartEditOpen, setSmartEditOpen] = useState(false);
+  const [aiRegion, setAiRegion] = useState<PptPageAiRegion | null>(null);
+  const [aiInstruction, setAiInstruction] = useState('');
+  const [manualImageOpen, setManualImageOpen] = useState(false);
 
   const flatPages = useMemo(
     () =>
@@ -148,6 +154,39 @@ export function PptOutlineEditor({
     });
   };
 
+  const beginPageEdit = (chId: string, page: PptOutlinePage) => {
+    setPageEdit({ chId, pgId: page.id, snapshot: page });
+    setAiRegion(null);
+    setAiInstruction('');
+    setManualImageOpen(false);
+  };
+
+  const stopPageEdit = (restore = false) => {
+    if (restore && pageEdit) updatePage(pageEdit.chId, pageEdit.pgId, pageEdit.snapshot);
+    setPageEdit(null);
+    setAiRegion(null);
+    setAiInstruction('');
+    setManualImageOpen(false);
+  };
+
+  const applyPageAi = (page: PptOutlinePage) => {
+    if (!pageEdit || !aiRegion || !aiInstruction.trim()) return;
+    updatePage(pageEdit.chId, pageEdit.pgId, mockRevisePptPageRegion(page, aiRegion, aiInstruction.trim()));
+    setAiRegion(null);
+    setAiInstruction('');
+  };
+
+  const addManualImage = (page: PptOutlinePage, input: { url: string; caption: string; source: string }) => {
+    if (!pageEdit) return;
+    const next = appendManualCiteImage(page.referencedImages, page.references, input);
+    updatePage(pageEdit.chId, pageEdit.pgId, rematchPageCitations({
+      ...page,
+      referencedImages: next.images,
+      references: next.references,
+    }));
+    setManualImageOpen(false);
+  };
+
   const addPage = () => {
     const page = blankOutlinePage();
     const chId = genId('ch');
@@ -156,8 +195,10 @@ export function PptOutlineEditor({
     const backIdx = chapters.findIndex((ch) => ch.kind === 'back');
     chapters.splice(backIdx >= 0 ? backIdx : chapters.length, 0, created);
     onChange({ ...outline, chapters });
-    setPageDraft({ chId, pgId: page.id, core: '', visual: '' });
-    setSmartEditOpen(false);
+    setPageEdit({ chId, pgId: page.id, snapshot: page });
+    setAiRegion(null);
+    setAiInstruction('');
+    setManualImageOpen(false);
   };
 
   const removePage = (chId: string, pgId: string) => {
@@ -222,7 +263,15 @@ export function PptOutlineEditor({
           <div className="ppt-pages ppt-pages-flat">
             {flatPages.map(({ chId, page: pg }, index) => {
               const pageKey = `${chId}:${pg.id}`;
-              const isEditing = pageDraft?.chId === chId && pageDraft.pgId === pg.id;
+              const isEditing = pageEdit?.chId === chId && pageEdit.pgId === pg.id;
+              const titleAi = isEditing && aiRegion === 'title';
+              const coreAi = isEditing && aiRegion === 'core';
+              const visualAi = isEditing && aiRegion === 'visual';
+              const toggleAi = (region: PptPageAiRegion) => {
+                setManualImageOpen(false);
+                setAiRegion((prev) => (prev === region ? null : region));
+                setAiInstruction('');
+              };
               return (
                 <div
                   key={pg.id}
@@ -255,22 +304,23 @@ export function PptOutlineEditor({
                       >
                         <DragHandle label="拖拽排序页面" />
                       </span>
-                      <div className="ppt-page-title-text">{pg.title || '未命名页面'}</div>
+                      <div className={`ppt-page-title-text ${titleAi ? 'is-ai-active' : ''}`}>{pg.title || '未命名页面'}</div>
                       {pageKindLabel(pg.kind) && (
                         <span className={`ppt-page-kind-badge is-${pg.kind}`}>{pageKindLabel(pg.kind)}</span>
                       )}
-                      {!isEditing && (
+                      {isEditing ? (
+                        <button
+                          type="button"
+                          className={`ppt-page-ai-btn ${titleAi ? 'is-active' : ''}`}
+                          onClick={() => toggleAi('title')}
+                        >
+                          AI修改
+                        </button>
+                      ) : (
                         <button
                           type="button"
                           className="ppt-page-edit-btn"
-                          onClick={() =>
-                            setPageDraft({
-                              chId,
-                              pgId: pg.id,
-                              core: (pg.bullets || []).join('\n'),
-                              visual: pg.visualSuggestion || '',
-                            })
-                          }
+                          onClick={() => beginPageEdit(chId, pg)}
                         >
                           修改本页
                         </button>
@@ -279,108 +329,114 @@ export function PptOutlineEditor({
                         <DeleteButton title="删除页面" onClick={() => removePage(chId, pg.id)} />
                       )}
                     </div>
-                    {isEditing ? (
-                      <>
-                        <label className="ppt-page-field">
-                          <span>页面核心内容</span>
-                          <textarea
-                            className="input ppt-page-edit-textarea"
-                            rows={4}
-                            value={pageDraft.core}
-                            placeholder="请输入本页核心内容，一行一条"
-                            onChange={(event) =>
-                              setPageDraft((prev) => (prev ? { ...prev, core: event.target.value } : prev))
-                            }
+                    {titleAi ? (
+                      <OutlineAiPrompt
+                        value={aiInstruction}
+                        placeholder="例如：标题更短，突出早期干预"
+                        onChange={setAiInstruction}
+                        onSubmit={() => applyPageAi(pg)}
+                        onCancel={() => {
+                          setAiRegion(null);
+                          setAiInstruction('');
+                        }}
+                      />
+                    ) : null}
+                    <OutlineStaticList
+                      label="页面核心内容"
+                      items={pg.bullets}
+                      empty="暂无核心内容"
+                      itemCites={pg.bulletCites}
+                      numbered={false}
+                      showAi={isEditing}
+                      aiActive={coreAi}
+                      onAi={() => toggleAi('core')}
+                      aiPrompt={
+                        coreAi ? (
+                          <OutlineAiPrompt
+                            value={aiInstruction}
+                            placeholder="例如：把第三条改成强调随访依从性"
+                            onChange={setAiInstruction}
+                            onSubmit={() => applyPageAi(pg)}
+                            onCancel={() => {
+                              setAiRegion(null);
+                              setAiInstruction('');
+                            }}
                           />
-                        </label>
-                        <label className="ppt-page-field">
-                          <span>可视化建议</span>
-                          <textarea
-                            className="input ppt-page-edit-textarea"
-                            rows={3}
-                            value={pageDraft.visual}
-                            placeholder="请输入可视化建议"
-                            onChange={(event) =>
-                              setPageDraft((prev) => (prev ? { ...prev, visual: event.target.value } : prev))
-                            }
-                          />
-                        </label>
-                        <div className="ppt-page-cite-veil">
-                          <div className="ppt-page-cite-veil-content">
-                            <OutlineReferencedImages images={pg.referencedImages} />
-                            <OutlineStaticList
-                              label="参考文献"
-                              items={pg.references}
-                              empty="暂无参考文献"
+                        ) : null
+                      }
+                    />
+                    <OutlineReferencedImages
+                      images={pg.referencedImages}
+                      action={
+                        isEditing ? (
+                          manualImageOpen ? (
+                            <OutlineManualCiteImageForm
+                              onCancel={() => setManualImageOpen(false)}
+                              onAdd={(input) => addManualImage(pg, input)}
                             />
-                          </div>
-                          <p className="ppt-page-cite-veil-hint">
-                            确认修改本页后，会基于最新的核心内容以及可视化建议，重新引用图片和参考文献。
-                          </p>
-                        </div>
-                        <div className="ppt-page-edit-actions">
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn soft outline-manual-image-btn"
+                              onClick={() => {
+                                setAiRegion(null);
+                                setAiInstruction('');
+                                setManualImageOpen(true);
+                              }}
+                            >
+                              手动添加引用图片／截图
+                            </button>
+                          )
+                        ) : null
+                      }
+                    />
+                    <OutlineStaticField
+                      label="可视化建议"
+                      value={pg.visualSuggestion}
+                      empty="暂无可视化建议"
+                      showAi={isEditing}
+                      aiActive={visualAi}
+                      onAi={() => toggleAi('visual')}
+                      aiPrompt={
+                        visualAi ? (
+                          <OutlineAiPrompt
+                            value={aiInstruction}
+                            placeholder="例如：改成左右分栏，右侧放趋势图"
+                            onChange={setAiInstruction}
+                            onSubmit={() => applyPageAi(pg)}
+                            onCancel={() => {
+                              setAiRegion(null);
+                              setAiInstruction('');
+                            }}
+                          />
+                        ) : null
+                      }
+                    />
+                    <OutlineStaticList
+                      label="参考文献"
+                      items={pg.references}
+                      empty="暂无参考文献"
+                    />
+                    {isEditing ? (
+                      <div className="ppt-page-edit-actions">
+                        <div className="ppt-page-edit-actions-end">
                           <button
                             type="button"
-                            className="ppt-page-edit-btn"
-                            onClick={() => setSmartEditOpen(true)}
+                            className="btn primary ppt-page-confirm-btn"
+                            onClick={() => stopPageEdit(false)}
                           >
-                            智能修改
+                            完成
                           </button>
-                          <div className="ppt-page-edit-actions-end">
-                            <button
-                              type="button"
-                              className="btn primary ppt-page-confirm-btn"
-                              onClick={() => {
-                                const bullets = pageDraft.core
-                                  .split('\n')
-                                  .map((line) => line.trim())
-                                  .filter(Boolean);
-                                updatePage(chId, pg.id, {
-                                  bullets,
-                                  bulletCites: bullets.map((_, i) => pg.bulletCites?.[i] || []),
-                                  visualSuggestion: pageDraft.visual.trim(),
-                                });
-                                setPageDraft(null);
-                                setSmartEditOpen(false);
-                              }}
-                            >
-                              确认修改
-                            </button>
-                            <button
-                              type="button"
-                              className="btn soft ppt-page-confirm-btn"
-                              onClick={() => {
-                                setPageDraft(null);
-                                setSmartEditOpen(false);
-                              }}
-                            >
-                              取消
-                            </button>
-                          </div>
+                          <button
+                            type="button"
+                            className="btn soft ppt-page-confirm-btn"
+                            onClick={() => stopPageEdit(true)}
+                          >
+                            取消
+                          </button>
                         </div>
-                      </>
-                    ) : (
-                      <>
-                        <OutlineStaticList
-                          label="页面核心内容"
-                          items={pg.bullets}
-                          empty="暂无核心内容"
-                          itemCites={pg.bulletCites}
-                          numbered={false}
-                        />
-                        <OutlineStaticField
-                          label="可视化建议"
-                          value={pg.visualSuggestion}
-                          empty="暂无可视化建议"
-                        />
-                        <OutlineReferencedImages images={pg.referencedImages} />
-                        <OutlineStaticList
-                          label="参考文献"
-                          items={pg.references}
-                          empty="暂无参考文献"
-                        />
-                      </>
-                    )}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               );
@@ -449,28 +505,6 @@ export function PptOutlineEditor({
           />
         ) : null}
       </div>
-      <OutlinePageEditModal
-        open={smartEditOpen && Boolean(pageDraft)}
-        onCancel={() => setSmartEditOpen(false)}
-        onConfirm={(instruction) => {
-          if (!pageDraft) return;
-          const chapter = outline.chapters.find((item) => item.id === pageDraft.chId);
-          const page = chapter?.pages.find((item) => item.id === pageDraft.pgId);
-          if (page) {
-            const drafted: PptOutlinePage = {
-              ...page,
-              bullets: pageDraft.core
-                .split('\n')
-                .map((line) => line.trim())
-                .filter(Boolean),
-              visualSuggestion: pageDraft.visual.trim(),
-            };
-            updatePage(pageDraft.chId, pageDraft.pgId, mockRevisePptPage(drafted, instruction));
-          }
-          setPageDraft(null);
-          setSmartEditOpen(false);
-        }}
-      />
     </div>
   );
 }

@@ -4,8 +4,13 @@ import { genId } from './pptUtils';
 import { PptTemplatePickerModal, PptTemplateThumb } from './PptTemplatePickerModal';
 import type { PptBuiltinTemplate } from './pptTemplates';
 import type { ImageBuiltinTemplate } from './imageTemplates';
-import { OutlinePageEditModal, OutlineReferencedImages, OutlineStaticField, OutlineStaticList } from './OutlinePageEditModal';
-import { mockReviseArticleChapter } from '@/lib/outlineEditMock';
+import { OutlineAiPrompt, OutlineManualCiteImageForm, OutlineReferencedImages, OutlineStaticField, OutlineStaticList } from './OutlinePageEditModal';
+import {
+  appendManualCiteImage,
+  mockReviseArticleRegion,
+  rematchArticleCitations,
+  type ArticleChapterAiRegion,
+} from '@/lib/outlineEditMock';
 
 const CHAPTER_DRAG_TYPE = 'application/x-article-chapter';
 
@@ -107,7 +112,13 @@ export function ArticleOutlineEditor({
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropId, setDropId] = useState<string | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
-  const [editChapterId, setEditChapterId] = useState<string | null>(null);
+  const [editChapter, setEditChapter] = useState<{
+    id: string;
+    snapshot: ArticleOutlineChapter;
+  } | null>(null);
+  const [aiRegion, setAiRegion] = useState<ArticleChapterAiRegion | null>(null);
+  const [aiInstruction, setAiInstruction] = useState('');
+  const [manualImageOpen, setManualImageOpen] = useState(false);
   const pickerTemplates = (imageTemplates || []).map(toPickerTemplate);
   const morePickerTemplates = (moreImageTemplates || imageTemplates || []).map(toPickerTemplate);
 
@@ -116,6 +127,38 @@ export function ArticleOutlineEditor({
       ...outline,
       chapters: outline.chapters.map((chapter) => (chapter.id === id ? { ...chapter, ...patch } : chapter)),
     });
+  };
+
+  const beginChapterEdit = (chapter: ArticleOutlineChapter) => {
+    setEditChapter({ id: chapter.id, snapshot: chapter });
+    setAiRegion(null);
+    setAiInstruction('');
+    setManualImageOpen(false);
+  };
+
+  const stopChapterEdit = (restore = false) => {
+    if (restore && editChapter) updateChapter(editChapter.id, editChapter.snapshot);
+    setEditChapter(null);
+    setAiRegion(null);
+    setAiInstruction('');
+    setManualImageOpen(false);
+  };
+
+  const applyChapterAi = (chapter: ArticleOutlineChapter) => {
+    if (!editChapter || !aiRegion || !aiInstruction.trim()) return;
+    updateChapter(chapter.id, mockReviseArticleRegion(chapter, aiRegion, aiInstruction.trim()));
+    setAiRegion(null);
+    setAiInstruction('');
+  };
+
+  const addManualImage = (chapter: ArticleOutlineChapter, input: { url: string; caption: string; source: string }) => {
+    const next = appendManualCiteImage(chapter.referencedImages, chapter.references, input);
+    updateChapter(chapter.id, rematchArticleCitations({
+      ...chapter,
+      referencedImages: next.images,
+      references: next.references,
+    }));
+    setManualImageOpen(false);
   };
 
   return (
@@ -142,7 +185,17 @@ export function ArticleOutlineEditor({
         </div>
 
         <div className="ppt-outline-body">
-          {outline.chapters.map((chapter, index) => (
+          {outline.chapters.map((chapter, index) => {
+            const isEditing = editChapter?.id === chapter.id;
+            const titleAi = isEditing && aiRegion === 'title';
+            const coreAi = isEditing && aiRegion === 'core';
+            const tmshAi = isEditing && aiRegion === 'tmsh';
+            const toggleAi = (region: ArticleChapterAiRegion) => {
+              setManualImageOpen(false);
+              setAiRegion((prev) => (prev === region ? null : region));
+              setAiInstruction('');
+            };
+            return (
             <section
               key={chapter.id}
               className={`ppt-chapter article-outline-chapter ${draggingId === chapter.id ? 'is-dragging' : ''} ${dropId === chapter.id ? 'is-drop-target' : ''}`}
@@ -159,7 +212,7 @@ export function ArticleOutlineEditor({
                 setDropId(null);
               }}
             >
-              <div className="ppt-page-card article-outline-card">
+              <div className={`ppt-page-card article-outline-card ${isEditing ? 'is-editing' : ''}`}>
                 <div className="ppt-page-num">{index + 1}</div>
                 <div className="ppt-page-body">
                   <div className="ppt-page-title-row">
@@ -179,14 +232,24 @@ export function ArticleOutlineEditor({
                     >
                       <DragHandle label="拖拽排序章节" />
                     </span>
-                    <div className="ppt-page-title-text">{chapter.title || '未命名章节'}</div>
-                    <button
-                      type="button"
-                      className="ppt-page-edit-btn"
-                      onClick={() => setEditChapterId(chapter.id)}
-                    >
-                      修改本章
-                    </button>
+                    <div className={`ppt-page-title-text ${titleAi ? 'is-ai-active' : ''}`}>{chapter.title || '未命名章节'}</div>
+                    {isEditing ? (
+                      <button
+                        type="button"
+                        className={`ppt-page-ai-btn ${titleAi ? 'is-active' : ''}`}
+                        onClick={() => toggleAi('title')}
+                      >
+                        AI修改
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="ppt-page-edit-btn"
+                        onClick={() => beginChapterEdit(chapter)}
+                      >
+                        修改本章
+                      </button>
+                    )}
                     {outline.chapters.length > 1 && (
                       <DeleteButton
                         title="删除章节"
@@ -200,24 +263,120 @@ export function ArticleOutlineEditor({
                     )}
                   </div>
 
+                  {titleAi ? (
+                    <OutlineAiPrompt
+                      value={aiInstruction}
+                      placeholder="例如：标题更短，突出早期筛查"
+                      onChange={setAiInstruction}
+                      onSubmit={() => applyChapterAi(chapter)}
+                      onCancel={() => {
+                        setAiRegion(null);
+                        setAiInstruction('');
+                      }}
+                    />
+                  ) : null}
+
                   <OutlineStaticField
                     label="本章核心内容"
                     value={chapter.core}
                     empty="暂无核心内容"
                     cites={chapter.coreCites}
+                    showAi={isEditing}
+                    aiActive={coreAi}
+                    onAi={() => toggleAi('core')}
+                    aiPrompt={
+                      coreAi ? (
+                        <OutlineAiPrompt
+                          value={aiInstruction}
+                          placeholder="例如：把核心结论提前，并补充一条随访建议"
+                          onChange={setAiInstruction}
+                          onSubmit={() => applyChapterAi(chapter)}
+                          onCancel={() => {
+                            setAiRegion(null);
+                            setAiInstruction('');
+                          }}
+                        />
+                      ) : null
+                    }
                   />
 
-                  <OutlineStaticField label="章节TMSH" value={chapter.tmsh} empty="暂无 TMSH" />
-                  <OutlineReferencedImages images={chapter.referencedImages} />
+                  <OutlineStaticField
+                    label="章节TMSH"
+                    value={chapter.tmsh}
+                    empty="暂无 TMSH"
+                    showAi={isEditing}
+                    aiActive={tmshAi}
+                    onAi={() => toggleAi('tmsh')}
+                    aiPrompt={
+                      tmshAi ? (
+                        <OutlineAiPrompt
+                          value={aiInstruction}
+                          placeholder="例如：H 改成给出下周随访动作"
+                          onChange={setAiInstruction}
+                          onSubmit={() => applyChapterAi(chapter)}
+                          onCancel={() => {
+                            setAiRegion(null);
+                            setAiInstruction('');
+                          }}
+                        />
+                      ) : null
+                    }
+                  />
+                  <OutlineReferencedImages
+                    images={chapter.referencedImages}
+                    action={
+                      isEditing ? (
+                        manualImageOpen ? (
+                          <OutlineManualCiteImageForm
+                            onCancel={() => setManualImageOpen(false)}
+                            onAdd={(input) => addManualImage(chapter, input)}
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn soft outline-manual-image-btn"
+                            onClick={() => {
+                              setAiRegion(null);
+                              setAiInstruction('');
+                              setManualImageOpen(true);
+                            }}
+                          >
+                            手动添加引用图片／截图
+                          </button>
+                        )
+                      ) : null
+                    }
+                  />
                   <OutlineStaticList
                     label={refsLabel}
                     items={chapter.references}
                     empty="暂无参考文献"
                   />
+                  {isEditing ? (
+                    <div className="ppt-page-edit-actions">
+                      <div className="ppt-page-edit-actions-end">
+                        <button
+                          type="button"
+                          className="btn primary ppt-page-confirm-btn"
+                          onClick={() => stopChapterEdit(false)}
+                        >
+                          完成
+                        </button>
+                        <button
+                          type="button"
+                          className="btn soft ppt-page-confirm-btn"
+                          onClick={() => stopChapterEdit(true)}
+                        >
+                          取消
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </section>
-          ))}
+            );
+          })}
 
           <button
             type="button"
@@ -228,7 +387,7 @@ export function ArticleOutlineEditor({
                 ...outline,
                 chapters: [...outline.chapters, chapter],
               });
-              setEditChapterId(chapter.id);
+              beginChapterEdit(chapter);
             }}
           >
             + 添加章节
@@ -290,18 +449,6 @@ export function ArticleOutlineEditor({
           </footer>
         )}
       </div>
-
-      <OutlinePageEditModal
-        open={Boolean(editChapterId)}
-        title="请告知AI您想如何修改本章大纲"
-        placeholder="例如：把核心结论提前，并补充一条随访建议"
-        onCancel={() => setEditChapterId(null)}
-        onConfirm={(instruction) => {
-          const chapter = outline.chapters.find((item) => item.id === editChapterId);
-          if (chapter) updateChapter(chapter.id, mockReviseArticleChapter(chapter, instruction));
-          setEditChapterId(null);
-        }}
-      />
     </div>
   );
 }

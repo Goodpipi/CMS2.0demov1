@@ -49,6 +49,13 @@ export function formatContentBriefText(brief: ContentBrief): string {
   return CONTENT_BRIEF_FIELDS.map(({ key, label }) => `${label}：${brief[key] || '—'}`).join('\n');
 }
 
+export function literatureQueryFromBrief(brief: ContentBrief): string {
+  return [brief.audience, brief.scenario, brief.keyMessage, brief.goal, brief.format]
+    .map((part) => String(part || '').trim())
+    .filter(Boolean)
+    .join(' ');
+}
+
 export function isGenerateBriefIntent(text: string): boolean {
   return /生成\s*brief|生成Brief|生成内容brief|输出brief|写一份brief|生成任务提案/i.test(text.trim());
 }

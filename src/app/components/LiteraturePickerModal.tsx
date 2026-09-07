@@ -44,6 +44,25 @@ function matchesQuery(text: string, query: string): boolean {
   return text.toLowerCase().includes(query);
 }
 
+function knowledgeHitsFor(
+  items: LibraryItem[],
+  uploadCat: string,
+  query: string,
+  articleTitles: Set<string>,
+  personalOnly: boolean
+): SearchHit[] {
+  return items
+    .filter((item) => item.cat === uploadCat && isMaterialUsable(item))
+    .filter((item) => (personalOnly ? !item.cms : true))
+    .filter((item) => matchesQuery(`${item.title} ${item.meta} ${item.contentText ?? ''}`, query))
+    .filter((item) => !articleTitles.has(item.title))
+    .map((item) => ({
+      key: `knowledge-${item.id}`,
+      kind: 'knowledge' as const,
+      item,
+    }));
+}
+
 export function LiteraturePickerModal({
   open,
   knowledgeItems = [],
@@ -69,30 +88,30 @@ export function LiteraturePickerModal({
   }, [open]);
 
   const hasSearched = Boolean(appliedQuery.trim());
+  const showSearchResults = searching || hasSearched;
+
+  const personalHits = useMemo(() => {
+    const articles = searchLiteratureByScopes('', ['personal']);
+    const articleTitles = new Set(articles.map((item) => item.title));
+    const articleHits: SearchHit[] = articles.map((article) => ({
+      key: article.id,
+      kind: 'article' as const,
+      article,
+    }));
+    return [...articleHits, ...knowledgeHitsFor(knowledgeItems, uploadCat, '', articleTitles, true)];
+  }, [knowledgeItems, uploadCat]);
 
   const results = useMemo(() => {
     const q = appliedQuery.trim().toLowerCase();
     if (!q) return [];
     const articles = searchLiteratureByScopes(appliedQuery, ALL_SCOPES);
     const articleTitles = new Set(articles.map((item) => item.title));
-    const knowledgeHits: SearchHit[] = knowledgeItems
-      .filter((item) => item.cat === uploadCat && isMaterialUsable(item))
-      .filter((item) => !(item.referenced ?? item.def))
-      .filter((item) => matchesQuery(`${item.title} ${item.meta} ${item.contentText ?? ''}`, q))
-      .filter((item) => !articleTitles.has(item.title))
-      .map((item) => ({
-        key: `knowledge-${item.id}`,
-        kind: 'knowledge' as const,
-        item,
-      }));
-
     const articleHits: SearchHit[] = articles.map((article) => ({
       key: article.id,
       kind: 'article' as const,
       article,
     }));
-
-    return [...articleHits, ...knowledgeHits];
+    return [...articleHits, ...knowledgeHitsFor(knowledgeItems, uploadCat, q, articleTitles, false)];
   }, [appliedQuery, knowledgeItems, uploadCat]);
 
   const columns = useMemo(
@@ -147,6 +166,27 @@ export function LiteraturePickerModal({
       ? addedKnowledgeIds.has(previewItem.id)
       : false;
 
+  const renderHit = (hit: SearchHit, compact: boolean) =>
+    hit.kind === 'article' ? (
+      <LiteratureResultCard
+        key={hit.key}
+        article={hit.article}
+        added={addedLiteratureIds.includes(hit.article.id)}
+        compact={compact}
+        onAdd={() => onAddLiterature(hit.article)}
+        onPreview={() => setPreview(hit)}
+      />
+    ) : (
+      <KnowledgeResultCard
+        key={hit.key}
+        item={hit.item}
+        added={addedKnowledgeIds.has(hit.item.id)}
+        compact={compact}
+        onAdd={() => onAddKnowledge(hit.item)}
+        onPreview={() => setPreview(hit)}
+      />
+    );
+
   return (
     <div
       className="modal-bg show material-picker-bg literature-picker-bg"
@@ -189,55 +229,49 @@ export function LiteraturePickerModal({
           </button>
         </div>
 
-        <div className="literature-picker-columns" aria-busy={searching}>
-          {searching ? (
-            <div className="literature-picker-empty literature-picker-empty-span">正在检索文献…</div>
-          ) : !hasSearched ? (
-            <div className="literature-picker-empty literature-picker-empty-span">请输入关键词后点击确认搜索</div>
-          ) : (
-            columns.map((column) => (
-              <section key={column.id} className="literature-picker-column">
-                <header className="literature-picker-column-head">
-                  <h4>{column.label}</h4>
-                  <em>{column.hits.length}</em>
-                </header>
-                <div className="literature-picker-column-list">
-                  {column.hits.length === 0 ? (
-                    <div className="literature-picker-empty">该来源暂无匹配文献</div>
-                  ) : (
-                    column.hits.map((hit) =>
-                      hit.kind === 'article' ? (
-                        <LiteratureResultCard
-                          key={hit.key}
-                          article={hit.article}
-                          added={addedLiteratureIds.includes(hit.article.id)}
-                          compact
-                          onAdd={() => onAddLiterature(hit.article)}
-                          onPreview={() => setPreview(hit)}
-                        />
-                      ) : (
-                        <KnowledgeResultCard
-                          key={hit.key}
-                          item={hit.item}
-                          added={addedKnowledgeIds.has(hit.item.id)}
-                          compact
-                          onAdd={() => onAddKnowledge(hit.item)}
-                          onPreview={() => setPreview(hit)}
-                        />
-                      )
-                    )
-                  )}
-                </div>
-              </section>
-            ))
-          )}
-        </div>
+        {showSearchResults ? (
+          <div className="literature-picker-columns" aria-busy={searching}>
+            {searching ? (
+              <div className="literature-picker-empty literature-picker-empty-span">正在检索文献…</div>
+            ) : (
+              columns.map((column) => (
+                <section key={column.id} className="literature-picker-column">
+                  <header className="literature-picker-column-head">
+                    <h4>{column.label}</h4>
+                    <em>{column.hits.length}</em>
+                  </header>
+                  <div className="literature-picker-column-list">
+                    {column.hits.length === 0 ? (
+                      <div className="literature-picker-empty">该来源暂无匹配文献</div>
+                    ) : (
+                      column.hits.map((hit) => renderHit(hit, true))
+                    )}
+                  </div>
+                </section>
+              ))
+            )}
+          </div>
+        ) : (
+          <section className="literature-picker-personal">
+            <header className="literature-picker-column-head">
+              <h4>个人收藏</h4>
+              <em>{personalHits.length}</em>
+            </header>
+            <div className="literature-picker-list">
+              {personalHits.length === 0 ? (
+                <div className="literature-picker-empty">个人收藏暂无文献，可搜索或手动上传</div>
+              ) : (
+                personalHits.map((hit) => renderHit(hit, false))
+              )}
+            </div>
+          </section>
+        )}
 
         <div className="literature-picker-foot">
           <span>
             {hasSearched
               ? `共 ${results.length} 条 · ${columns.map((column) => `${column.label} ${column.hits.length}`).join(' · ')}`
-              : '请输入关键词检索'}
+              : `个人收藏 ${personalHits.length} 条 · 可直接添加`}
           </span>
           <button type="button" className="btn soft literature-upload-btn" onClick={() => fileRef.current?.click()}>
             <Upload className="h-3.5 w-3.5" strokeWidth={2.2} />

@@ -135,6 +135,10 @@
   background: linear-gradient(135deg, var(--green2) 0%, var(--green) 100%);
 }
 
+.btn.blue {
+  background: linear-gradient(135deg, var(--blue2) 0%, var(--blue) 100%);
+}
+
 .template-card:hover {
   border-color: #94b8e8;
   box-shadow: 0 6px 20px rgba(16, 60, 143, 0.1);

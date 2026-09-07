@@ -19,6 +19,7 @@ import type { HomeEntryContext } from '@/app/components/homeGuide';
 import type { TaskProduct } from '@/lib/products';
 import type { CopyRevision, ImageReviewStatus } from '@/types/review';
 import type { ModificationTask } from '@/lib/modificationTasks';
+import type { MeetingMaterialsState } from '@/lib/meetingMaterialsMocks';
 
 export type TabKey =
   | 'insight'
@@ -36,6 +37,8 @@ export type TabKey =
   | 'ppt-design'
   | 'brief'
   | 'storyline'
+  | 'meeting-templates'
+  | 'meeting-sessions'
   | 'submit';
 
 export interface ChatMessage {
@@ -70,6 +73,8 @@ export interface SessionAppState {
   pptDesign: boolean;
   brief: boolean;
   storyline: boolean;
+  meetingTemplates: boolean;
+  meetingSessions: boolean;
   submit: boolean;
 }
 
@@ -91,6 +96,7 @@ export interface SessionWorkspace {
   selectedPptTemplateId: string | null;
   contentBrief?: ContentBrief | null;
   storylineContent?: string;
+  meetingMaterials?: MeetingMaterialsState;
   richTextContent?: string;
   generatedImages: string[];
   generatedImageMeta?: GeneratedImageMeta[];

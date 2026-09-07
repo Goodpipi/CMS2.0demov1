@@ -96,6 +96,35 @@ import { VersionFisheyeTimeline, type VersionTimelineItem } from '@/app/componen
 import { ContentBriefPanel } from '@/app/components/ContentBriefPanel';
 import { StorylinePanel } from '@/app/components/StorylinePanel';
 import { STORYLINE_MOCK_TEXT } from '@/lib/storylineMock';
+import { AddMeetingSessionModal } from '@/app/components/AddMeetingSessionModal';
+import {
+  MeetingKvPanel,
+  MeetingSessionsPanel,
+  MeetingTemplatesPanel,
+  MeetingWelcomePanel,
+} from '@/app/components/MeetingMaterialsPanels';
+import {
+  MEETING_POSTER_TEMPLATE_URL,
+  MEETING_PPT_TEMPLATE_SLIDES,
+  buildSessionPosterDataUrl,
+  buildSessionPptSlides,
+  currentMeetingSession,
+  emptyMeetingMaterials,
+  isAddMeetingSessionIntent,
+  isFillMeetingInfoIntent,
+  isGenerateMeetingTemplatesIntent,
+  isGenerateSessionPosterIntent,
+  isGenerateSessionPptIntent,
+  isUploadMeetingInfoIntent,
+  isViewAllSessionsIntent,
+  isViewMeetingTemplatesIntent,
+  meetingInfoForSession,
+  meetingSessionChips,
+  parseViewSessionIntent,
+  type MeetingMaterialsState,
+  type MeetingSession,
+  type MeetingSessionInfo,
+} from '@/lib/meetingMaterialsMocks';
 import {
   emptyContentBrief,
   formatContentBriefText,
@@ -103,6 +132,7 @@ import {
   isGenerateBriefIntent,
   missingRequiredBriefLabels,
   normalizeContentBrief,
+  literatureQueryFromBrief,
 } from '@/lib/contentBrief';
 import {
   pptTemplateIdFromTitle,
@@ -126,9 +156,8 @@ import { ImageTemplatePickerModal } from '@/app/components/ImageTemplatePickerMo
 import { MaterialPickerModal, type PickedMaterial } from '@/app/components/MaterialPickerModal';
 import { LiteraturePickerModal } from '@/app/components/LiteraturePickerModal';
 import {
-  LiteraturePreviewModal,
-  LiteratureResultCard,
-  LiteratureThirdPartyHint,
+  LiteratureRecommendBody,
+  LiteratureRecommendModal,
 } from '@/app/components/literatureUi';
 import { ContentFlowNav } from '@/app/components/ContentFlowNav';
 import {
@@ -369,10 +398,10 @@ const HOME_WORKFLOW_ACTIONS: {
     art: 'evidence',
   },
   {
-    title: '会议海报',
-    description: '按会议场景生成可编辑海报，突出主题、数据与视觉层次。',
+    title: '会议物料',
+    description: '从主KV出发，制作系列会议海报与串场PPT',
     intent: 'visual',
-    prompt: '生成会议海报',
+    prompt: '生成会议物料',
     Icon: ImageIcon,
     art: 'poster',
   },
@@ -436,6 +465,8 @@ const tabNames = {
   'long-image-outline': '长图大纲',
   'ppt-design': 'PPT生成',
   brief: '任务提案',
+  'meeting-templates': '会议模板',
+  'meeting-sessions': '场次物料',
   submit: 'Veeva提交',
 };
 
@@ -467,7 +498,9 @@ type Screen = 'home' | 'library' | 'assets' | 'workspace';
 type EditorTarget =
   | { kind: 'image'; index: number }
   | { kind: 'long-image'; index: number }
-  | { kind: 'ppt-slide'; index: number };
+  | { kind: 'ppt-slide'; index: number }
+  | { kind: 'meeting-poster'; source: 'template' | 'session' }
+  | { kind: 'meeting-ppt'; source: 'template' | 'session'; index: number };
 
 const emptyWorkspaceState = (): AppState => ({
   tabs: [],
@@ -487,6 +520,8 @@ const emptyWorkspaceState = (): AppState => ({
   pptDesign: false,
   brief: false,
   storyline: false,
+  meetingTemplates: false,
+  meetingSessions: false,
   submit: false,
 });
 
@@ -520,9 +555,13 @@ export default function App() {
   const [recommendedTopics, setRecommendedTopics] = useState<TopicRecommendationItem[]>([]);
   const [literatureResults, setLiteratureResults] = useState<LiteratureArticle[]>([]);
   const [literatureSearching, setLiteratureSearching] = useState(false);
+  const [literatureRecommendOpen, setLiteratureRecommendOpen] = useState(false);
   const [addedLiteratureIds, setAddedLiteratureIds] = useState<string[]>([]);
   const [contentBrief, setContentBrief] = useState<ContentBrief | null>(null);
   const [storylineContent, setStorylineContent] = useState('');
+  const [meetingMaterials, setMeetingMaterials] = useState<MeetingMaterialsState>(emptyMeetingMaterials);
+  const [addMeetingSessionOpen, setAddMeetingSessionOpen] = useState(false);
+  const [meetingInfoDraft, setMeetingInfoDraft] = useState<MeetingSessionInfo | null>(null);
   const [topicInsightReportText, setTopicInsightReportText] = useState('');
   const [copies, setCopies] = useState<CopyItem[]>([]);
   const [teamResult, setTeamResult] = useState<TeamResult | null>(null);
@@ -707,6 +746,7 @@ export default function App() {
       selectedPptTemplateId,
       contentBrief,
       storylineContent,
+      meetingMaterials,
       richTextContent,
       scriptContent,
       generatedImages,
@@ -748,6 +788,7 @@ export default function App() {
       selectedPptTemplateId,
       contentBrief,
       storylineContent,
+      meetingMaterials,
       richTextContent,
       scriptContent,
       generatedImages,
@@ -835,6 +876,8 @@ export default function App() {
       topicRecommendation: legacy.topicRecommendation ?? false,
       literature: legacy.literature ?? false,
       storyline: legacy.storyline ?? false,
+      meetingTemplates: legacy.meetingTemplates ?? false,
+      meetingSessions: legacy.meetingSessions ?? false,
       richText: legacy.richText ?? false,
       brief: legacy.brief ?? false,
       articleOutline: legacy.articleOutline ?? false,
@@ -868,6 +911,9 @@ export default function App() {
     setSelectedPptTemplateId(w.selectedPptTemplateId ?? null);
     setContentBrief(normalizeContentBrief(w.contentBrief));
     setStorylineContent(w.storylineContent ?? '');
+    setMeetingMaterials(w.meetingMaterials ?? emptyMeetingMaterials());
+    setMeetingInfoDraft(null);
+    setAddMeetingSessionOpen(false);
     setRichTextContent(w.richTextContent ?? '');
     setScriptContent(w.scriptContent ?? '');
     setGeneratedImages(w.generatedImages);
@@ -897,6 +943,7 @@ export default function App() {
     setRecommendedTopics(w.recommendedTopics ?? []);
     setLiteratureResults([]);
     setAddedLiteratureIds([]);
+    setLiteratureRecommendOpen(false);
     setSelectedTopics(w.selectedTopics);
     setSelectedCopies(w.selectedCopies);
     let revisions = w.copyRevisions || [];
@@ -1546,10 +1593,10 @@ export default function App() {
         return '针对当前长图说明要改什么…';
       }
       if (isPosterWorkspace) {
-        if (previewedImageAssetKey === 'kv') return '针对当前主KV说明要改什么，或输入「生成海报」…';
-        if (previewedImageAssetKey === 'poster') return '针对当前海报说明要改什么，或输入「一键手机」…';
-        if (previewedImageAssetKey === 'mobile') return '针对当前手机版海报说明要改什么…';
-        return '输入「生成主KV」或「生成海报」…';
+        if (state.active === 'meeting-templates') return '输入「新增场次」，或继续生成海报模板 / 串场PPT模板…';
+        if (state.active === 'meeting-sessions') return '可输入「上传会议信息」「生成会议海报」或「生成串场PPT」…';
+        if (previewedImageAssetKey === 'kv') return '针对当前主KV说明要改什么，或输入「生成会议模板」…';
+        return '输入「生成主KV」开始制作会议物料…';
       }
       if (flowEntry === 'script' || (state.active === 'copy' && Boolean(scriptContent.trim()))) {
         return scriptContent.trim() ? '针对当前话术说明要改什么…' : '输入「生成话术」…';
@@ -1568,7 +1615,7 @@ export default function App() {
       case 'visual':
       case 'visual-template':
         return ctx.source === 'poster'
-          ? '输入「生成主KV」或「生成海报」…'
+          ? '输入「生成主KV」开始制作会议物料…'
           : '描述要生成的图片主题、风格与用途…';
       case 'video':
         return '描述视频主题、受众与时长偏好…';
@@ -1651,8 +1698,12 @@ export default function App() {
     setRecommendedTopics([]);
     setLiteratureResults([]);
     setAddedLiteratureIds([]);
+    setLiteratureRecommendOpen(false);
     setContentBrief(null);
     setStorylineContent('');
+    setMeetingMaterials(emptyMeetingMaterials());
+    setMeetingInfoDraft(null);
+    setAddMeetingSessionOpen(false);
     setSelectedTopics([]);
     setSelectedCopies([]);
     setCopyRevisions([]);
@@ -1790,21 +1841,87 @@ export default function App() {
     ]);
   };
 
+  const openMeetingTemplates = (tab: 'poster' | 'ppt' = 'poster') => {
+    setWorkspacePreviewMaterial(null);
+    setMeetingMaterials((prev) => ({ ...prev, templateTab: tab, showAllSessions: false }));
+    setState((prev) => ({
+      ...prev,
+      tabs: prev.tabs.includes('meeting-templates') ? prev.tabs : [...prev.tabs, 'meeting-templates'],
+      active: 'meeting-templates',
+      meetingTemplates: true,
+    }));
+  };
+
+  const openMeetingSessions = (opts?: { showAll?: boolean; tab?: 'info' | 'poster' | 'ppt' }) => {
+    setWorkspacePreviewMaterial(null);
+    setMeetingMaterials((prev) => ({
+      ...prev,
+      showAllSessions: Boolean(opts?.showAll),
+      sessionTab: opts?.tab || prev.sessionTab,
+      infoFormOpen: false,
+    }));
+    setState((prev) => ({
+      ...prev,
+      tabs: prev.tabs.includes('meeting-sessions') ? prev.tabs : [...prev.tabs, 'meeting-sessions'],
+      active: 'meeting-sessions',
+      meetingSessions: true,
+    }));
+  };
+
+  const createMeetingSession = (name: string) => {
+    const id = `ms_${Date.now()}`;
+    const nextName = name.trim();
+    setMeetingMaterials((prev) => ({
+      ...prev,
+      sessions: [...prev.sessions, { id, name: nextName, posterReady: false, pptReady: false }],
+      currentSessionId: id,
+      sessionTab: 'info',
+      showAllSessions: false,
+      infoFormOpen: false,
+    }));
+    setMeetingInfoDraft(null);
+    setAddMeetingSessionOpen(false);
+    openMeetingSessions({ tab: 'info' });
+    addMsg(
+      'ai',
+      `已创建场次「${nextName}」。请下载会议信息模板并上传，无需手动填写。上传完成后可生成会议海报和串场PPT。`,
+      '本地 Mock',
+      ['上传会议信息', '查看会议模板']
+    );
+  };
+
+  const updateCurrentMeetingSession = (patch: Partial<MeetingSession>) => {
+    setMeetingMaterials((prev) => ({
+      ...prev,
+      sessions: prev.sessions.map((session) =>
+        session.id === prev.currentSessionId ? { ...session, ...patch } : session
+      ),
+    }));
+  };
+
+  const applyMeetingInfoToCurrent = (info: MeetingSessionInfo, source: 'upload' | 'fill') => {
+    updateCurrentMeetingSession({ info });
+    setMeetingMaterials((prev) => ({ ...prev, infoFormOpen: false, sessionTab: 'info', showAllSessions: false }));
+    setMeetingInfoDraft(null);
+    addMsg(
+      'ai',
+      source === 'upload'
+        ? '已上传并写入当前场次会议信息。'
+        : '已保存当前场次会议信息。',
+      '本地 Mock',
+      ['生成会议海报', '生成串场PPT']
+    );
+  };
+
   const runLiteratureSearch = (query: string, opts?: { reshuffle?: boolean; silent?: boolean }) => {
     const results = searchLiteratureMock(query, { reshuffle: opts?.reshuffle });
     setLiteratureResults(results);
-    setState((prev) => ({
-      ...prev,
-      tabs: prev.tabs.includes('literature') ? prev.tabs : [...prev.tabs, 'literature'],
-      active: 'literature',
-      literature: true,
-    }));
     if (opts?.silent) return;
     const sources = [...new Set(results.map((item) => item.source))].join('、');
     const basedOnAttachments =
       attachments.length > 0
         ? `已结合当前 ${attachments.length} 个附件完成文献检索`
-        : '已根据检索意图完成文献检索';
+        : '已根据当前页面信息完成文献检索';
     addMsg(
       'ai',
       `${basedOnAttachments}，来源覆盖 <strong>${sources}</strong>，共推荐 <strong>${results.length}</strong> 篇文献。`,
@@ -1868,23 +1985,53 @@ export default function App() {
     }));
   };
 
-  const openLiteratureRecommend = (brief?: ContentBrief | null) => {
-    const source = brief ?? contentBrief;
-    if (!source) {
-      toast('请先填写任务提案');
+  const literatureQueryFromPage = (prefer: 'brief' | 'storyline' | 'auto' = 'auto') => {
+    const fromStoryline = storylineContent.trim().slice(0, 800);
+    const fromBrief = contentBrief ? literatureQueryFromBrief(contentBrief) : '';
+    if (prefer === 'storyline') return fromStoryline || fromBrief;
+    if (prefer === 'brief') return fromBrief || fromStoryline;
+    if (state.active === 'storyline') return fromStoryline || fromBrief;
+    return fromBrief || fromStoryline;
+  };
+
+  const openLiteratureRecommend = (
+    source: 'brief' | 'storyline' | 'chat' = 'brief',
+    chatQuery = ''
+  ) => {
+    if (omitsBriefLiterature(flowEntry, entryContext?.source)) {
+      toast('病例内容与学术证据解读不包含任务提案 / 文献步骤');
       return;
     }
-    const missing = missingRequiredBriefLabels(source);
-    if (missing.length) {
-      toast(`请先填写必填项：${missing.join('、')}`);
-      return;
+
+    let query = '';
+    if (source === 'brief') {
+      if (!contentBrief) {
+        toast('请先填写任务提案');
+        return;
+      }
+      const missing = missingRequiredBriefLabels(contentBrief);
+      if (missing.length) {
+        toast(`请先填写必填项：${missing.join('、')}`);
+        return;
+      }
+      query = literatureQueryFromBrief(contentBrief) || '相关文献推荐';
+    } else if (source === 'storyline') {
+      query = literatureQueryFromPage('storyline');
+      if (!query) {
+        toast('请先填写故事线或任务提案');
+        return;
+      }
+    } else {
+      const bare = /^(检索文献|搜索文献|文献检索|search\s*literature|find\s*papers)$/i.test(chatQuery.trim());
+      query = (bare ? '' : chatQuery.trim()) || literatureQueryFromPage('auto') || '相关文献推荐';
     }
-    const query = [source.audience, source.scenario, source.keyMessage, source.goal, source.format]
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .join(' ');
-    setFlowEntry((prev) => nextLockedFlowEntry(prev, 'literature'));
-    runLiteratureSearch(query || '相关文献推荐');
+
+    setLiteratureRecommendOpen(true);
+    setLiteratureSearching(true);
+    window.setTimeout(() => {
+      runLiteratureSearch(query, { silent: source !== 'chat' });
+      setLiteratureSearching(false);
+    }, 360);
   };
 
   const openStoryline = () => {
@@ -2037,7 +2184,7 @@ export default function App() {
     }
 
     if (/检索文献|搜索文献|文献检索|search\s*literature|find\s*papers/i.test(text)) {
-      runLiteratureSearch(text);
+      openLiteratureRecommend('chat', text);
       return true;
     }
 
@@ -2098,14 +2245,20 @@ export default function App() {
       publishChatImage({
         html:
           attachments.length > 0
-            ? `已结合当前 ${attachments.length} 个附件生成主 KV。`
-            : '主 KV 已生成。',
+            ? `已结合当前 ${attachments.length} 个附件生成主 KV。后续海报模板和串场PPT模板将沿用当前主KV的视觉风格。`
+            : (flowEntry === 'conferencePoster' || entryContext?.source === 'poster')
+              ? '已生成本次系列会议的主KV。后续海报模板和串场PPT模板将沿用当前主KV的视觉风格。'
+              : '主 KV 已生成。',
         imageUrl: MOCK_KV_VERSIONS.current.dataUrl,
         imageTitle: MOCK_KV_VERSIONS.current.title,
         assetKey: 'kv',
-        actionLabel: '修改主KV',
-        quick: ['生成海报'],
+        actionLabel:
+          flowEntry === 'conferencePoster' || entryContext?.source === 'poster' ? '查看主KV' : '修改主KV',
+        quick: (flowEntry === 'conferencePoster' || entryContext?.source === 'poster') ? ['生成会议模板'] : ['生成海报'],
       });
+      if (flowEntry === 'conferencePoster' || entryContext?.source === 'poster') {
+        openMockImageInPreview(MOCK_KV_VERSIONS.current.dataUrl, MOCK_KV_VERSIONS.current.title, 'kv');
+      }
       return true;
     }
 
@@ -2120,7 +2273,159 @@ export default function App() {
       return true;
     }
 
-    if (!demoScriptBusy && isGenerateConferencePosterIntent(text)) {
+    const isPosterWorkspace =
+      flowEntry === 'conferencePoster' || entryContext?.source === 'poster';
+
+    if (!demoScriptBusy && isPosterWorkspace && isGenerateMeetingTemplatesIntent(text)) {
+      if (!hasVisualAsset('kv')) {
+        addMsg('ai', '请先输入「生成主KV」。', '本地 Mock', ['生成主KV']);
+        return true;
+      }
+      const wantsPpt = /串场PPT模板/.test(text.replace(/\s+/g, ''));
+      setMeetingMaterials((prev) => ({
+        ...prev,
+        templatesReady: true,
+        templateTab: wantsPpt ? 'ppt' : 'poster',
+      }));
+      openMeetingTemplates(wantsPpt ? 'ppt' : 'poster');
+      addMsg(
+        'ai',
+        '已基于当前主KV生成会议模板，包括系列海报模板和串场PPT模板。后续新增的会议场次将共用这套视觉风格。',
+        '本地 Mock',
+        ['新增场次', '查看会议模板']
+      );
+      return true;
+    }
+
+    if (!demoScriptBusy && isPosterWorkspace && isViewMeetingTemplatesIntent(text)) {
+      if (!meetingMaterials.templatesReady) {
+        addMsg('ai', '请先输入「生成会议模板」。', '本地 Mock', ['生成会议模板']);
+        return true;
+      }
+      openMeetingTemplates(meetingMaterials.templateTab);
+      addMsg('ai', '已打开会议模板。', '本地 Mock', ['新增场次']);
+      return true;
+    }
+
+    if (!demoScriptBusy && isPosterWorkspace && isAddMeetingSessionIntent(text)) {
+      if (!meetingMaterials.templatesReady) {
+        addMsg('ai', '请先生成会议模板，再新增场次。', '本地 Mock', ['生成会议模板']);
+        return true;
+      }
+      setAddMeetingSessionOpen(true);
+      addMsg('ai', '请输入场次名称，例如「上海场」「北京场」「广州区域会」。', '本地 Mock');
+      return true;
+    }
+
+    if (!demoScriptBusy && isPosterWorkspace && isViewAllSessionsIntent(text)) {
+      if (!meetingMaterials.sessions.length) {
+        addMsg('ai', '请先新增会议场次。', '本地 Mock', ['新增场次']);
+        return true;
+      }
+      const names = meetingMaterials.sessions.map((item) => `「${item.name}」`).join('、');
+      openMeetingSessions();
+      addMsg('ai', `当前场次：${names}。可在场次物料中切换当前场次。`, '本地 Mock', ['新增场次']);
+      return true;
+    }
+
+    if (!demoScriptBusy && isPosterWorkspace) {
+      const namedSession = parseViewSessionIntent(text);
+      if (namedSession) {
+        const found = meetingMaterials.sessions.find((item) => item.name === namedSession);
+        if (!found) {
+          addMsg('ai', `尚未创建「${namedSession}」。`, '本地 Mock', ['新增场次']);
+          return true;
+        }
+        setMeetingMaterials((prev) => ({
+          ...prev,
+          currentSessionId: found.id,
+          showAllSessions: false,
+          sessionTab: 'info',
+        }));
+        openMeetingSessions({ tab: 'info' });
+        addMsg('ai', `已切换到「${namedSession}」。`, '本地 Mock', meetingSessionChips({
+          ...meetingMaterials,
+          currentSessionId: found.id,
+        }));
+        return true;
+      }
+    }
+
+    if (!demoScriptBusy && isPosterWorkspace && (isUploadMeetingInfoIntent(text) || isFillMeetingInfoIntent(text))) {
+      const session = currentMeetingSession(meetingMaterials);
+      if (!session) {
+        addMsg('ai', '请先新增会议场次。', '本地 Mock', ['新增场次']);
+        setAddMeetingSessionOpen(true);
+        return true;
+      }
+      if (isFillMeetingInfoIntent(text)) {
+        if (!session.info) {
+          openMeetingSessions({ tab: 'info' });
+          addMsg('ai', '请先下载会议信息模板并上传。上传后可在会议信息中手动编辑。', '本地 Mock', ['上传会议信息']);
+          return true;
+        }
+        setMeetingInfoDraft(session.info);
+        setMeetingMaterials((prev) => ({ ...prev, infoFormOpen: true, sessionTab: 'info', showAllSessions: false }));
+        openMeetingSessions({ tab: 'info' });
+        addMsg('ai', `可手动编辑「${session.name}」会议信息。`, '本地 Mock');
+        return true;
+      }
+      applyMeetingInfoToCurrent(meetingInfoForSession(session.name), 'upload');
+      openMeetingSessions({ tab: 'info' });
+      return true;
+    }
+
+    if (!demoScriptBusy && isPosterWorkspace && isGenerateSessionPosterIntent(text)) {
+      const session = currentMeetingSession(meetingMaterials);
+      if (!session) {
+        addMsg('ai', '请先新增会议场次。', '本地 Mock', ['新增场次']);
+        setAddMeetingSessionOpen(true);
+        return true;
+      }
+      if (!session.info) {
+        openMeetingSessions({ tab: 'info' });
+        addMsg('ai', '请先下载会议信息模板并上传，再生成会议海报。', '本地 Mock', ['上传会议信息']);
+        return true;
+      }
+      const posterUrl = buildSessionPosterDataUrl(session.name, session.info);
+      updateCurrentMeetingSession({ posterReady: true, posterUrl });
+      setGeneratedImages((prev) => (prev.includes(posterUrl) ? prev : [...prev, posterUrl]));
+      openMeetingSessions({ tab: 'poster' });
+      addMsg(
+        'ai',
+        '已基于系列主KV、海报模板和当前场次信息生成会议海报。您可以继续编辑海报，或生成本场会议的串场PPT。',
+        '本地 Mock',
+        session.pptReady ? ['新增场次', '查看会议模板'] : ['生成串场PPT', '新增场次']
+      );
+      return true;
+    }
+
+    if (!demoScriptBusy && isPosterWorkspace && isGenerateSessionPptIntent(text)) {
+      const session = currentMeetingSession(meetingMaterials);
+      if (!session) {
+        addMsg('ai', '请先新增会议场次。', '本地 Mock', ['新增场次']);
+        return true;
+      }
+      if (!session.info) {
+        openMeetingSessions({ tab: 'info' });
+        addMsg('ai', '请先下载会议信息模板并上传，再生成串场PPT。', '本地 Mock', ['上传会议信息']);
+        return true;
+      }
+      updateCurrentMeetingSession({
+        pptReady: true,
+        pptSlides: buildSessionPptSlides(session.name, session.info),
+      });
+      openMeetingSessions({ tab: 'ppt' });
+      addMsg(
+        'ai',
+        '已根据当前场次的会议名称、专家和议程信息生成串场PPT，并沿用系列主KV和串场PPT模板的视觉风格。',
+        '本地 Mock',
+        session.posterReady ? ['新增场次', '查看会议模板'] : ['生成会议海报', '新增场次']
+      );
+      return true;
+    }
+
+    if (!demoScriptBusy && isGenerateConferencePosterIntent(text) && !isPosterWorkspace) {
       const hasKeyVisual = hasVisualAsset('kv');
       seedVisualTasks('poster');
       publishChatImage({
@@ -2381,7 +2686,16 @@ export default function App() {
       isEditKeyVisualIntent(text) ||
       isGenerateConferencePosterIntent(text) ||
       isEditConferencePosterIntent(text) ||
-      isAdaptPosterMobileIntent(text);
+      isAdaptPosterMobileIntent(text) ||
+      isGenerateMeetingTemplatesIntent(text) ||
+      isAddMeetingSessionIntent(text) ||
+      isUploadMeetingInfoIntent(text) ||
+      isFillMeetingInfoIntent(text) ||
+      isGenerateSessionPosterIntent(text) ||
+      isGenerateSessionPptIntent(text) ||
+      isViewAllSessionsIntent(text) ||
+      isViewMeetingTemplatesIntent(text) ||
+      Boolean(parseViewSessionIntent(text));
     const isScriptCommand = isGenerateScriptIntent(text);
     if (workspaceElementSel && !isConferencePosterCommand && !isScriptCommand) {
       void applyWorkspaceElementAi(text, promptEditScope);
@@ -3767,7 +4081,33 @@ export default function App() {
       startTaskProposal();
       return;
     }
+    if (text === '添加会议参考资料') {
+      openMaterialPicker('workspace', '视觉参考');
+      return;
+    }
+    if (text === '新增场次' || text === '创建场次') {
+      if (!meetingMaterials.templatesReady) {
+        addMsg('user', text, selectedModel);
+        addMsg('ai', '请先生成会议模板，再新增场次。', '本地 Mock', ['生成会议模板']);
+        return;
+      }
+      setAddMeetingSessionOpen(true);
+      return;
+    }
+    if (text === '查看会议模板') {
+      addMsg('user', text, selectedModel);
+      runWorkspaceMockCommand(text);
+      return;
+    }
     if (text === '生成故事线' || text === '下一步：生成故事线') {
+      openStoryline();
+      return;
+    }
+    if (text === '相关文献推荐') {
+      openLiteratureRecommend(state.active === 'storyline' ? 'storyline' : 'brief');
+      return;
+    }
+    if (text === '下一步：相关文献推荐') {
       openStoryline();
       return;
     }
@@ -4602,6 +4942,14 @@ export default function App() {
     openVisualEditor(slideToPreviewUrl(slide), { kind: 'ppt-slide', index }, slide.svg || slide.imageUrl);
   };
 
+  const openMeetingCanvasEditor = (
+    src: string,
+    target: Extract<EditorTarget, { kind: 'meeting-poster' | 'meeting-ppt' }>,
+    svg?: string
+  ) => {
+    openVisualEditor(src, target, svg || parseSvgFromDataUrl(src));
+  };
+
   const touchActiveReviewTask = () => {
     if (!activeReviewTaskId) return;
     const task = getReviewTask(activeReviewTaskId);
@@ -4824,6 +5172,42 @@ export default function App() {
             ? '长图已更新'
             : '图片已更新'
       );
+    } else if (editorTarget?.kind === 'meeting-poster') {
+      const nextUrl = svg ? svgToDataUrl(svg) : dataUrl;
+      setMeetingMaterials((prev) => {
+        if (editorTarget.source === 'session') {
+          return {
+            ...prev,
+            sessions: prev.sessions.map((session) =>
+              session.id === prev.currentSessionId ? { ...session, posterUrl: nextUrl } : session
+            ),
+          };
+        }
+        return { ...prev, templatePosterUrl: nextUrl };
+      });
+      toast('海报已更新');
+    } else if (editorTarget?.kind === 'meeting-ppt') {
+      const patchSlides = (slides: PptSlide[] | undefined) =>
+        (slides || []).map((slide, index) =>
+          index === editorTarget.index ? { ...slide, svg: svg || slide.svg } : slide
+        );
+      setMeetingMaterials((prev) => {
+        if (editorTarget.source === 'session') {
+          return {
+            ...prev,
+            sessions: prev.sessions.map((session) =>
+              session.id === prev.currentSessionId
+                ? { ...session, pptSlides: patchSlides(session.pptSlides) }
+                : session
+            ),
+          };
+        }
+        return {
+          ...prev,
+          templatePptSlides: patchSlides(prev.templatePptSlides || MEETING_PPT_TEMPLATE_SLIDES),
+        };
+      });
+      toast(`第 ${editorTarget.index + 1} 页已更新`);
     } else if (editorTarget?.kind === 'ppt-slide' && pptResult) {
       const idx = editorTarget.index;
       const slides = pptResult.slides.map((s, i) =>
@@ -4845,7 +5229,12 @@ export default function App() {
       );
     }
     setEditorSrc(
-      editorTarget?.kind === 'long-image' && svg ? svgToDataUrl(svg) : dataUrl
+      (editorTarget?.kind === 'long-image' ||
+        editorTarget?.kind === 'meeting-poster' ||
+        editorTarget?.kind === 'meeting-ppt') &&
+      svg
+        ? svgToDataUrl(svg)
+        : dataUrl
     );
     if (svg) setEditorSvg(svg);
   };
@@ -6684,18 +7073,6 @@ export default function App() {
                       setPickerMode('reference');
                       setPickerOpen(true);
                     }}
-                    onUploadFile={async (file, category) => {
-                      setPickerTarget('workspace');
-                      const preview = await readFileForPreview(file);
-                      handleMaterialPicked({
-                        title: file.name,
-                        meta: `本地上传 · ${(file.size / 1024).toFixed(0)}KB · 已解析`,
-                        cat: category,
-                        cms: false,
-                        fileName: file.name,
-                        ...preview,
-                      });
-                    }}
                     onPreview={setPreviewMaterial}
                     onRemove={(item) => {
                       setLibrary((prev) =>
@@ -6770,6 +7147,12 @@ export default function App() {
                     {selectedProduct.name}
                   </span>
                 )}
+                {(flowEntry === 'conferencePoster' || entryContext?.source === 'poster') &&
+                  currentMeetingSession(meetingMaterials) && (
+                    <span className="task-product-chip">
+                      当前场次：{currentMeetingSession(meetingMaterials)?.name}
+                    </span>
+                  )}
               </div>
             </div>
 
@@ -7530,11 +7913,16 @@ export default function App() {
             onResearchLiterature={() => {
               setLiteratureSearching(true);
               window.setTimeout(() => {
-                runLiteratureSearch(getRecentUserContext('重新检索文献'), { reshuffle: true, silent: true });
+                const query =
+                  literatureQueryFromPage(state.active === 'storyline' ? 'storyline' : 'brief') ||
+                  getRecentUserContext('重新检索文献');
+                runLiteratureSearch(query, { reshuffle: true, silent: true });
                 setLiteratureSearching(false);
                 toast('已重新检索文献');
               }, 480);
             }}
+            literatureRecommendOpen={literatureRecommendOpen}
+            onCloseLiteratureRecommend={() => setLiteratureRecommendOpen(false)}
             contentBrief={contentBrief}
             onContentBriefChange={(next) => {
               setContentBrief(next);
@@ -7542,6 +7930,15 @@ export default function App() {
             }}
             storylineContent={storylineContent}
             onStorylineChange={setStorylineContent}
+            meetingMaterials={meetingMaterials}
+            meetingInfoDraft={meetingInfoDraft}
+            onMeetingMaterialsChange={setMeetingMaterials}
+            onMeetingInfoDraftChange={setMeetingInfoDraft}
+            onAddMeetingSession={() => setAddMeetingSessionOpen(true)}
+            onCreateMeetingSession={createMeetingSession}
+            onApplyMeetingInfo={applyMeetingInfoToCurrent}
+            onOpenMeetingTemplates={openMeetingTemplates}
+            onOpenMeetingSessions={openMeetingSessions}
             onImportLocalPpt={() => pptImportInputRef.current?.click()}
             taskTitle={taskTitle}
             selectedProduct={selectedProduct}
@@ -7581,6 +7978,11 @@ export default function App() {
                 return;
               }
               if (flowEntry === 'conferencePoster' || entryContext?.source === 'poster') {
+                if (step.id === 'create') {
+                  setState((prev) => ({ ...prev, active: null }));
+                  setWorkspacePreviewMaterial(null);
+                  return;
+                }
                 if (step.id === 'kv') {
                   if (!hasVisualAsset('kv')) {
                     toast('请先输入「生成主KV」');
@@ -7590,13 +7992,21 @@ export default function App() {
                   openMockImageInPreview(asset.url, asset.title, 'kv');
                   return;
                 }
-                if (step.id === 'poster') {
-                  if (!hasVisualAsset('poster')) {
-                    toast('请先输入「生成海报」');
+                if (step.id === 'meetingTemplates') {
+                  if (!meetingMaterials.templatesReady) {
+                    toast('请先输入「生成会议模板」');
                     return;
                   }
-                  const asset = latestVisualAsset('poster');
-                  openMockImageInPreview(asset.url, asset.title, 'poster');
+                  openMeetingTemplates(meetingMaterials.templateTab);
+                  return;
+                }
+                if (step.id === 'sessionMaterials') {
+                  if (!meetingMaterials.sessions.length) {
+                    toast('请先新增会议场次');
+                    setAddMeetingSessionOpen(true);
+                    return;
+                  }
+                  openMeetingSessions();
                   return;
                 }
               }
@@ -7623,7 +8033,9 @@ export default function App() {
             onOpenInsightStep={openInsightWorkspace}
             onOpenReferenceMaterials={openReferenceMaterials}
             onGenerateInsightReport={runTopicInsightReport}
-            onRecommendLiterature={() => openLiteratureRecommend()}
+            onRecommendLiterature={(source) =>
+              openLiteratureRecommend(source ?? (state.active === 'storyline' ? 'storyline' : 'brief'))
+            }
             onOpenStoryline={openStoryline}
             onDownloadInsightReport={() => {
               if (!hotInsightReport) {
@@ -7635,6 +8047,7 @@ export default function App() {
             }}
             onStartVisualFlow={() => startVisualFlow(getRecentUserContext('基于所选话题生成图片'), { skipUserMsg: true })}
             onOpenImageEditor={openImageEditor}
+            onOpenMeetingCanvasEditor={openMeetingCanvasEditor}
             onOpenTeamReview={openTeamReview}
             videoVersions={videoVersions}
             selectedVideoVersionId={selectedVideoVersionId}
@@ -7985,6 +8398,11 @@ export default function App() {
         open={productPickerOpen}
         onConfirm={confirmTaskProduct}
         onCancel={cancelTaskProduct}
+      />
+      <AddMeetingSessionModal
+        open={addMeetingSessionOpen}
+        onClose={() => setAddMeetingSessionOpen(false)}
+        onCreate={createMeetingSession}
       />
 
       <CreationMethodModal
@@ -8556,6 +8974,7 @@ function WorkspaceRightPanel({
   onDownloadInsightReport,
   onStartVisualFlow,
   onOpenImageEditor,
+  onOpenMeetingCanvasEditor,
   userRole,
   reviewerMode,
   reviewContentType,
@@ -8569,10 +8988,20 @@ function WorkspaceRightPanel({
   onOpenPptSlideEditor,
   literatureSearching,
   onResearchLiterature,
+  literatureRecommendOpen,
+  onCloseLiteratureRecommend,
   contentBrief,
   onContentBriefChange,
   storylineContent,
   onStorylineChange,
+  meetingMaterials,
+  meetingInfoDraft,
+  onMeetingMaterialsChange,
+  onMeetingInfoDraftChange,
+  onAddMeetingSession,
+  onApplyMeetingInfo,
+  onOpenMeetingTemplates,
+  onOpenMeetingSessions,
   onImportLocalPpt,
   selectedProduct,
   entryContext,
@@ -8695,10 +9124,21 @@ function WorkspaceRightPanel({
   addedLiteratureIds: string[];
   onAddLiteratureToTask: (article: LiteratureArticle) => void;
   onResearchLiterature?: () => void;
+  literatureRecommendOpen?: boolean;
+  onCloseLiteratureRecommend?: () => void;
   contentBrief?: ContentBrief | null;
   onContentBriefChange?: (brief: ContentBrief) => void;
   storylineContent?: string;
   onStorylineChange?: (text: string) => void;
+  meetingMaterials?: MeetingMaterialsState;
+  meetingInfoDraft?: MeetingSessionInfo | null;
+  onMeetingMaterialsChange?: React.Dispatch<React.SetStateAction<MeetingMaterialsState>>;
+  onMeetingInfoDraftChange?: (draft: MeetingSessionInfo | null) => void;
+  onAddMeetingSession?: () => void;
+  onCreateMeetingSession?: (name: string) => void;
+  onApplyMeetingInfo?: (info: MeetingSessionInfo, source: 'upload' | 'fill') => void;
+  onOpenMeetingTemplates?: (tab?: 'poster' | 'ppt') => void;
+  onOpenMeetingSessions?: (opts?: { showAll?: boolean; tab?: 'info' | 'poster' | 'ppt' }) => void;
   onImportLocalPpt?: () => void;
   selectedProduct?: TaskProduct | null;
   entryContext?: HomeEntryContext | null;
@@ -8714,12 +9154,17 @@ function WorkspaceRightPanel({
   onOpenInsightStep?: () => void;
   onOpenReferenceMaterials?: () => void;
   onGenerateInsightReport?: () => void;
-  onRecommendLiterature?: () => void;
+  onRecommendLiterature?: (source?: 'brief' | 'storyline') => void;
   onOpenStoryline?: () => void;
   taskTitle: string;
   onDownloadInsightReport: () => void;
   onStartVisualFlow: () => void;
   onOpenImageEditor: (src: string, index: number) => void;
+  onOpenMeetingCanvasEditor?: (
+    src: string,
+    target: Extract<EditorTarget, { kind: 'meeting-poster' | 'meeting-ppt' }>,
+    svg?: string
+  ) => void;
   userRole: UserRole;
   reviewerMode: boolean;
   reviewContentType?: TeamContentType;
@@ -8751,6 +9196,8 @@ function WorkspaceRightPanel({
     kv: Boolean(hasConferenceKv),
     poster: Boolean(hasConferencePoster),
     mobile: Boolean(hasConferenceMobile),
+    meetingTemplates: Boolean(meetingMaterials?.templatesReady),
+    sessionMaterials: Boolean(meetingMaterials?.sessions.length),
     video: Boolean(videoResult || videoVersions.length),
     team: Boolean(teamResult),
     submit: state.submit,
@@ -8792,15 +9239,15 @@ function WorkspaceRightPanel({
   const isSelectableImageProduct = isLongImageProduct || isPosterCanvas;
   const conferenceFlowCurrentId =
     flowEntry === 'conferencePoster'
-      ? previewedImageAssetKey === 'poster' || previewedImageAssetKey === 'mobile'
-        ? 'poster'
-        : previewedImageAssetKey === 'kv'
-          ? 'kv'
-          : hasConferencePoster
-            ? 'poster'
-            : hasConferenceKv || state.active === 'visual'
+      ? !state.active
+        ? 'create'
+        : state.active === 'meeting-sessions'
+          ? 'sessionMaterials'
+          : state.active === 'meeting-templates'
+            ? 'meetingTemplates'
+            : previewedImageAssetKey === 'kv' || state.active === 'visual'
               ? 'kv'
-              : undefined
+              : 'create'
       : flowEntry === 'script' && (scriptContent.trim() || state.active === 'copy')
         ? 'copy'
         : undefined;
@@ -8812,8 +9259,6 @@ function WorkspaceRightPanel({
   const [restoredFrom, setRestoredFrom] = useState<string | null>(null);
   const [majorVersions, setMajorVersions] = useState(PPT_MAJOR_VERSION_SEED);
   const [slideVersionId, setSlideVersionId] = useState('current');
-  const [literatureVisibleCount, setLiteratureVisibleCount] = useState(30);
-  const [literaturePreview, setLiteraturePreview] = useState<LiteratureArticle | null>(null);
   const [pptSwitchTemplateOpen, setPptSwitchTemplateOpen] = useState(false);
   const [longImageSwitchTemplateOpen, setLongImageSwitchTemplateOpen] = useState(false);
   const [imageVersionId, setImageVersionId] = useState('current');
@@ -8914,10 +9359,6 @@ function WorkspaceRightPanel({
   useEffect(() => {
     setSlideVersionId('current');
   }, [creatorPptPageIndex, pptPageVersionEpoch]);
-
-  useEffect(() => {
-    setLiteratureVisibleCount(30);
-  }, [literatureResults]);
 
   useEffect(() => {
     setImageVersionId('current');
@@ -9032,6 +9473,9 @@ function WorkspaceRightPanel({
           </div>
         );
       }
+      if (entryContext?.source === 'poster') {
+        return <MeetingWelcomePanel onGenerateKv={() => fillQuick('生成主KV')} />;
+      }
       if (entryContext?.source === 'promo') {
         return (
           <div className="detail-card content-flow-task-card">
@@ -9096,7 +9540,7 @@ function WorkspaceRightPanel({
             {entryContext?.source === 'case'
               ? '请您上传脱敏后的病例原始素材，如需生成专家点评，请上传过往专家点评示例'
               : entryContext?.source === 'poster'
-                ? '请先输入「生成主KV」，确认主视觉后再输入「生成海报」。会议信息可先下载模板填写后上传。'
+                ? '从主KV开始制作系列会议海报与串场PPT。'
                 : entryContext?.source === 'evidence'
                   ? '请添加待解读的目标材料，也可补充其他参考知识。'
                   : entryContext?.source === 'insight'
@@ -9350,68 +9794,14 @@ function WorkspaceRightPanel({
         );
 
       case 'literature':
-        if (!literatureResults.length) {
-          return (
-            <div className="detail-card">
-              <h4>推荐文献</h4>
-              <LiteratureThirdPartyHint />
-            </div>
-          );
-        }
         return (
-          <div className="workspace-surface-panel literature-panel">
-            <div className="literature-panel-head">
-              <div>
-                <h4>推荐文献</h4>
-                <LiteratureThirdPartyHint />
-              </div>
-              <div className="literature-panel-actions">
-                <button
-                  type="button"
-                  className="btn primary"
-                  disabled={literatureSearching}
-                  onClick={() => onResearchLiterature?.()}
-                >
-                  {literatureSearching ? '检索中…' : '重新检索文献'}
-                </button>
-                <button
-                  type="button"
-                  className="btn primary"
-                  onClick={() => onOpenStoryline?.()}
-                >
-                  下一步：生成故事线
-                </button>
-              </div>
-            </div>
-            <div className="literature-list">
-              {literatureResults.slice(0, literatureVisibleCount).map((article) => (
-                <LiteratureResultCard
-                  key={article.id}
-                  article={article}
-                  added={addedLiteratureIds.includes(article.id)}
-                  onAdd={() => onAddLiteratureToTask(article)}
-                  onPreview={() => setLiteraturePreview(article)}
-                />
-              ))}
-              {literatureVisibleCount < literatureResults.length && (
-                <button
-                  type="button"
-                  className="btn soft literature-more-btn"
-                  onClick={() => setLiteratureVisibleCount((count) => count + 30)}
-                >
-                  查看更多文献
-                </button>
-              )}
-            </div>
-            {literaturePreview && (
-              <LiteraturePreviewModal
-                article={literaturePreview}
-                added={addedLiteratureIds.includes(literaturePreview.id)}
-                onAdd={() => onAddLiteratureToTask(literaturePreview)}
-                onClose={() => setLiteraturePreview(null)}
-              />
-            )}
-          </div>
+          <LiteratureRecommendBody
+            results={literatureResults}
+            searching={literatureSearching}
+            addedIds={addedLiteratureIds}
+            onAdd={onAddLiteratureToTask}
+            onResearch={onResearchLiterature}
+          />
         );
 
       case 'storyline':
@@ -9419,9 +9809,116 @@ function WorkspaceRightPanel({
           <StorylinePanel
             value={storylineContent || ''}
             onChange={(text) => onStorylineChange?.(text)}
+            onRecommendLiterature={() => onRecommendLiterature?.('storyline')}
             onNext={() => fillQuick('生成PPT大纲')}
           />
         );
+
+      case 'meeting-templates': {
+        const materials = meetingMaterials || emptyMeetingMaterials();
+        const posterUrl = materials.templatePosterUrl || MEETING_POSTER_TEMPLATE_URL;
+        const pptSlides = materials.templatePptSlides || MEETING_PPT_TEMPLATE_SLIDES;
+        return (
+          <MeetingTemplatesPanel
+            posterUrl={posterUrl}
+            pptSlides={pptSlides}
+            tab={materials.templateTab || 'poster'}
+            onTabChange={(tab) => onMeetingMaterialsChange?.((prev) => ({ ...prev, templateTab: tab }))}
+            onAddSession={() => onAddMeetingSession?.()}
+            onEditPoster={() =>
+              onOpenMeetingCanvasEditor?.(posterUrl, { kind: 'meeting-poster', source: 'template' }, parseSvgFromDataUrl(posterUrl))
+            }
+            onImportPoster={onImportLocalPoster}
+            onEditPpt={(index) => {
+              const slide = pptSlides[index];
+              if (slide) {
+                onOpenMeetingCanvasEditor?.(
+                  slideToPreviewUrl(slide),
+                  { kind: 'meeting-ppt', source: 'template', index },
+                  slide.svg
+                );
+              }
+            }}
+            onImportPpt={onImportLocalPpt}
+            onToast={toast}
+            workspaceElementId={workspaceElementId}
+            onWorkspaceElementSelect={onWorkspaceElementSelect}
+          />
+        );
+      }
+
+      case 'meeting-sessions': {
+        const materials = meetingMaterials || emptyMeetingMaterials();
+        return (
+          <MeetingSessionsPanel
+            sessions={materials.sessions}
+            currentSessionId={materials.currentSessionId}
+            tab={materials.sessionTab}
+            infoFormOpen={materials.infoFormOpen}
+            infoDraft={meetingInfoDraft}
+            onSelectSession={(id) =>
+              onMeetingMaterialsChange?.((prev) => ({
+                ...prev,
+                currentSessionId: id,
+                showAllSessions: false,
+                sessionTab: 'info',
+              }))
+            }
+            onAddSession={() => onAddMeetingSession?.()}
+            onTabChange={(tab) => onMeetingMaterialsChange?.((prev) => ({ ...prev, sessionTab: tab }))}
+            onUploadInfo={() => {
+              const session = currentMeetingSession(materials);
+              if (!session) {
+                onAddMeetingSession?.();
+                return;
+              }
+              onApplyMeetingInfo?.(meetingInfoForSession(session.name), 'upload');
+            }}
+            onEditInfo={() => {
+              const session = currentMeetingSession(materials);
+              if (!session?.info) return;
+              onMeetingInfoDraftChange?.(session.info);
+              onMeetingMaterialsChange?.((prev) => ({ ...prev, infoFormOpen: true, sessionTab: 'info' }));
+            }}
+            onInfoDraftChange={(next) => onMeetingInfoDraftChange?.(next)}
+            onSaveInfo={() => {
+              if (meetingInfoDraft) onApplyMeetingInfo?.(meetingInfoDraft, 'fill');
+            }}
+            onCancelInfo={() => {
+              onMeetingInfoDraftChange?.(null);
+              onMeetingMaterialsChange?.((prev) => ({ ...prev, infoFormOpen: false }));
+            }}
+            onGeneratePoster={() => fillQuick('生成会议海报')}
+            onGeneratePpt={() => fillQuick('生成串场PPT')}
+            onEditPoster={() => {
+              const session = currentMeetingSession(materials);
+              if (session?.posterUrl) {
+                onOpenMeetingCanvasEditor?.(
+                  session.posterUrl,
+                  { kind: 'meeting-poster', source: 'session' },
+                  parseSvgFromDataUrl(session.posterUrl)
+                );
+              }
+            }}
+            onImportPoster={onImportLocalPoster}
+            onEditPpt={(index) => {
+              const session = currentMeetingSession(materials);
+              const slide = session?.pptSlides?.[index];
+              if (slide) {
+                onOpenMeetingCanvasEditor?.(
+                  slideToPreviewUrl(slide),
+                  { kind: 'meeting-ppt', source: 'session', index },
+                  slide.svg
+                );
+              }
+            }}
+            onImportPpt={onImportLocalPpt}
+            onToast={toast}
+            workspaceElementId={workspaceElementId}
+            onWorkspaceElementSelect={onWorkspaceElementSelect}
+          />
+        );
+      }
 
       case 'brief':
         if (!contentBrief) {
@@ -9435,7 +9932,7 @@ function WorkspaceRightPanel({
                 <button type="button" className="btn primary" onClick={() => onFillTaskProposal?.()}>
                   填写任务提案
                 </button>
-                <button type="button" className="btn soft" onClick={() => onUploadBrief?.()}>
+                <button type="button" className="btn blue" onClick={() => onUploadBrief?.()}>
                   上传任务提案
                 </button>
               </div>
@@ -9447,7 +9944,8 @@ function WorkspaceRightPanel({
             brief={contentBrief}
             onChange={(next) => onContentBriefChange?.(next)}
             onUpload={() => onUploadBrief?.()}
-            onNext={() => onRecommendLiterature?.()}
+            onRecommendLiterature={() => onRecommendLiterature?.('brief')}
+            onNext={() => onOpenStoryline?.()}
           />
         );
 
@@ -10637,7 +11135,20 @@ function WorkspaceRightPanel({
           </div>
         )}
         <div className={selectedHistory ? 'preview-history-readonly' : undefined}>
-        {previewFile && (!isGeneratedImagePreview || state.active === 'visual') ? (
+        {(flowEntry === 'conferencePoster' || entryContext?.source === 'poster') &&
+        (state.active === 'meeting-templates' || state.active === 'meeting-sessions') ? (
+          renderDetail()
+        ) : (flowEntry === 'conferencePoster' || entryContext?.source === 'poster') &&
+          state.active === 'visual' &&
+          previewedImageAssetKey === 'kv' ? (
+          <MeetingKvPanel
+            imageUrl={previewFile?.contentUrl || MOCK_KV_VERSIONS.current.dataUrl}
+            onDownload={() =>
+              downloadDataUrl(previewFile?.contentUrl || MOCK_KV_VERSIONS.current.dataUrl, '主KV.svg')
+            }
+            onGenerateTemplates={() => fillQuick('生成会议模板')}
+          />
+        ) : previewFile && (!isGeneratedImagePreview || state.active === 'visual') ? (
           <div className="workspace-file-preview">
             {previewFile.contentType === 'image' && previewFile.contentUrl ? (
               <>
@@ -10930,6 +11441,15 @@ function WorkspaceRightPanel({
         )}
         </div>
       </div>
+      <LiteratureRecommendModal
+        open={Boolean(literatureRecommendOpen)}
+        searching={literatureSearching}
+        results={literatureResults}
+        addedIds={addedLiteratureIds}
+        onAdd={onAddLiteratureToTask}
+        onResearch={onResearchLiterature}
+        onClose={() => onCloseLiteratureRecommend?.()}
+      />
       <PptTemplatePickerModal
         open={pptSwitchTemplateOpen}
         templates={switchPptTemplates}

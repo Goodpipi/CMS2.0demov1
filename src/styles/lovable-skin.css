@@ -54,6 +54,13 @@ body {
   box-shadow: 0 8px 20px -6px rgba(138, 211, 41, 0.45);
 }
 
+.btn.blue {
+  background: linear-gradient(135deg, #54B9F9 0%, #3BA6E8 100%) !important;
+  border-color: transparent !important;
+  color: #fff !important;
+  box-shadow: 0 8px 20px -6px rgba(84, 185, 249, 0.5);
+}
+
 /* —— Workspace layout —— */
 .workspace {
   gap: 20px;

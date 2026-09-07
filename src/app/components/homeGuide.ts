@@ -36,7 +36,7 @@ export const HOME_ENTRY_SOURCE_LABELS: Record<HomeEntrySource, string> = {
   case: '病例内容',
   promo: '医学与推广内容',
   evidence: '学术证据解读',
-  poster: '会议海报',
+  poster: '会议物料',
   insight: '话题洞察',
   more: '更多内容',
 };
@@ -194,8 +194,8 @@ export function getEntryWelcome(ctx: HomeEntryContext): { html: string; chips: s
 
   if (source === 'poster') {
     return {
-      html: '您好！请先输入「生成主KV」，确认主视觉后再输入「生成海报」。海报支持手动编辑与导出，也可一键适配手机版后提交 Veeva 审批。',
-      chips: ['生成主KV', '生成海报'],
+      html: '您好，我将协助您从零开始制作本次会议的系列物料。您可以先生成主KV，再基于主KV生成海报模板和串场PPT模板。会议模板准备完成后，即可新增会议场次，并为各场次生成会议海报和串场PPT。',
+      chips: ['生成主KV', '添加会议参考资料'],
     };
   }
 

@@ -1,4 +1,6 @@
 import { Check, Download, ExternalLink, Plus, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { LibraryItem } from '@/types/library';
 import {
   buildLiteratureFullText,
@@ -85,7 +87,7 @@ export function LiteraturePreviewModal({
   const canAdd = Boolean(onAdd) && (article ? article.access === 'free' : true);
   const isPremium = article ? isCmsPremiumArticle(article) : item ? isCmsPremiumKnowledge(item) : false;
 
-  return (
+  return createPortal(
     <div
       className="modal-bg show literature-preview-bg"
       role="presentation"
@@ -145,7 +147,8 @@ export function LiteraturePreviewModal({
           </div>
         </footer>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -195,7 +198,7 @@ export function LiteratureResultCard({
       ) : (
         <h5>{article.title}</h5>
       )}
-      {!compact && <p className="literature-abstract">{article.abstract}</p>}
+      <p className="literature-abstract">{article.abstract}</p>
       {compact && (
         <LiteratureCardActions
           canAdd={canAdd}
@@ -239,7 +242,7 @@ export function KnowledgeResultCard({
       <button type="button" className="literature-title-btn" onClick={onPreview}>
         {item.title}
       </button>
-      {!compact && <p className="literature-abstract">{item.contentText || item.meta}</p>}
+      <p className="literature-abstract">{item.contentText || item.meta}</p>
       {compact && <AddToTaskButton added={added} onAdd={onAdd} />}
     </article>
   );
@@ -303,6 +306,133 @@ function LiteratureCardActions({
         </a>
       )}
       <AddToTaskButton added={added} onAdd={onAdd} />
+    </div>
+  );
+}
+
+export function LiteratureRecommendBody({
+  results,
+  searching,
+  addedIds,
+  onAdd,
+  onResearch,
+}: {
+  results: LiteratureArticle[];
+  searching?: boolean;
+  addedIds: string[];
+  onAdd: (article: LiteratureArticle) => void;
+  onResearch?: () => void;
+}) {
+  const [visibleCount, setVisibleCount] = useState(30);
+  const [preview, setPreview] = useState<LiteratureArticle | null>(null);
+
+  useEffect(() => {
+    setVisibleCount(30);
+  }, [results]);
+
+  if (!results.length) {
+    return (
+      <div className="literature-recommend-empty">
+        <LiteratureThirdPartyHint />
+        <p className="small">{searching ? '正在根据当前页面信息检索文献…' : '暂无推荐文献。'}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="literature-panel literature-recommend-body">
+      <div className="literature-panel-head">
+        <div>
+          <h4>推荐文献</h4>
+          <LiteratureThirdPartyHint />
+        </div>
+        {onResearch ? (
+          <div className="literature-panel-actions">
+            <button type="button" className="btn primary" disabled={searching} onClick={onResearch}>
+              {searching ? '检索中…' : '重新检索文献'}
+            </button>
+          </div>
+        ) : null}
+      </div>
+      <div className="literature-list">
+        {results.slice(0, visibleCount).map((article) => (
+          <LiteratureResultCard
+            key={article.id}
+            article={article}
+            added={addedIds.includes(article.id)}
+            onAdd={() => onAdd(article)}
+            onPreview={() => setPreview(article)}
+          />
+        ))}
+        {visibleCount < results.length && (
+          <button
+            type="button"
+            className="btn soft literature-more-btn"
+            onClick={() => setVisibleCount((count) => count + 30)}
+          >
+            查看更多文献
+          </button>
+        )}
+      </div>
+      {preview && (
+        <LiteraturePreviewModal
+          article={preview}
+          added={addedIds.includes(preview.id)}
+          onAdd={() => onAdd(preview)}
+          onClose={() => setPreview(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+export function LiteratureRecommendModal({
+  open,
+  searching,
+  results,
+  addedIds,
+  onAdd,
+  onResearch,
+  onClose,
+}: {
+  open: boolean;
+  searching?: boolean;
+  results: LiteratureArticle[];
+  addedIds: string[];
+  onAdd: (article: LiteratureArticle) => void;
+  onResearch?: () => void;
+  onClose: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div
+      className="modal-bg show literature-recommend-bg"
+      role="presentation"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div
+        className="modal literature-recommend-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="literature-recommend-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="literature-recommend-head">
+          <h3 id="literature-recommend-title">相关文献推荐</h3>
+          <button type="button" className="literature-picker-close" onClick={onClose} aria-label="关闭">
+            <X className="h-4 w-4" strokeWidth={2.2} />
+          </button>
+        </header>
+        <LiteratureRecommendBody
+          results={results}
+          searching={searching}
+          addedIds={addedIds}
+          onAdd={onAdd}
+          onResearch={onResearch}
+        />
+      </div>
     </div>
   );
 }

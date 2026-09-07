@@ -1,5 +1,144 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { OutlineRefImage } from '@/types/content';
+
+export function OutlineFieldHeader({
+  label,
+  showAi,
+  aiActive,
+  onAi,
+}: {
+  label: string;
+  showAi?: boolean;
+  aiActive?: boolean;
+  onAi?: () => void;
+}) {
+  return (
+    <div className="ppt-page-field-head">
+      <span>{label}</span>
+      {showAi && onAi ? (
+        <button
+          type="button"
+          className={`ppt-page-ai-btn ${aiActive ? 'is-active' : ''}`}
+          onClick={onAi}
+        >
+          AI修改
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+export function OutlineAiPrompt({
+  value,
+  placeholder,
+  onChange,
+  onSubmit,
+  onCancel,
+}: {
+  value: string;
+  placeholder: string;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="outline-ai-prompt">
+      <textarea
+        className="outline-ai-prompt-input"
+        value={value}
+        placeholder={placeholder}
+        autoFocus
+        rows={3}
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <div className="outline-ai-prompt-actions">
+        <button type="button" className="btn soft" onClick={onCancel}>
+          取消
+        </button>
+        <button type="button" className="btn primary" disabled={!value.trim()} onClick={onSubmit}>
+          按此修改
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function OutlineManualCiteImageForm({
+  onCancel,
+  onAdd,
+}: {
+  onCancel: () => void;
+  onAdd: (input: { url: string; caption: string; source: string }) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [url, setUrl] = useState('');
+  const [fileName, setFileName] = useState('');
+  const [caption, setCaption] = useState('');
+  const [source, setSource] = useState('');
+
+  const handleFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      setUrl(String(reader.result || ''));
+      setFileName(file.name);
+      setCaption((prev) => prev.trim() || file.name.replace(/\.[^.]+$/, ''));
+    };
+    reader.readAsDataURL(file);
+    event.target.value = '';
+  };
+
+  const canSubmit = Boolean(url && caption.trim() && source.trim());
+
+  return (
+    <div className="outline-manual-image-form">
+      <strong>手动添加引用图片／截图</strong>
+      <label className="ppt-page-field">
+        <span>引用图片或截图</span>
+        <div className="outline-manual-image-upload">
+          <button type="button" className="btn soft" onClick={() => fileRef.current?.click()}>
+            {url ? '重新选择图片' : '上传图片／截图'}
+          </button>
+          <em>{fileName || '请上传图片或截图'}</em>
+        </div>
+        {url ? <img className="outline-manual-image-preview" src={url} alt={caption || '待添加引用图'} /> : null}
+        <input ref={fileRef} type="file" hidden accept="image/*" onChange={handleFile} />
+      </label>
+      <label className="ppt-page-field">
+        <span>图片说明</span>
+        <input
+          className="input"
+          value={caption}
+          placeholder="请填写图片说明"
+          onChange={(event) => setCaption(event.target.value)}
+        />
+      </label>
+      <label className="ppt-page-field">
+        <span>参考文献来源</span>
+        <input
+          className="input"
+          value={source}
+          placeholder="例如：Lancet Diabetes Endocrinol, 2024, 12(6): 412-418."
+          onChange={(event) => setSource(event.target.value)}
+        />
+      </label>
+      <div className="outline-ai-prompt-actions">
+        <button type="button" className="btn soft" onClick={onCancel}>
+          取消
+        </button>
+        <button
+          type="button"
+          className="btn primary"
+          disabled={!canSubmit}
+          onClick={() => onAdd({ url, caption: caption.trim(), source: source.trim() })}
+        >
+          添加到本页
+        </button>
+      </div>
+    </div>
+  );
+}
 
 interface OutlinePageEditModalProps {
   open: boolean;
@@ -24,16 +163,24 @@ export function OutlineStaticField({
   value,
   empty = '暂无',
   cites,
+  showAi,
+  aiActive,
+  onAi,
+  aiPrompt,
 }: {
   label: string;
   value?: string;
   empty?: string;
   cites?: number[];
+  showAi?: boolean;
+  aiActive?: boolean;
+  onAi?: () => void;
+  aiPrompt?: ReactNode;
 }) {
   const text = (value || '').trim();
   return (
-    <div className="ppt-page-field">
-      <span>{label}</span>
+    <div className={`ppt-page-field ${aiActive ? 'is-ai-active' : ''}`}>
+      <OutlineFieldHeader label={label} showAi={showAi} aiActive={aiActive} onAi={onAi} />
       <div className={`ppt-page-static ${text ? '' : 'is-empty'}`}>
         {text ? (
           <>
@@ -44,6 +191,7 @@ export function OutlineStaticField({
           empty
         )}
       </div>
+      {aiPrompt}
     </div>
   );
 }
@@ -54,18 +202,26 @@ export function OutlineStaticList({
   empty = '暂无',
   itemCites,
   numbered = true,
+  showAi,
+  aiActive,
+  onAi,
+  aiPrompt,
 }: {
   label: string;
   items?: string[];
   empty?: string;
   itemCites?: number[][];
   numbered?: boolean;
+  showAi?: boolean;
+  aiActive?: boolean;
+  onAi?: () => void;
+  aiPrompt?: ReactNode;
 }) {
   const list = (items || []).map((item) => item.trim()).filter(Boolean);
   const ListTag = numbered ? 'ol' : 'ul';
   return (
-    <div className="ppt-page-field">
-      <span>{label}</span>
+    <div className={`ppt-page-field ${aiActive ? 'is-ai-active' : ''}`}>
+      <OutlineFieldHeader label={label} showAi={showAi} aiActive={aiActive} onAi={onAi} />
       {list.length ? (
         <ListTag className={`ppt-page-static-list ${numbered ? 'is-numbered' : 'is-plain'}`}>
           {list.map((item, index) => (
@@ -81,6 +237,7 @@ export function OutlineStaticList({
       ) : (
         <div className="ppt-page-static is-empty">{empty}</div>
       )}
+      {aiPrompt}
     </div>
   );
 }
@@ -89,10 +246,12 @@ export function OutlineReferencedImages({
   label = '引用图片',
   images,
   empty = '暂无引用图片',
+  action,
 }: {
   label?: string;
   images?: OutlineRefImage[];
   empty?: string;
+  action?: ReactNode;
 }) {
   const list = (images || []).filter((item) => item.url);
   return (
@@ -120,6 +279,7 @@ export function OutlineReferencedImages({
       ) : (
         <div className="ppt-page-static is-empty">{empty}</div>
       )}
+      {action}
     </div>
   );
 }

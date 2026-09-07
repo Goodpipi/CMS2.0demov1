@@ -397,6 +397,8 @@ export function applyTabForModificationTarget(
     pptDesign: boolean;
     brief: boolean;
     storyline: boolean;
+    meetingTemplates: boolean;
+    meetingSessions: boolean;
     submit: boolean;
   },
   targetTab: TabKey
@@ -417,6 +419,8 @@ export function applyTabForModificationTarget(
     'ppt-design': 'pptDesign',
     brief: 'brief',
     storyline: 'storyline',
+    'meeting-templates': 'meetingTemplates',
+    'meeting-sessions': 'meetingSessions',
     submit: 'submit',
   };
   const flag = flagMap[targetTab];
