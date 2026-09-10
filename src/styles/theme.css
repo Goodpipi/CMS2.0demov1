@@ -13362,6 +13362,81 @@ textarea {
   max-width: 640px;
 }
 
+.meeting-session-list-panel {
+  padding: 20px 22px 24px;
+}
+
+.meeting-session-list-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.meeting-session-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 14px;
+  max-width: 760px;
+}
+
+.meeting-session-tile {
+  display: grid;
+  min-height: 148px;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  padding: 16px 12px;
+  border: 1px solid #dce8f2;
+  border-radius: 14px;
+  background: #fff;
+  color: #18334d;
+  cursor: pointer;
+  transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+}
+
+.meeting-session-tile:hover {
+  border-color: #54b9f9;
+  box-shadow: 0 8px 20px rgba(35, 105, 155, .12);
+  transform: translateY(-1px);
+}
+
+.meeting-session-tile small {
+  color: #8195a8;
+  font-size: 12px;
+}
+
+.meeting-session-tile-icon,
+.meeting-session-add-icon {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  border-radius: 14px;
+  background: #eaf6ff;
+  color: #0b66b3;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.meeting-session-tile.is-add {
+  border: 1.5px dashed #a8c4d9;
+  background: #fbfdff;
+}
+
+.meeting-session-tile.is-add .meeting-session-add-icon {
+  background: transparent;
+  color: #54a8d8;
+  font-size: 38px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.meeting-task-proposal-panel {
+  min-height: 100%;
+}
+
 .video-studio-panel {
   display: grid;
   gap: 16px;
@@ -13897,5 +13972,4 @@ textarea {
     justify-content: flex-start;
   }
 }
-
 

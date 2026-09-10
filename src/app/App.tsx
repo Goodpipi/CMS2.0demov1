@@ -589,6 +589,10 @@ export default function App() {
   const [meetingMaterials, setMeetingMaterials] = useState<MeetingMaterialsState>(emptyMeetingMaterials);
   const [videoStudio, setVideoStudio] = useState<VideoStudioState>(emptyVideoStudio);
   const [addMeetingSessionOpen, setAddMeetingSessionOpen] = useState(false);
+  const [meetingReuploadConfirm, setMeetingReuploadConfirm] = useState<{
+    sessionId: string;
+    info: MeetingSessionInfo;
+  } | null>(null);
   const [meetingInfoDraft, setMeetingInfoDraft] = useState<MeetingSessionInfo | null>(null);
   const [topicInsightReportText, setTopicInsightReportText] = useState('');
   const [copies, setCopies] = useState<CopyItem[]>([]);
@@ -954,6 +958,7 @@ export default function App() {
     );
     setMeetingInfoDraft(null);
     setAddMeetingSessionOpen(false);
+    setMeetingReuploadConfirm(null);
     setRichTextContent(w.richTextContent ?? '');
     setScriptContent(w.scriptContent ?? '');
     setGeneratedImages(w.generatedImages);
@@ -1773,6 +1778,7 @@ export default function App() {
     setVideoStudio(emptyVideoStudio());
     setMeetingInfoDraft(null);
     setAddMeetingSessionOpen(false);
+    setMeetingReuploadConfirm(null);
     setSelectedTopics([]);
     setSelectedCopies([]);
     setCopyRevisions([]);
@@ -1953,7 +1959,7 @@ export default function App() {
     openMeetingSessions({ tab: 'info' });
     addMsg(
       'ai',
-      `已创建场次「${nextName}」。请下载会议信息模板并上传，无需手动填写。上传完成后可生成会议海报和串场PPT。`,
+      `已创建场次「${nextName}」。请下载会议信息模板并上传，无需手动填写。上传后将自动生成会议海报和串场PPT。`,
       '本地 Mock',
       ['上传会议信息', '查看会议模板']
     );
@@ -1969,9 +1975,33 @@ export default function App() {
   };
 
   const applyMeetingInfoToCurrent = (info: MeetingSessionInfo, source: 'upload' | 'fill') => {
+    const session = currentMeetingSession(meetingMaterials);
+    const hasExistingOutputs = Boolean(session?.posterReady || session?.pptReady);
     updateCurrentMeetingSession({ info });
     setMeetingMaterials((prev) => ({ ...prev, infoFormOpen: false, sessionTab: 'info', showAllSessions: false }));
     setMeetingInfoDraft(null);
+    if (source === 'upload' && session) {
+      if (hasExistingOutputs) {
+        setMeetingReuploadConfirm({ sessionId: session.id, info });
+        addMsg('ai', '会议信息上传成功。是否根据新上传的信息重新生成会议海报和串场PPT？', '本地 Mock');
+        return;
+      }
+      updateCurrentMeetingSession({
+        info,
+        posterReady: true,
+        posterUrl: buildSessionPosterDataUrl(session.name, info),
+        pptReady: true,
+        pptSlides: buildSessionPptSlides(session.name, info),
+      });
+      setMeetingMaterials((prev) => ({ ...prev, sessionTab: 'poster' }));
+      addMsg(
+        'ai',
+        '会议信息上传成功，已自动生成会议海报和串场PPT。',
+        '本地 Mock',
+        ['重新上传会议信息', '新增场次']
+      );
+      return;
+    }
     addMsg(
       'ai',
       source === 'upload'
@@ -1980,6 +2010,36 @@ export default function App() {
       '本地 Mock',
       ['生成会议海报', '生成串场PPT']
     );
+  };
+
+  const regenerateMeetingOutputs = () => {
+    if (!meetingReuploadConfirm) return;
+    const { sessionId, info } = meetingReuploadConfirm;
+    const session = meetingMaterials.sessions.find((item) => item.id === sessionId);
+    if (!session) {
+      setMeetingReuploadConfirm(null);
+      return;
+    }
+    setMeetingMaterials((prev) => ({
+      ...prev,
+      currentSessionId: sessionId,
+      sessionTab: 'poster',
+      showAllSessions: false,
+      sessions: prev.sessions.map((item) =>
+        item.id === sessionId
+          ? {
+              ...item,
+              info,
+              posterReady: true,
+              posterUrl: buildSessionPosterDataUrl(item.name, info),
+              pptReady: true,
+              pptSlides: buildSessionPptSlides(item.name, info),
+            }
+          : item
+      ),
+    }));
+    setMeetingReuploadConfirm(null);
+    addMsg('ai', '已根据新上传的会议信息重新生成会议海报和串场PPT。', '本地 Mock');
   };
 
   const runLiteratureSearch = (query: string, opts?: { reshuffle?: boolean; silent?: boolean }) => {
@@ -2492,7 +2552,6 @@ export default function App() {
         return true;
       }
       applyMeetingInfoToCurrent(meetingInfoForSession(session.name), 'upload');
-      openMeetingSessions({ tab: 'info' });
       return true;
     }
 
@@ -8660,6 +8719,15 @@ export default function App() {
         onClose={() => setAddMeetingSessionOpen(false)}
         onCreate={createMeetingSession}
       />
+      <ConfirmModal
+        open={Boolean(meetingReuploadConfirm)}
+        title="重新生成会议物料"
+        message="会议信息上传成功，是否根据新上传的信息重新生成会议海报和串场PPT？"
+        confirmLabel="重新生成"
+        cancelLabel="暂不生成"
+        onConfirm={regenerateMeetingOutputs}
+        onCancel={() => setMeetingReuploadConfirm(null)}
+      />
 
       <CreationMethodModal
         open={creationMethodOpen}
@@ -10194,7 +10262,7 @@ function WorkspaceRightPanel({
             pptSlides={pptSlides}
             tab={materials.templateTab || 'poster'}
             onTabChange={(tab) => onMeetingMaterialsChange?.((prev) => ({ ...prev, templateTab: tab }))}
-            onAddSession={() => onAddMeetingSession?.()}
+            onAddSession={() => onOpenMeetingSessions?.({ showAll: true })}
             onEditPoster={() =>
               onOpenMeetingCanvasEditor?.(posterUrl, { kind: 'meeting-poster', source: 'template' }, parseSvgFromDataUrl(posterUrl))
             }
@@ -10223,6 +10291,7 @@ function WorkspaceRightPanel({
           <MeetingSessionsPanel
             sessions={materials.sessions}
             currentSessionId={materials.currentSessionId}
+            showAllSessions={materials.showAllSessions}
             tab={materials.sessionTab}
             infoFormOpen={materials.infoFormOpen}
             infoDraft={meetingInfoDraft}

@@ -59,6 +59,7 @@ function MeetingPosterCanvas({
   imageUrl,
   onEdit,
   onImport,
+  onReuploadInfo,
   onToast,
   workspaceElementId,
   onWorkspaceElementSelect,
@@ -68,6 +69,7 @@ function MeetingPosterCanvas({
   imageUrl: string;
   onEdit: () => void;
   onImport?: () => void;
+  onReuploadInfo?: () => void;
   onToast?: (text: string) => void;
   workspaceElementId?: string | null;
   onWorkspaceElementSelect?: (selection: SelectableSvgSelection | null, slideIndex: number) => void;
@@ -107,6 +109,11 @@ function MeetingPosterCanvas({
         </div>
       </div>
       <div className="image-preview-submit-actions">
+        {onReuploadInfo ? (
+          <button type="button" className="btn soft" onClick={onReuploadInfo}>
+            重新上传会议信息
+          </button>
+        ) : null}
         {onImport ? (
           <button type="button" className="btn soft" onClick={onImport}>
             导入本地版本
@@ -170,6 +177,7 @@ function MeetingPptCanvas({
   slides,
   onEditSlide,
   onImport,
+  onReuploadInfo,
   onToast,
   workspaceElementId,
   onWorkspaceElementSelect,
@@ -178,6 +186,7 @@ function MeetingPptCanvas({
   slides: PptSlide[];
   onEditSlide: (index: number) => void;
   onImport?: () => void;
+  onReuploadInfo?: () => void;
   onToast?: (text: string) => void;
   workspaceElementId?: string | null;
   onWorkspaceElementSelect?: (selection: SelectableSvgSelection | null, slideIndex: number) => void;
@@ -254,6 +263,11 @@ function MeetingPptCanvas({
         </div>
       </div>
       <div className="content-submit-actions">
+        {onReuploadInfo ? (
+          <button type="button" className="btn soft" onClick={onReuploadInfo}>
+            重新上传会议信息
+          </button>
+        ) : null}
         {onImport ? (
           <button type="button" className="btn soft" onClick={onImport}>
             导入本地版本
@@ -631,6 +645,7 @@ function MeetingInfoPreview({ info }: { info: MeetingSessionInfo }) {
 interface MeetingSessionsPanelProps {
   sessions: MeetingSession[];
   currentSessionId: string | null;
+  showAllSessions: boolean;
   tab: MeetingSessionTab;
   infoFormOpen: boolean;
   infoDraft: MeetingSessionInfo | null;
@@ -656,6 +671,7 @@ interface MeetingSessionsPanelProps {
 export function MeetingSessionsPanel({
   sessions,
   currentSessionId,
+  showAllSessions,
   tab,
   infoFormOpen,
   infoDraft,
@@ -680,14 +696,35 @@ export function MeetingSessionsPanel({
   const current = sessions.find((item) => item.id === currentSessionId) || sessions[0];
   const uploadRef = useRef<HTMLInputElement>(null);
 
-  if (!current) {
+  if (showAllSessions || !current) {
     return (
-      <div className="detail-card">
-        <h4>尚未创建场次</h4>
-        <p className="small">请先新增一场会议场次。</p>
-        <button type="button" className="btn primary" onClick={onAddSession}>
-          新增场次
-        </button>
+      <div className="workspace-surface-panel meeting-surface-panel meeting-session-list-panel">
+        <div className="meeting-session-list-head">
+          <div>
+            <h2 className="meeting-section-title">会议场次</h2>
+            <p className="small meeting-surface-hint">选择场次进入详情，或新增一场会议。</p>
+          </div>
+        </div>
+        <div className="meeting-session-grid">
+          {sessions.map((session) => (
+            <button
+              type="button"
+              className="meeting-session-tile"
+              key={session.id}
+              onClick={() => onSelectSession(session.id)}
+            >
+              <span className="meeting-session-tile-icon" aria-hidden>
+                {session.name.slice(0, 1)}
+              </span>
+              <strong>{session.name}</strong>
+              <small>{session.info ? '已上传会议信息' : '待上传会议信息'}</small>
+            </button>
+          ))}
+          <button type="button" className="meeting-session-tile is-add" onClick={onAddSession}>
+            <span className="meeting-session-add-icon" aria-hidden>+</span>
+            <strong>新增场次</strong>
+          </button>
+        </div>
       </div>
     );
   }
@@ -767,16 +804,6 @@ export function MeetingSessionsPanel({
                       上传
                     </button>
                   </div>
-                  <input
-                    ref={uploadRef}
-                    type="file"
-                    hidden
-                    accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt,.md"
-                    onChange={(event) => {
-                      if (event.currentTarget.files?.[0]) onUploadInfo();
-                      event.currentTarget.value = '';
-                    }}
-                  />
                 </>
               )}
             </>
@@ -789,6 +816,7 @@ export function MeetingSessionsPanel({
               imageUrl={current.posterUrl}
               onEdit={onEditPoster}
               onImport={onImportPoster}
+              onReuploadInfo={() => uploadRef.current?.click()}
               onToast={onToast}
               workspaceElementId={workspaceElementId}
               onWorkspaceElementSelect={onWorkspaceElementSelect}
@@ -801,6 +829,7 @@ export function MeetingSessionsPanel({
               slides={current.pptSlides}
               onEditSlide={onEditPpt}
               onImport={onImportPpt}
+              onReuploadInfo={() => uploadRef.current?.click()}
               onToast={onToast}
               workspaceElementId={workspaceElementId}
               onWorkspaceElementSelect={onWorkspaceElementSelect}
@@ -808,6 +837,16 @@ export function MeetingSessionsPanel({
           ) : null}
         </div>
       </div>
+      <input
+        ref={uploadRef}
+        type="file"
+        hidden
+        accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt,.md"
+        onChange={(event) => {
+          if (event.currentTarget.files?.[0]) onUploadInfo();
+          event.currentTarget.value = '';
+        }}
+      />
     </div>
   );
 }
