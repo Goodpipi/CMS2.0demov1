@@ -103,6 +103,19 @@ import {
   MeetingTemplatesPanel,
   MeetingWelcomePanel,
 } from '@/app/components/MeetingMaterialsPanels';
+import { VideoStudioArtifacts, VideoStudioWorkspace } from '@/app/components/VideoStudioPanels';
+import {
+  VIDEO_CLIPS,
+  emptyVideoStudio,
+  firstFrameUrl,
+  isVideoStudioTab,
+  matchVideoStudioCommand,
+  reduceVideoStudio,
+  toVideoResult,
+  videoStudioViewForTab,
+  type VideoStudioAction,
+  type VideoStudioState,
+} from '@/lib/videoStudioMocks';
 import {
   MEETING_POSTER_TEMPLATE_URL,
   MEETING_PPT_TEMPLATE_SLIDES,
@@ -133,6 +146,7 @@ import {
   missingRequiredBriefLabels,
   normalizeContentBrief,
   literatureQueryFromBrief,
+  outlineCommandFromEvidenceFormat,
 } from '@/lib/contentBrief';
 import {
   pptTemplateIdFromTitle,
@@ -166,6 +180,8 @@ import {
   inferFlowEntryFromTabs,
   nextLockedFlowEntry,
   omitsBriefLiterature,
+  omitsLiteratureRecommend,
+  omitsStoryline,
   omitsTopicInsight,
   type ContentFlowEntry,
   type ContentFlowProgress,
@@ -230,7 +246,6 @@ import {
 import { createCopyRevision, downloadDataUrl, latestCopyText, saveCopyRevisionMerged, normalizeCopyRevisions } from '@/lib/copyRevisionUtils';
 import {
   HOT_INSIGHT_CATEGORY,
-  WORKSPACE_QUICK_PROMPTS,
   TOPIC_INSIGHT_BRANCH_CHIPS,
   buildHotInsightReport,
   buildTopicRecommendations,
@@ -288,7 +303,6 @@ import {
   FolderOpen,
   Image as ImageIcon,
   ImagePlus,
-  LayoutGrid,
   Library as LibraryIcon,
   Lightbulb,
   Eraser,
@@ -347,7 +361,7 @@ import type {
   TabKey,
 } from '@/types/session';
 
-const cats = ['热点洞察', '合规手册', '参考知识', '参考文献', '品牌策略', 'Brief', '模板', '品牌元素', '视觉参考', '会议信息', '目标解读材料', '其他参考知识'];
+const cats = ['热点洞察', '合规手册', '参考知识', '参考文献', '品牌策略', 'Brief', '模板', '品牌元素', '视觉参考', '视频参考资料', '会议信息', '目标解读材料', '其他参考知识'];
 const HOME_TASK_PAGE_SIZE = 7;
 
 const HOME_WORKFLOW_ACTIONS: {
@@ -414,11 +428,12 @@ const HOME_WORKFLOW_ACTIONS: {
     art: 'insight',
   },
   {
-    title: '更多内容',
-    description: '不限定形式，从空白任务开始，按你的描述自由生成各类内容。',
-    intent: 'general',
-    prompt: '',
-    Icon: LayoutGrid,
+    title: '视频生成',
+    description: '从视频需求出发，生成主角形象、分镜脚本和患者教育短视频。',
+    scenes: ['患者教育短视频', '主角形象', '分镜脚本'],
+    intent: 'video',
+    prompt: '生成视频',
+    Icon: Video,
     art: 'more',
   },
 ];
@@ -447,6 +462,7 @@ const initialLibrary: LibraryItem[] = [
   { id: 21, cat: '视觉参考', title: 'Radimetrics 剂量管理视觉参考', meta: 'PNG · 视觉参考 · 3:4', cms: false, def: true, addedAt: Date.now() - 5 * 3600000, contentType: 'image', contentUrl: '/image-templates/radimetrics.png', fileName: 'radimetrics.png' },
   { id: 22, cat: '目标解读材料', title: '2024 KDIGO CKD 临床实践指南（节选）', meta: 'PDF · 指南原文 · 待解读', cms: false, def: true, addedAt: Date.now() - 9 * 3600000 },
   { id: 23, cat: '目标解读材料', title: 'FIDELIO-DKD 关键终点数据摘要', meta: 'PDF · 研究原文 · 待解读', cms: true, def: true, addedAt: Date.now() - 7 * 3600000, validUntil: '2027-06-30' },
+  { id: 24, cat: '视频参考资料', title: '糖尿病饮食教育短视频参考要点', meta: '患者教育 · 10秒脚本与画面参考', cms: false, def: true, addedAt: Date.now() - 4 * 3600000 },
 ];
 
 const tabNames = {
@@ -460,6 +476,10 @@ const tabNames = {
   visual: '图片生成',
   'video-script': '视频脚本',
   'video-render': '视频生成',
+  'video-brief': '视频需求',
+  'video-hero': '主角形象',
+  'video-storyboard': '分镜脚本',
+  'video-frames': '片段首帧',
   'ppt-outline': '页面级大纲',
   'article-outline': '推文大纲',
   'long-image-outline': '长图大纲',
@@ -514,6 +534,10 @@ const emptyWorkspaceState = (): AppState => ({
   visual: false,
   videoScript: false,
   videoRender: false,
+  videoBrief: false,
+  videoHero: false,
+  videoStoryboard: false,
+  videoFrames: false,
   pptOutline: false,
   articleOutline: false,
   longImageOutline: false,
@@ -560,6 +584,7 @@ export default function App() {
   const [contentBrief, setContentBrief] = useState<ContentBrief | null>(null);
   const [storylineContent, setStorylineContent] = useState('');
   const [meetingMaterials, setMeetingMaterials] = useState<MeetingMaterialsState>(emptyMeetingMaterials);
+  const [videoStudio, setVideoStudio] = useState<VideoStudioState>(emptyVideoStudio);
   const [addMeetingSessionOpen, setAddMeetingSessionOpen] = useState(false);
   const [meetingInfoDraft, setMeetingInfoDraft] = useState<MeetingSessionInfo | null>(null);
   const [topicInsightReportText, setTopicInsightReportText] = useState('');
@@ -691,6 +716,7 @@ export default function App() {
   const [homeTaskPage, setHomeTaskPage] = useState(1);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [contextPanelOpen, setContextPanelOpen] = useState(true);
+  const [chatPanelOpen, setChatPanelOpen] = useState(true);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; title: string } | null>(null);
   const [rollbackConfirm, setRollbackConfirm] = useState<ModificationTask | null>(null);
@@ -726,6 +752,8 @@ export default function App() {
   pptWizardRef.current = pptWizard;
   videoWizardRef.current = videoWizard;
   visualWizardRef.current = visualWizard;
+  const videoStudioRef = useRef(videoStudio);
+  videoStudioRef.current = videoStudio;
 
   const buildWorkspaceSnapshot = useCallback(
     () => ({
@@ -747,6 +775,7 @@ export default function App() {
       contentBrief,
       storylineContent,
       meetingMaterials,
+      videoStudio,
       richTextContent,
       scriptContent,
       generatedImages,
@@ -789,6 +818,7 @@ export default function App() {
       contentBrief,
       storylineContent,
       meetingMaterials,
+      videoStudio,
       richTextContent,
       scriptContent,
       generatedImages,
@@ -878,6 +908,10 @@ export default function App() {
       storyline: legacy.storyline ?? false,
       meetingTemplates: legacy.meetingTemplates ?? false,
       meetingSessions: legacy.meetingSessions ?? false,
+      videoBrief: legacy.videoBrief ?? false,
+      videoHero: legacy.videoHero ?? false,
+      videoStoryboard: legacy.videoStoryboard ?? false,
+      videoFrames: legacy.videoFrames ?? false,
       richText: legacy.richText ?? false,
       brief: legacy.brief ?? false,
       articleOutline: legacy.articleOutline ?? false,
@@ -912,6 +946,9 @@ export default function App() {
     setContentBrief(normalizeContentBrief(w.contentBrief));
     setStorylineContent(w.storylineContent ?? '');
     setMeetingMaterials(w.meetingMaterials ?? emptyMeetingMaterials());
+    setVideoStudio(
+      w.videoStudio ? { ...emptyVideoStudio(), ...w.videoStudio } : emptyVideoStudio()
+    );
     setMeetingInfoDraft(null);
     setAddMeetingSessionOpen(false);
     setRichTextContent(w.richTextContent ?? '');
@@ -1153,6 +1190,11 @@ export default function App() {
       return;
     }
     if (/直接生成视频|直接做视频/.test(text)) {
+      if (entryContext?.source === 'more') {
+        const action = matchVideoStudioCommand(text) || { type: 'generateClips' as const };
+        applyVideoStudioAction(action);
+        return;
+      }
       startVideoFlow(text, { skipUserMsg });
       return;
     }
@@ -1182,6 +1224,11 @@ export default function App() {
         return;
       }
       if (entryContext?.intent === 'video' || text.includes('视频')) {
+        if (entryContext?.source === 'more') {
+          const action = matchVideoStudioCommand(text);
+          if (action) applyVideoStudioAction(action);
+          return;
+        }
         startVideoFlow(text, { skipUserMsg });
         return;
       }
@@ -1213,7 +1260,12 @@ export default function App() {
     ) {
       startVisualFlow(text, { skipUserMsg });
     } else if (text.includes('视频') || lower.includes('video')) {
-      startVideoFlow(text, { skipUserMsg });
+      if (entryContext?.source === 'more') {
+        const action = matchVideoStudioCommand(text);
+        if (action) applyVideoStudioAction(action);
+      } else {
+        startVideoFlow(text, { skipUserMsg });
+      }
     } else if (text.includes('PPT') || text.includes('ppt')) {
       startPptFlow(text, { skipUserMsg });
     } else if (text.includes('Veeva') || text.includes('veeva') || text.includes('审批') || text.includes('提交')) {
@@ -1502,6 +1554,17 @@ export default function App() {
     setSelectedProduct(product);
     setProductPickerOpen(false);
     toast(`已选择产品「${product.name}」`);
+    if (entryContext?.source === 'more' || entryContext?.intent === 'video') {
+      setFlowEntry('video');
+      setVideoStudio(emptyVideoStudio(product.name));
+      setState((prev) => ({
+        ...prev,
+        tabs: prev.tabs.includes('video-brief') ? prev.tabs : [...prev.tabs, 'video-brief'],
+        active: 'video-brief',
+        videoBrief: false,
+      }));
+      setTaskTitle(`${product.name}·糖尿病患者如何健康饮食`);
+    }
   };
 
   const cancelTaskProduct = () => {
@@ -1618,7 +1681,9 @@ export default function App() {
           ? '输入「生成主KV」开始制作会议物料…'
           : '描述要生成的图片主题、风格与用途…';
       case 'video':
-        return '描述视频主题、受众与时长偏好…';
+        return entryContext?.source === 'more'
+          ? '可输入「生成主角形象」「生成分镜脚本」等指令，或使用中间区域按钮…'
+          : '描述视频主题、受众与时长偏好…';
       case 'ppt':
       case 'ppt-template':
         return '描述 PPT 受众、场景与核心内容…';
@@ -1702,6 +1767,7 @@ export default function App() {
     setContentBrief(null);
     setStorylineContent('');
     setMeetingMaterials(emptyMeetingMaterials());
+    setVideoStudio(emptyVideoStudio());
     setMeetingInfoDraft(null);
     setAddMeetingSessionOpen(false);
     setSelectedTopics([]);
@@ -1932,7 +1998,7 @@ export default function App() {
   const GENERATED_BRIEF_ID = -4100;
 
   const syncBriefToLibrary = (brief: ContentBrief) => {
-    const text = formatContentBriefText(brief);
+    const text = formatContentBriefText(brief, entryContext?.source === 'evidence' ? 'evidence' : 'default');
     const item: LibraryItem = {
       id: GENERATED_BRIEF_ID,
       cat: 'Brief',
@@ -1954,6 +2020,7 @@ export default function App() {
       userPrompt: userNote || getRecentUserContext(),
       insightText: topicInsightReportText || insightSummary,
       analysis,
+      variant: entryContext?.source === 'evidence' ? 'evidence' : 'default',
     });
     setContentBrief(brief);
     syncBriefToLibrary(brief);
@@ -1985,6 +2052,19 @@ export default function App() {
     }));
   };
 
+  const generateOutlineFromEvidenceBrief = () => {
+    if (!contentBrief) {
+      toast('请先填写任务提案');
+      return;
+    }
+    const missing = missingRequiredBriefLabels(contentBrief, 'evidence');
+    if (missing.length) {
+      toast(`请先填写必填项：${missing.join('、')}`);
+      return;
+    }
+    fillQuick(outlineCommandFromEvidenceFormat(contentBrief.format));
+  };
+
   const literatureQueryFromPage = (prefer: 'brief' | 'storyline' | 'auto' = 'auto') => {
     const fromStoryline = storylineContent.trim().slice(0, 800);
     const fromBrief = contentBrief ? literatureQueryFromBrief(contentBrief) : '';
@@ -1999,7 +2079,11 @@ export default function App() {
     chatQuery = ''
   ) => {
     if (omitsBriefLiterature(flowEntry, entryContext?.source)) {
-      toast('病例内容与学术证据解读不包含任务提案 / 文献步骤');
+      toast('病例内容不包含任务提案 / 文献步骤');
+      return;
+    }
+    if (omitsLiteratureRecommend(flowEntry, entryContext?.source)) {
+      toast('学术证据解读不包含相关文献推荐步骤');
       return;
     }
 
@@ -2035,6 +2119,10 @@ export default function App() {
   };
 
   const openStoryline = () => {
+    if (omitsStoryline(flowEntry, entryContext?.source)) {
+      toast('学术证据解读不包含故事线步骤');
+      return;
+    }
     setStorylineContent((prev) => prev.trim() || STORYLINE_MOCK_TEXT);
     setFlowEntry((prev) => nextLockedFlowEntry(prev, 'storyline'));
     setState((prev) => ({
@@ -2166,9 +2254,26 @@ export default function App() {
       (/检索文献|搜索文献|文献检索|search\s*literature|find\s*papers/i.test(text) ||
         isGenerateBriefIntent(text) ||
         text.trim() === '查看 Brief' ||
-        text.trim() === '查看任务提案')
+        text.trim() === '查看任务提案' ||
+        text.trim() === '填写任务提案')
     ) {
-      toast('病例内容与学术证据解读不包含任务提案 / 文献步骤');
+      toast('病例内容不包含任务提案 / 文献步骤');
+      return true;
+    }
+
+    if (
+      omitsLiteratureRecommend(flowEntry, entryContext?.source) &&
+      /检索文献|搜索文献|文献检索|search\s*literature|find\s*papers/i.test(text)
+    ) {
+      toast('学术证据解读不包含相关文献推荐步骤');
+      return true;
+    }
+
+    if (
+      omitsStoryline(flowEntry, entryContext?.source) &&
+      (text.trim() === '生成故事线' || text.trim() === '下一步：生成故事线' || text.trim() === '下一步：相关文献推荐')
+    ) {
+      toast('学术证据解读不包含故事线步骤');
       return true;
     }
 
@@ -2710,6 +2815,19 @@ export default function App() {
     voiceBaseRef.current = '';
     setSelectedPrompt('');
     setAttachments([]);
+    if (entryContext?.source === 'more') {
+      const action = matchVideoStudioCommand(text);
+      if (action) {
+        applyVideoStudioAction(action);
+        return;
+      }
+      addMsg(
+        'ai',
+        '当前处于视频制作流程。请使用中间区域的操作按钮，或输入固定指令，例如「生成主角形象」「生成分镜脚本」。',
+        '本地 Mock'
+      );
+      return;
+    }
     if (runWorkspaceMockCommand(text)) return;
     if (runDemoScenarioScript(text, { addUserMessage: false })) return;
     if (visualWizard?.active && handleVisualWizardReply(text)) return;
@@ -2808,11 +2926,6 @@ export default function App() {
       return;
     }
     retry();
-  };
-
-  const insertWorkspaceGuide = (prefix: string) => {
-    setInputValue(prefix);
-    setSelectedPrompt(prefix.replace(/[：:]\s*$/, ''));
   };
 
   const executeHotInsightReportSkill = (userNote = '') => {
@@ -4077,6 +4190,20 @@ export default function App() {
       toast('请等待当前 AI 生成完成');
       return;
     }
+    if (entryContext?.source === 'more') {
+      addMsg('user', text, selectedModel);
+      const action = matchVideoStudioCommand(text);
+      if (action) {
+        applyVideoStudioAction(action);
+        return;
+      }
+      addMsg(
+        'ai',
+        '当前处于视频制作流程。请使用中间区域的操作按钮，或输入固定指令，例如「生成主角形象」「生成分镜脚本」。',
+        '本地 Mock'
+      );
+      return;
+    }
     if (text === '填写任务提案') {
       startTaskProposal();
       return;
@@ -4100,6 +4227,10 @@ export default function App() {
       return;
     }
     if (text === '生成故事线' || text === '下一步：生成故事线') {
+      if (omitsStoryline(flowEntry, entryContext?.source)) {
+        toast('学术证据解读不包含故事线步骤');
+        return;
+      }
       openStoryline();
       return;
     }
@@ -4108,6 +4239,10 @@ export default function App() {
       return;
     }
     if (text === '下一步：相关文献推荐') {
+      if (omitsStoryline(flowEntry, entryContext?.source)) {
+        toast('学术证据解读不包含故事线步骤');
+        return;
+      }
       openStoryline();
       return;
     }
@@ -4283,12 +4418,12 @@ export default function App() {
       openImageEditor(generatedImages[pick] || posterData, pick);
       return;
     }
-    if (
-      text === '生成视频' ||
-      text.includes('生成视频') ||
-      text.includes('视频脚本') ||
-      text.includes('视频')
-    ) {
+    if (text.includes('视频')) {
+      if (isVideoStudioFlow()) {
+        const action = matchVideoStudioCommand(text);
+        if (action) applyVideoStudioAction(action);
+        return;
+      }
       if (text === '重新生成视频' && videoResult) {
         confirmVideoRender();
       } else {
@@ -4366,6 +4501,37 @@ export default function App() {
       }
       return { ...prev, active: key };
     });
+  };
+
+  const isVideoStudioFlow = () => entryContext?.source === 'more';
+
+  const applyVideoStudioAction = (action: VideoStudioAction) => {
+    const result = reduceVideoStudio(videoStudioRef.current, action);
+    setVideoStudio(result.state);
+    setState((prev) => ({
+      ...prev,
+      videoBrief: result.state.briefConfirmed,
+      videoHero: result.state.heroReady,
+      videoStoryboard: result.state.storyboardReady,
+      videoFrames: result.state.framesReady,
+      videoRender: result.state.clipsReady || result.state.finalReady || prev.videoRender,
+      team: result.state.teamReady || prev.team,
+      submit: result.state.submitted || prev.submit,
+    }));
+    if (result.tab) addTab(result.tab);
+    if (result.syncVideo) {
+      const version = getPatientEducationVideoVersion();
+      setVideoResult(toVideoResult(result.state));
+      setVideoVersions([version]);
+      setSelectedVideoVersionId(version.id);
+    }
+    if (result.aiHtml) {
+      addMsg('ai', result.aiHtml.replace(/\n/g, '<br>'), '本地 Mock');
+    }
+    if (result.toast) toast(result.toast);
+    if (result.openTeam) {
+      window.setTimeout(() => openTeamReview('video'), 0);
+    }
   };
 
   const clearDemoTimers = () => {
@@ -7018,7 +7184,7 @@ export default function App() {
 
       {/* Workspace Screen */}
       <section className={`screen ${currentScreen === 'workspace' ? 'active' : ''}`}>
-        <div className={`workspace relative z-10 ${reviewFocusMode ? 'reviewer-focus' : ''} ${!reviewFocusMode && !contextPanelOpen ? 'context-collapsed' : ''}`}>
+        <div className={`workspace relative z-10 ${reviewFocusMode ? 'reviewer-focus' : ''} ${!reviewFocusMode && !contextPanelOpen ? 'context-collapsed' : ''} ${!reviewFocusMode && !chatPanelOpen ? 'chat-collapsed' : ''}`}>
           {!reviewFocusMode && (
           <aside className={`wpanel context context-sidebar ${contextPanelOpen ? 'open' : 'collapsed'}`}>
             {contextPanelOpen ? (
@@ -7065,7 +7231,9 @@ export default function App() {
                               ? 'insight'
                               : entryContext?.source === 'promo'
                                 ? 'promo'
-                                : 'default'
+                                : entryContext?.source === 'more'
+                                  ? 'video'
+                                  : 'default'
                     }
                     onOpenPicker={(category) => {
                       setPickerTarget('workspace');
@@ -7086,6 +7254,12 @@ export default function App() {
                       toast(`已从引用素材中移除「${item.title}」`);
                     }}
                   />
+                  {entryContext?.source === 'more' ? (
+                    <VideoStudioArtifacts
+                      studio={videoStudio}
+                      onSelect={(view) => applyVideoStudioAction({ type: 'goto', view })}
+                    />
+                  ) : null}
                 </div>
               </>
             ) : (
@@ -7107,10 +7281,13 @@ export default function App() {
           )}
 
           {!reviewFocusMode ? (
-          <main className="wpanel chat relative overflow-hidden">
+          <main className={`wpanel chat relative overflow-hidden ${chatPanelOpen ? 'open' : 'collapsed'}`}>
+            {chatPanelOpen ? (
+            <>
             <SparkleField />
             <div className="relative z-10 flex h-full flex-col">
             <div className="chat-head">
+              <div className="chat-head-row">
               <div className="chat-title workspace-panel-title">
                 <span className="context-sidebar-head-icon" aria-hidden>
                   <MessageSquare className="h-4 w-4" strokeWidth={2.2} />
@@ -7153,6 +7330,16 @@ export default function App() {
                       当前场次：{currentMeetingSession(meetingMaterials)?.name}
                     </span>
                   )}
+              </div>
+              <button
+                type="button"
+                className="context-sidebar-collapse-btn"
+                onClick={() => setChatPanelOpen(false)}
+                title="收起对话"
+                aria-label="收起对话"
+              >
+                <ChevronRight className="h-3.5 w-3.5" strokeWidth={2.5} />
+              </button>
               </div>
             </div>
 
@@ -7274,23 +7461,36 @@ export default function App() {
                         </div>
                       </div>
                     )}
-                    {msg.quick && msg.quick.length > 0 && (
-                      <div className="chips">
-                        {msg.quick.map((q, i) => (
-                          <button
-                            key={i}
-                            type="button"
-                            className={`chip ${msg.role === 'ai' && i === 0 ? 'recommended' : ''}`}
-                            onClick={() => fillQuick(q)}
-                          >
-                            {q}
-                          </button>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 </div>
               ))}
+              {entryContext?.source === 'more' &&
+              videoStudio.framesReady &&
+              state.active === 'video-frames' ? (
+                <div className="msg ai video-frame-picker-message">
+                  <div className="avatar">AI</div>
+                  <div className="bubble">
+                    <strong>片段首帧</strong>
+                    <p>点选下方任一张首帧，中间区域会切换到对应画面；可继续圈选修改或重新生成。</p>
+                    <div className="video-frame-chat-grid">
+                      {VIDEO_CLIPS.map((clip) => {
+                        const version = videoStudio.frameVersions[clip.id] || 'base';
+                        return (
+                          <button
+                            key={clip.id}
+                            type="button"
+                            className={videoStudio.selectedClipId === clip.id ? 'is-selected' : ''}
+                            onClick={() => applyVideoStudioAction({ type: 'selectClip', clipId: clip.id })}
+                          >
+                            <img src={firstFrameUrl(clip.id, version)} alt={`${clip.name}首帧`} />
+                            <span>{clip.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             <div className="composer">
@@ -7323,36 +7523,7 @@ export default function App() {
                 </div>
               )}
 
-              {!reviewFocusMode && (
-                <div className="composer-guides quick-row">
-                  {WORKSPACE_QUICK_PROMPTS.filter((item) =>
-                    omitsTopicInsight(flowEntry, entryContext?.source)
-                      ? !item.label.includes('话题洞察')
-                      : true
-                  ).map(({ label, prefix }) => (
-                    <button
-                      key={label}
-                      type="button"
-                      className="chip"
-                      onClick={() => insertWorkspaceGuide(prefix)}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              )}
-
               <div className={`compose-shell${speech.listening ? ' is-listening' : ''}`}>
-                <button
-                  type="button"
-                  className="compose-attach"
-                  title="添加附件"
-                  aria-label="添加附件"
-                  onClick={() => openMaterialPicker('chat')}
-                  disabled={speech.listening}
-                >
-                  <Plus className="h-4 w-4" strokeWidth={2.4} />
-                </button>
                 {speech.listening ? (
                   <div className="compose-voice-live" aria-live="polite">
                     <span className="compose-voice-bars" aria-hidden>
@@ -7370,7 +7541,7 @@ export default function App() {
                     className="compose-input"
                     placeholder={getComposerPlaceholder()}
                     value={inputValue}
-                    rows={1}
+                    rows={4}
                     onChange={(e) => {
                       setInputValue(e.target.value);
                       voiceBaseRef.current = e.target.value;
@@ -7384,67 +7555,79 @@ export default function App() {
                     }}
                   />
                 )}
-                <div className="compose-actions">
-                  {!speech.listening && (
-                    <select
-                      className="model-select"
-                      value={selectedModel}
-                      onChange={(e) => setSelectedModel(e.target.value)}
-                      aria-label="选择模型"
-                    >
-                      <option>GPT-5.5</option>
-                    </select>
-                  )}
-                  {speech.listening ? (
-                    <>
-                      <button
-                        type="button"
-                        className="compose-voice-stop"
-                        onClick={stopVoiceInput}
-                        title="停止录音"
-                        aria-label="停止录音"
+                <div className="compose-toolbar">
+                  <button
+                    type="button"
+                    className="compose-attach"
+                    title="添加附件"
+                    aria-label="添加附件"
+                    onClick={() => openMaterialPicker('chat')}
+                    disabled={speech.listening}
+                  >
+                    <Plus className="h-4 w-4" strokeWidth={2.4} />
+                  </button>
+                  <div className="compose-actions">
+                    {!speech.listening && (
+                      <select
+                        className="model-select"
+                        value={selectedModel}
+                        onChange={(e) => setSelectedModel(e.target.value)}
+                        aria-label="选择模型"
                       >
-                        <Square className="h-3.5 w-3.5" strokeWidth={2.6} fill="currentColor" />
-                      </button>
-                      <button
-                        type="button"
-                        className="compose-send"
-                        onClick={send}
-                        disabled={workspaceElementBusy || !(inputValue.trim() || speech.interimTranscript.trim())}
-                        title="发送"
-                        aria-label="发送"
-                      >
-                        <ArrowUp className="h-4 w-4" strokeWidth={2.6} />
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        className="compose-mic"
-                        onClick={startVoiceInput}
-                        disabled={workspaceElementBusy}
-                        title="语音输入"
-                        aria-label="语音输入"
-                      >
-                        <Mic className="h-4 w-4" strokeWidth={2.4} />
-                      </button>
-                      <button
-                        type="button"
-                        className="compose-send"
-                        onClick={send}
-                        disabled={workspaceElementBusy || !inputValue.trim()}
-                        title={workspaceElementBusy ? '修改中…' : '发送'}
-                        aria-label={workspaceElementBusy ? '修改中' : '发送'}
-                      >
-                        {workspaceElementBusy ? (
-                          <span className="compose-send-label">…</span>
-                        ) : (
+                        <option>GPT-5.5</option>
+                      </select>
+                    )}
+                    {speech.listening ? (
+                      <>
+                        <button
+                          type="button"
+                          className="compose-voice-stop"
+                          onClick={stopVoiceInput}
+                          title="停止录音"
+                          aria-label="停止录音"
+                        >
+                          <Square className="h-3.5 w-3.5" strokeWidth={2.6} fill="currentColor" />
+                        </button>
+                        <button
+                          type="button"
+                          className="compose-send"
+                          onClick={send}
+                          disabled={workspaceElementBusy || !(inputValue.trim() || speech.interimTranscript.trim())}
+                          title="发送"
+                          aria-label="发送"
+                        >
                           <ArrowUp className="h-4 w-4" strokeWidth={2.6} />
-                        )}
-                      </button>
-                    </>
-                  )}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className="compose-mic"
+                          onClick={startVoiceInput}
+                          disabled={workspaceElementBusy}
+                          title="语音输入"
+                          aria-label="语音输入"
+                        >
+                          <Mic className="h-4 w-4" strokeWidth={2.4} />
+                        </button>
+                        <button
+                          type="button"
+                          className="compose-send"
+                          onClick={send}
+                          disabled={workspaceElementBusy || !inputValue.trim()}
+                          title={workspaceElementBusy ? '修改中…' : '发送'}
+                          aria-label={workspaceElementBusy ? '修改中' : '发送'}
+                        >
+                          {workspaceElementBusy ? (
+                            <span className="compose-send-label">…</span>
+                          ) : (
+                            <ArrowUp className="h-4 w-4" strokeWidth={2.6} />
+                          )}
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -7737,6 +7920,19 @@ export default function App() {
               </div>
             )}
             </div>
+            </>
+            ) : (
+              <button
+                type="button"
+                className="context-sidebar-expand-tab"
+                onClick={() => setChatPanelOpen(true)}
+                title="展开对话"
+                aria-label="展开对话"
+              >
+                <MessageSquare className="h-[18px] w-[18px]" strokeWidth={2} />
+                <span className="context-sidebar-expand-label">对话</span>
+              </button>
+            )}
           </main>
           ) : (
           <main className="wpanel reviewer-task-main">
@@ -7931,6 +8127,8 @@ export default function App() {
             storylineContent={storylineContent}
             onStorylineChange={setStorylineContent}
             meetingMaterials={meetingMaterials}
+            videoStudio={videoStudio}
+            onVideoStudioAction={applyVideoStudioAction}
             meetingInfoDraft={meetingInfoDraft}
             onMeetingMaterialsChange={setMeetingMaterials}
             onMeetingInfoDraftChange={setMeetingInfoDraft}
@@ -7951,6 +8149,10 @@ export default function App() {
             onImportLocalPoster={() => posterImportInputRef.current?.click()}
             onSelectFlowStep={(step) => {
               if (step.id === 'team') {
+                if (entryContext?.source === 'more') {
+                  applyVideoStudioAction({ type: 'startTeamReview' });
+                  return;
+                }
                 const type: TeamContentType =
                   flowEntry === 'conferencePoster' ||
                   flowEntry === 'visual' ||
@@ -7976,6 +8178,28 @@ export default function App() {
                 }
                 addTab('copy');
                 return;
+              }
+              if (entryContext?.source === 'more' || flowEntry === 'video') {
+                if (entryContext?.source === 'more') {
+                  if (step.id === 'create') {
+                    setState((prev) => ({ ...prev, active: null }));
+                    return;
+                  }
+                  const viewMap = {
+                    videoBrief: 'brief',
+                    videoHero: 'hero',
+                    videoStoryboard: 'storyboard',
+                    videoFrames: 'frames',
+                    video: videoStudio.finalReady ? 'final' : 'clips',
+                    team: 'team',
+                    submit: 'submit',
+                  } as const;
+                  const view = viewMap[step.id as keyof typeof viewMap];
+                  if (view) {
+                    applyVideoStudioAction({ type: 'goto', view });
+                    return;
+                  }
+                }
               }
               if (flowEntry === 'conferencePoster' || entryContext?.source === 'poster') {
                 if (step.id === 'create') {
@@ -8011,6 +8235,10 @@ export default function App() {
                 }
               }
               if (step.id === 'storyline') {
+                if (omitsStoryline(flowEntry, entryContext?.source)) {
+                  toast('学术证据解读不包含故事线步骤');
+                  return;
+                }
                 openStoryline();
                 return;
               }
@@ -8030,6 +8258,13 @@ export default function App() {
             }}
             onUploadBrief={() => openMaterialPicker('workspace', 'Brief')}
             onFillTaskProposal={startTaskProposal}
+            onOpenAddEvidenceMaterial={() => {
+              setPickerTarget('workspace');
+              setPickerCat('目标解读材料');
+              setPickerMode('reference');
+              setPickerOpen(true);
+            }}
+            onGenerateEvidenceOutline={generateOutlineFromEvidenceBrief}
             onOpenInsightStep={openInsightWorkspace}
             onOpenReferenceMaterials={openReferenceMaterials}
             onGenerateInsightReport={runTopicInsightReport}
@@ -8995,6 +9230,8 @@ function WorkspaceRightPanel({
   storylineContent,
   onStorylineChange,
   meetingMaterials,
+  videoStudio,
+  onVideoStudioAction,
   meetingInfoDraft,
   onMeetingMaterialsChange,
   onMeetingInfoDraftChange,
@@ -9014,6 +9251,8 @@ function WorkspaceRightPanel({
   onSelectFlowStep,
   onUploadBrief,
   onFillTaskProposal,
+  onOpenAddEvidenceMaterial,
+  onGenerateEvidenceOutline,
   onOpenInsightStep,
   onOpenReferenceMaterials,
   onGenerateInsightReport,
@@ -9131,6 +9370,8 @@ function WorkspaceRightPanel({
   storylineContent?: string;
   onStorylineChange?: (text: string) => void;
   meetingMaterials?: MeetingMaterialsState;
+  videoStudio?: VideoStudioState;
+  onVideoStudioAction?: (action: VideoStudioAction) => void;
   meetingInfoDraft?: MeetingSessionInfo | null;
   onMeetingMaterialsChange?: React.Dispatch<React.SetStateAction<MeetingMaterialsState>>;
   onMeetingInfoDraftChange?: (draft: MeetingSessionInfo | null) => void;
@@ -9151,6 +9392,8 @@ function WorkspaceRightPanel({
   onSelectFlowStep: (step: ContentFlowStep) => void;
   onUploadBrief?: () => void;
   onFillTaskProposal?: () => void;
+  onOpenAddEvidenceMaterial?: () => void;
+  onGenerateEvidenceOutline?: () => void;
   onOpenInsightStep?: () => void;
   onOpenReferenceMaterials?: () => void;
   onGenerateInsightReport?: () => void;
@@ -9198,8 +9441,14 @@ function WorkspaceRightPanel({
     mobile: Boolean(hasConferenceMobile),
     meetingTemplates: Boolean(meetingMaterials?.templatesReady),
     sessionMaterials: Boolean(meetingMaterials?.sessions.length),
-    video: Boolean(videoResult || videoVersions.length),
-    team: Boolean(teamResult),
+    videoBrief: Boolean(videoStudio?.briefConfirmed),
+    videoHero: Boolean(videoStudio?.heroReady),
+    videoStoryboard: Boolean(videoStudio?.storyboardReady),
+    videoFrames: Boolean(videoStudio?.framesReady),
+    video: Boolean(
+      videoStudio?.clipsReady || videoStudio?.finalReady || videoResult || videoVersions.length
+    ),
+    team: Boolean(teamResult || videoStudio?.teamReady),
     submit: state.submit,
   };
   const entryLabel =
@@ -9248,6 +9497,24 @@ function WorkspaceRightPanel({
             : previewedImageAssetKey === 'kv' || state.active === 'visual'
               ? 'kv'
               : 'create'
+      : flowEntry === 'video' && entryContext?.source === 'more'
+        ? !state.active
+          ? 'create'
+          : state.active === 'video-brief'
+            ? 'videoBrief'
+            : state.active === 'video-hero'
+              ? 'videoHero'
+              : state.active === 'video-storyboard'
+                ? 'videoStoryboard'
+                : state.active === 'video-frames'
+                  ? 'videoFrames'
+                  : state.active === 'video-render'
+                    ? 'video'
+                    : state.active === 'team'
+                      ? 'team'
+                      : state.active === 'submit'
+                        ? 'submit'
+                        : 'videoBrief'
       : flowEntry === 'script' && (scriptContent.trim() || state.active === 'copy')
         ? 'copy'
         : undefined;
@@ -9464,6 +9731,33 @@ function WorkspaceRightPanel({
 
   const renderDetail = () => {
     const k = state.active;
+    if (entryContext?.source === 'more' && videoStudio && onVideoStudioAction) {
+      if (!k) {
+        return (
+          <div className="workspace-surface-panel video-studio-panel">
+            <div className="topic-insight-title-row">
+              <h1>任务已创建</h1>
+            </div>
+            <p className="small meeting-surface-hint">
+              已选择产品「{selectedProduct?.name || videoStudio.brief.brand}」。请填写视频需求后生成主角形象、分镜脚本和视频画面。
+            </p>
+            <div className="video-studio-actions">
+              <button type="button" className="btn primary" onClick={() => onVideoStudioAction({ type: 'goto', view: 'brief' })}>
+                填写视频需求
+              </button>
+            </div>
+          </div>
+        );
+      }
+      if (isVideoStudioTab(k)) {
+        return (
+          <VideoStudioWorkspace
+            studio={{ ...videoStudio, view: videoStudioViewForTab(k, videoStudio) }}
+            dispatch={onVideoStudioAction}
+          />
+        );
+      }
+    }
     if (!k) {
       if (reviewerMode) {
         return (
@@ -9475,6 +9769,51 @@ function WorkspaceRightPanel({
       }
       if (entryContext?.source === 'poster') {
         return <MeetingWelcomePanel onGenerateKv={() => fillQuick('生成主KV')} />;
+      }
+      if (entryContext?.source === 'evidence') {
+        return (
+          <div className="detail-card content-flow-task-card">
+            <div className="content-flow-task-card-head">
+              <h4>任务已创建</h4>
+              <button type="button" className="btn primary" onClick={() => onFillTaskProposal?.()}>
+                填写任务提案
+              </button>
+            </div>
+            <ol className="content-flow-start-steps">
+              <li className="content-flow-start-step">
+                <span className="content-flow-start-index" aria-hidden>
+                  1
+                </span>
+                <div className="content-flow-start-body">
+                  <p>您可以上传目标解读文献，作为本次学术证据解读的依据。</p>
+                  <div className="content-flow-start-actions">
+                    <button type="button" className="btn primary" onClick={() => onOpenAddEvidenceMaterial?.()}>
+                      文献
+                    </button>
+                  </div>
+                </div>
+              </li>
+              <li className="content-flow-start-step">
+                <span className="content-flow-start-index" aria-hidden>
+                  2
+                </span>
+                <div className="content-flow-start-body">
+                  <p>可以打开已有文件，针对已有文件进行进一步编辑。</p>
+                  <div className="content-flow-start-actions">
+                    <button type="button" className="btn primary" onClick={onOpenLocalFile}>
+                      <FolderOpen className="h-4 w-4" />
+                      打开本地文件
+                    </button>
+                    <button type="button" className="btn primary" onClick={onOpenCmsFile}>
+                      <Database className="h-4 w-4" />
+                      打开 CMS 文件
+                    </button>
+                  </div>
+                </div>
+              </li>
+            </ol>
+          </div>
+        );
       }
       if (entryContext?.source === 'promo') {
         return (
@@ -9541,9 +9880,7 @@ function WorkspaceRightPanel({
               ? '请您上传脱敏后的病例原始素材，如需生成专家点评，请上传过往专家点评示例'
               : entryContext?.source === 'poster'
                 ? '从主KV开始制作系列会议海报与串场PPT。'
-                : entryContext?.source === 'evidence'
-                  ? '请添加待解读的目标材料，也可补充其他参考知识。'
-                  : entryContext?.source === 'insight'
+                : entryContext?.source === 'insight'
                     ? '请添加参考知识或品牌策略，以便生成话题洞察。'
                     : '您可以先上传品牌策略或其他参考文献进行话题洞察；也可以直接上传 brief，开启 PPT 从零到一的制作流程。当然，您也可以选择打开本地文件，基于本地文件进行在线编辑。'}
           </p>
@@ -9942,10 +10279,13 @@ function WorkspaceRightPanel({
         return (
           <ContentBriefPanel
             brief={contentBrief}
+            variant={entryContext?.source === 'evidence' ? 'evidence' : 'default'}
             onChange={(next) => onContentBriefChange?.(next)}
             onUpload={() => onUploadBrief?.()}
             onRecommendLiterature={() => onRecommendLiterature?.('brief')}
-            onNext={() => onOpenStoryline?.()}
+            onNext={() =>
+              entryContext?.source === 'evidence' ? onGenerateEvidenceOutline?.() : onOpenStoryline?.()
+            }
           />
         );
 
@@ -11135,7 +11475,9 @@ function WorkspaceRightPanel({
           </div>
         )}
         <div className={selectedHistory ? 'preview-history-readonly' : undefined}>
-        {(flowEntry === 'conferencePoster' || entryContext?.source === 'poster') &&
+        {entryContext?.source === 'more' && (isVideoStudioTab(state.active) || !state.active) ? (
+          renderDetail()
+        ) : (flowEntry === 'conferencePoster' || entryContext?.source === 'poster') &&
         (state.active === 'meeting-templates' || state.active === 'meeting-sessions') ? (
           renderDetail()
         ) : (flowEntry === 'conferencePoster' || entryContext?.source === 'poster') &&

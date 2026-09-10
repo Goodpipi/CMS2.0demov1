@@ -38,6 +38,10 @@ export type ContentFlowStepId =
   | 'mobile'
   | 'meetingTemplates'
   | 'sessionMaterials'
+  | 'videoBrief'
+  | 'videoHero'
+  | 'videoStoryboard'
+  | 'videoFrames'
   | 'video'
   | 'team'
   | 'submit'
@@ -70,6 +74,10 @@ export interface ContentFlowProgress {
   mobile: boolean;
   meetingTemplates: boolean;
   sessionMaterials: boolean;
+  videoBrief: boolean;
+  videoHero: boolean;
+  videoStoryboard: boolean;
+  videoFrames: boolean;
   video: boolean;
   team: boolean;
   submit: boolean;
@@ -92,7 +100,11 @@ const CORE: Record<Exclude<ContentFlowStepId, 'pending'>, Omit<ContentFlowStep, 
   mobile: { id: 'mobile', label: '一键手机', tab: 'visual' },
   meetingTemplates: { id: 'meetingTemplates', label: '生成会议模板', tab: 'meeting-templates' },
   sessionMaterials: { id: 'sessionMaterials', label: '生成场次物料', tab: 'meeting-sessions' },
-  video: { id: 'video', label: '视频', tab: 'video-render' },
+  videoBrief: { id: 'videoBrief', label: '视频需求', tab: 'video-brief' },
+  videoHero: { id: 'videoHero', label: '主角形象', tab: 'video-hero' },
+  videoStoryboard: { id: 'videoStoryboard', label: '分镜脚本', tab: 'video-storyboard' },
+  videoFrames: { id: 'videoFrames', label: '片段首帧', tab: 'video-frames' },
+  video: { id: 'video', label: '视频生成', tab: 'video-render' },
   team: { id: 'team', label: '意见收集', tab: 'team' },
   submit: { id: 'submit', label: '提交Veeva审批', tab: 'submit' },
 };
@@ -122,7 +134,16 @@ export function flowEntryFromTab(tab: TabKey | null | undefined): ContentFlowEnt
   if (tab === 'rich-text') return 'articleOutline';
   if (tab === 'visual') return 'visual';
   if (tab === 'meeting-templates' || tab === 'meeting-sessions') return 'conferencePoster';
-  if (tab === 'video-render' || tab === 'video-script') return 'video';
+  if (
+    tab === 'video-render' ||
+    tab === 'video-script' ||
+    tab === 'video-brief' ||
+    tab === 'video-hero' ||
+    tab === 'video-storyboard' ||
+    tab === 'video-frames'
+  ) {
+    return 'video';
+  }
   if (tab === 'team') return 'team';
   return null;
 }
@@ -133,14 +154,19 @@ export function flowEntryFromSource(source?: string | null): ContentFlowEntry | 
   if (source === 'case') return 'case';
   if (source === 'evidence') return 'evidence';
   if (source === 'insight') return 'insight';
+  if (source === 'more') return 'video';
   return null;
+}
+
+export function isEvidenceFlow(entry?: ContentFlowEntry | null, source?: string | null): boolean {
+  return entry === 'evidence' || source === 'evidence';
 }
 
 export function omitsBriefLiterature(
   entry?: ContentFlowEntry | null,
   source?: string | null
 ): boolean {
-  return entry === 'case' || entry === 'evidence' || source === 'case' || source === 'evidence';
+  return entry === 'case' || source === 'case';
 }
 
 export function omitsTopicInsight(
@@ -148,6 +174,17 @@ export function omitsTopicInsight(
   source?: string | null
 ): boolean {
   return entry === 'case' || entry === 'evidence' || source === 'case' || source === 'evidence';
+}
+
+export function omitsStoryline(entry?: ContentFlowEntry | null, source?: string | null): boolean {
+  return isEvidenceFlow(entry, source);
+}
+
+export function omitsLiteratureRecommend(
+  entry?: ContentFlowEntry | null,
+  source?: string | null
+): boolean {
+  return omitsBriefLiterature(entry, source) || isEvidenceFlow(entry, source);
 }
 
 const PENDING_FLOW_ENTRIES = new Set<ContentFlowEntry>(['case', 'evidence', 'promo', 'general']);
@@ -158,8 +195,8 @@ export function isPendingFlowEntry(entry?: ContentFlowEntry | null): boolean {
 
 const FLOW_FAMILIES: Record<ContentFlowEntry, ContentFlowEntry[]> = {
   insight: ['insight', 'brief', 'storyline', 'outline', 'ppt', 'team'],
-  brief: ['brief', 'storyline', 'outline', 'ppt', 'team'],
-  literature: ['brief', 'storyline', 'outline', 'ppt', 'team'],
+  brief: ['brief', 'storyline', 'outline', 'ppt', 'articleOutline', 'longImageOutline', 'copy', 'visual', 'team'],
+  literature: ['brief', 'storyline', 'outline', 'ppt', 'articleOutline', 'longImageOutline', 'copy', 'visual', 'team'],
   storyline: ['storyline', 'outline', 'ppt', 'team'],
   outline: ['outline', 'ppt', 'team'],
   ppt: ['outline', 'ppt', 'team'],
@@ -191,6 +228,8 @@ export function nextLockedFlowEntry(
   if (next === 'team' || next === 'submit') return prev ?? next;
   if (omitsTopicInsight(prev) && next === 'insight') return prev;
   if (omitsBriefLiterature(prev) && (next === 'brief' || next === 'literature')) return prev;
+  if (omitsLiteratureRecommend(prev) && next === 'literature') return prev;
+  if (omitsStoryline(prev) && next === 'storyline') return prev;
   if (isPendingFlowEntry(prev)) return normalizeFirstAction(next);
   const family = FLOW_FAMILIES[prev] ?? [prev];
   if (family.includes(next) || next === prev) return prev;
@@ -272,12 +311,17 @@ export function buildContentFlowSteps(
       | 'articleOutline'
       | 'longImageOutline'
       | 'ppt'
+      | 'videoBrief'
+      | 'videoHero'
+      | 'videoStoryboard'
+      | 'videoFrames'
     >
   > = {},
   source?: string | null
 ): ContentFlowStep[] {
   const skipBriefLiterature = omitsBriefLiterature(entry, source);
   const skipInsight = omitsTopicInsight(entry, source);
+  const skipStoryline = omitsStoryline(entry, source);
   const locked = isPendingFlowEntry(entry) ? inferLockedPath(extras, source) : entry;
 
   if (!locked || isPendingFlowEntry(locked)) {
@@ -286,19 +330,36 @@ export function buildContentFlowSteps(
 
   const steps: ContentFlowStep[] = [step('create', true)];
 
+  const evidenceProductSteps = (): ContentFlowStep[] => {
+    if (extras.articleOutline) return [step('articleOutline', true), articleCopyStep(true)];
+    if (extras.longImageOutline || extras.visual) {
+      return [step('longImageOutline', true), longImageVisualStep(true)];
+    }
+    return [step('outline', true), step('ppt', true)];
+  };
+
   if (locked === 'insight' && !skipInsight) {
     steps.push(step('insight', true));
     if (!skipBriefLiterature) steps.push(step('brief', true));
-    steps.push(step('storyline', true), step('outline', true), step('ppt', true));
+    if (!skipStoryline) steps.push(step('storyline', true));
+    steps.push(step('outline', true), step('ppt', true));
   } else if ((locked === 'brief' || locked === 'literature') && !skipBriefLiterature) {
-    steps.push(step('brief', true), step('storyline', true), step('outline', true), step('ppt', true));
+    steps.push(step('brief', true));
+    if (skipStoryline) {
+      steps.push(...evidenceProductSteps());
+    } else {
+      steps.push(step('storyline', true), step('outline', true), step('ppt', true));
+    }
   } else if (locked === 'storyline') {
     steps.push(step('storyline', true), step('outline', true), step('ppt', true));
   } else if (locked === 'outline' || locked === 'ppt') {
+    if (skipStoryline && extras.brief && !skipBriefLiterature) steps.push(step('brief', true));
     steps.push(step('outline', true), step('ppt', true));
   } else if (locked === 'articleOutline') {
+    if (skipStoryline && extras.brief && !skipBriefLiterature) steps.push(step('brief', true));
     steps.push(step('articleOutline', true), articleCopyStep(true));
   } else if (locked === 'longImageOutline' || locked === 'visual') {
+    if (skipStoryline && extras.brief && !skipBriefLiterature) steps.push(step('brief', true));
     steps.push(step('longImageOutline', true), longImageVisualStep(true));
   } else if (locked === 'script') {
     steps.push(scriptCopyStep(true));
@@ -307,7 +368,17 @@ export function buildContentFlowSteps(
   } else if (locked === 'conferencePoster') {
     steps.push(step('kv', true), step('meetingTemplates', true), step('sessionMaterials', true));
   } else if (locked === 'video') {
-    steps.push(step('video', true));
+    if (source === 'more') {
+      steps.push(
+        step('videoBrief', true),
+        step('videoHero', true),
+        step('videoStoryboard', true),
+        step('videoFrames', true),
+        step('video', true)
+      );
+    } else {
+      steps.push(step('video', true));
+    }
   } else if (locked === 'team') {
     steps.push(step('team', true));
   } else {
@@ -330,6 +401,10 @@ export function activeFlowStepId(active: TabKey | null): ContentFlowStepId {
   if (active === 'visual') return 'visual';
   if (active === 'meeting-templates') return 'meetingTemplates';
   if (active === 'meeting-sessions') return 'sessionMaterials';
+  if (active === 'video-brief') return 'videoBrief';
+  if (active === 'video-hero') return 'videoHero';
+  if (active === 'video-storyboard') return 'videoStoryboard';
+  if (active === 'video-frames') return 'videoFrames';
   if (active === 'video-render' || active === 'video-script') return 'video';
   if (active === 'team') return 'team';
   if (active === 'submit') return 'submit';

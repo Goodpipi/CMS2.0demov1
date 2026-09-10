@@ -1,4 +1,4 @@
-import { CONTENT_BRIEF_FIELDS } from '@/lib/contentBrief';
+import { briefFieldsFor, type ContentBriefVariant } from '@/lib/contentBrief';
 import type { ContentBrief } from '@/types/content';
 
 interface ContentBriefPanelProps {
@@ -7,6 +7,7 @@ interface ContentBriefPanelProps {
   onUpload: () => void;
   onRecommendLiterature: () => void;
   onNext: () => void;
+  variant?: ContentBriefVariant;
 }
 
 export function ContentBriefPanel({
@@ -15,27 +16,33 @@ export function ContentBriefPanel({
   onUpload,
   onRecommendLiterature,
   onNext,
+  variant = 'default',
 }: ContentBriefPanelProps) {
+  const evidence = variant === 'evidence';
+  const fields = briefFieldsFor(variant);
+
   return (
     <div className="workspace-surface-panel content-brief-panel">
       <div className="topic-insight-title-row">
         <div className="content-brief-title-heading">
           <h1>任务提案</h1>
-          <div className="content-brief-title-tools">
-            <button type="button" className="btn green" onClick={onRecommendLiterature}>
-              相关文献推荐
-            </button>
-            <button type="button" className="btn blue" onClick={onUpload}>
-              上传任务提案
-            </button>
-          </div>
+          {evidence ? null : (
+            <div className="content-brief-title-tools">
+              <button type="button" className="btn green" onClick={onRecommendLiterature}>
+                相关文献推荐
+              </button>
+              <button type="button" className="btn blue" onClick={onUpload}>
+                上传任务提案
+              </button>
+            </div>
+          )}
         </div>
         <button type="button" className="btn primary topic-insight-copy-btn" onClick={onNext}>
-          下一步：生成故事线
+          {evidence ? '生成页面级大纲' : '下一步：生成故事线'}
         </button>
       </div>
       <div className="content-brief-fields">
-        {CONTENT_BRIEF_FIELDS.map(({ key, label, required, multiline, rows, options }) => (
+        {fields.map(({ key, label, required, multiline, rows, options }) => (
           <label key={key} className={multiline ? 'content-brief-field is-wide' : 'content-brief-field'}>
             <span>
               {label}

@@ -391,6 +391,10 @@ export function applyTabForModificationTarget(
     visual: boolean;
     videoScript: boolean;
     videoRender: boolean;
+    videoBrief: boolean;
+    videoHero: boolean;
+    videoStoryboard: boolean;
+    videoFrames: boolean;
     pptOutline: boolean;
     articleOutline: boolean;
     longImageOutline: boolean;
@@ -413,6 +417,10 @@ export function applyTabForModificationTarget(
     visual: 'visual',
     'video-script': 'videoScript',
     'video-render': 'videoRender',
+    'video-brief': 'videoBrief',
+    'video-hero': 'videoHero',
+    'video-storyboard': 'videoStoryboard',
+    'video-frames': 'videoFrames',
     'ppt-outline': 'pptOutline',
     'article-outline': 'articleOutline',
     'long-image-outline': 'longImageOutline',

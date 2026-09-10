@@ -153,10 +153,10 @@ body {
 }
 
 .compose-shell {
-  min-height: 48px;
-  padding: var(--space-1);
-  gap: var(--space-1);
-  border-radius: 16px !important;
+  min-height: 132px;
+  padding: 12px 12px 10px;
+  gap: 4px;
+  border-radius: 18px !important;
 }
 
 .compose-input {
@@ -489,6 +489,14 @@ textarea,
 
   .workspace.context-collapsed {
     grid-template-columns: 56px minmax(0, 58fr) minmax(260px, 26fr);
+  }
+
+  .workspace.chat-collapsed {
+    grid-template-columns: minmax(196px, 16fr) minmax(0, 58fr) 56px;
+  }
+
+  .workspace.context-collapsed.chat-collapsed {
+    grid-template-columns: 56px minmax(0, 1fr) 56px;
   }
 
   .context-sidebar-head,

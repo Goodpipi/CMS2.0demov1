@@ -20,6 +20,7 @@ import type { TaskProduct } from '@/lib/products';
 import type { CopyRevision, ImageReviewStatus } from '@/types/review';
 import type { ModificationTask } from '@/lib/modificationTasks';
 import type { MeetingMaterialsState } from '@/lib/meetingMaterialsMocks';
+import type { VideoStudioState } from '@/lib/videoStudioMocks';
 
 export type TabKey =
   | 'insight'
@@ -31,6 +32,10 @@ export type TabKey =
   | 'visual'
   | 'video-script'
   | 'video-render'
+  | 'video-brief'
+  | 'video-hero'
+  | 'video-storyboard'
+  | 'video-frames'
   | 'ppt-outline'
   | 'article-outline'
   | 'long-image-outline'
@@ -67,6 +72,10 @@ export interface SessionAppState {
   visual: boolean;
   videoScript: boolean;
   videoRender: boolean;
+  videoBrief: boolean;
+  videoHero: boolean;
+  videoStoryboard: boolean;
+  videoFrames: boolean;
   pptOutline: boolean;
   articleOutline: boolean;
   longImageOutline: boolean;
@@ -97,6 +106,7 @@ export interface SessionWorkspace {
   contentBrief?: ContentBrief | null;
   storylineContent?: string;
   meetingMaterials?: MeetingMaterialsState;
+  videoStudio?: VideoStudioState;
   richTextContent?: string;
   generatedImages: string[];
   generatedImageMeta?: GeneratedImageMeta[];

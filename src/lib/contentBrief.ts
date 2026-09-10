@@ -2,15 +2,20 @@ import type { ContentBrief } from '@/types/content';
 import type { BriefAnalysis } from '@/app/components/conversationGuide';
 
 export const CONTENT_BRIEF_FORMATS = ['PPT', '推文', '长图'] as const;
+export const EVIDENCE_BRIEF_FORMATS = ['PPT', '推文', '图'] as const;
 
-export const CONTENT_BRIEF_FIELDS: {
+export type ContentBriefVariant = 'default' | 'evidence';
+
+export type ContentBriefFieldDef = {
   key: keyof ContentBrief;
   label: string;
   required: boolean;
   multiline?: boolean;
   rows?: number;
   options?: readonly string[];
-}[] = [
+};
+
+export const CONTENT_BRIEF_FIELDS: ContentBriefFieldDef[] = [
   { key: 'audience', label: '受众', required: true },
   { key: 'scenario', label: '场景', required: true },
   { key: 'format', label: '产物形式', required: true, options: CONTENT_BRIEF_FORMATS },
@@ -20,6 +25,17 @@ export const CONTENT_BRIEF_FIELDS: {
   { key: 'notes', label: '其他', required: false, multiline: true, rows: 3 },
   { key: 'narrative', label: '叙事逻辑梗概', required: false, multiline: true, rows: 3 },
 ];
+
+export const EVIDENCE_BRIEF_FIELDS: ContentBriefFieldDef[] = [
+  { key: 'scenario', label: '主题', required: true },
+  { key: 'audience', label: '受众', required: true },
+  { key: 'format', label: '形式', required: true, options: EVIDENCE_BRIEF_FORMATS },
+  { key: 'notes', label: '其他补充', required: false, multiline: true, rows: 3 },
+];
+
+export function briefFieldsFor(variant: ContentBriefVariant = 'default'): ContentBriefFieldDef[] {
+  return variant === 'evidence' ? EVIDENCE_BRIEF_FIELDS : CONTENT_BRIEF_FIELDS;
+}
 
 export function emptyContentBrief(): ContentBrief {
   return {
@@ -39,14 +55,29 @@ export function normalizeContentBrief(brief: ContentBrief | null | undefined): C
   return { ...emptyContentBrief(), ...brief };
 }
 
-export function missingRequiredBriefLabels(brief: ContentBrief): string[] {
-  return CONTENT_BRIEF_FIELDS.filter((field) => field.required && !String(brief[field.key] || '').trim()).map(
-    (field) => field.label
-  );
+export function missingRequiredBriefLabels(
+  brief: ContentBrief,
+  variant: ContentBriefVariant = 'default'
+): string[] {
+  return briefFieldsFor(variant)
+    .filter((field) => field.required && !String(brief[field.key] || '').trim())
+    .map((field) => field.label);
 }
 
-export function formatContentBriefText(brief: ContentBrief): string {
-  return CONTENT_BRIEF_FIELDS.map(({ key, label }) => `${label}：${brief[key] || '—'}`).join('\n');
+export function formatContentBriefText(
+  brief: ContentBrief,
+  variant: ContentBriefVariant = 'default'
+): string {
+  return briefFieldsFor(variant)
+    .map(({ key, label }) => `${label}：${brief[key] || '—'}`)
+    .join('\n');
+}
+
+export function outlineCommandFromEvidenceFormat(format: string): string {
+  const value = format.trim();
+  if (value === '推文') return '生成图文大纲';
+  if (value === '图' || value === '长图') return '生成长图大纲';
+  return '生成PPT大纲';
 }
 
 export function literatureQueryFromBrief(brief: ContentBrief): string {
@@ -64,6 +95,7 @@ export function generateContentBrief(input: {
   userPrompt?: string;
   insightText?: string;
   analysis?: BriefAnalysis | null;
+  variant?: ContentBriefVariant;
 }): ContentBrief {
   const prompt = (input.userPrompt || '').replace(/<[^>]+>/g, '').trim();
   const insight = (input.insightText || '').replace(/<[^>]+>/g, '').trim();
@@ -75,8 +107,11 @@ export function generateContentBrief(input: {
   const scenario =
     analysis?.scenario ||
     (hasInsight ? '医学沟通与话题延展' : /学术|会议/.test(prompt) ? '学术会议' : '疾病教育');
-  const format = /长图|一图读懂/.test(prompt)
-    ? '长图'
+  const evidence = input.variant === 'evidence';
+  const format = /长图|一图读懂|^图$/.test(prompt)
+    ? evidence
+      ? '图'
+      : '长图'
     : /推文|图文/.test(prompt)
       ? '推文'
       : 'PPT';

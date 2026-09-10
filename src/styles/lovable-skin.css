@@ -266,7 +266,7 @@ body {
   flex-shrink: 0;
   border-top: 1px solid rgba(255, 255, 255, 0.35);
   background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.35));
-  padding: 16px;
+  padding: 12px 14px 14px;
 }
 
 .compose-line,
@@ -274,14 +274,16 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.85) !important;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.82)) !important;
   backdrop-filter: blur(48px) saturate(220%);
-  border-radius: 16px !important;
-  padding: 8px !important;
+  border-radius: 18px !important;
+  padding: 12px 12px 10px !important;
   box-shadow:
     0 0 24px -6px rgba(84, 185, 249, 0.22),
     inset 0 2px 0 rgba(255, 255, 255, 1);
-  gap: 8px;
-  align-items: center;
-  min-height: 48px;
+  gap: 4px;
+  align-items: stretch;
+  display: flex;
+  flex-direction: column;
+  min-height: 132px;
 }
 
 .compose-shell:focus-within {
@@ -295,14 +297,14 @@ body {
 .compose-attach {
   width: 32px;
   height: 32px;
-  border: 1px solid rgba(84, 185, 249, 0.28);
+  border: 0;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.78);
-  color: oklch(0.45 0.04 220);
+  background: transparent;
+  color: oklch(0.42 0.04 220);
 }
 
 .compose-attach:hover {
-  border-color: var(--brand-blue);
+  border-color: transparent;
   color: var(--brand-blue-deep);
   background: rgba(255, 255, 255, 0.95);
 }
@@ -311,13 +313,13 @@ body {
 .compose-line textarea,
 .compose-line input,
 .compose-main textarea {
-  min-height: 32px;
-  height: 32px;
+  min-height: 76px;
+  height: auto;
   font-size: 14px;
-  line-height: 32px;
+  line-height: 1.55;
   background: transparent;
   border: none;
-  padding: 0 4px;
+  padding: 2px 6px 8px;
 }
 
 .model-select {

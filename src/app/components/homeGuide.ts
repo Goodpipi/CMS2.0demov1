@@ -38,7 +38,7 @@ export const HOME_ENTRY_SOURCE_LABELS: Record<HomeEntrySource, string> = {
   evidence: '学术证据解读',
   poster: '会议物料',
   insight: '话题洞察',
-  more: '更多内容',
+  more: '视频生成',
 };
 
 export function inferHomeEntrySource(ctx?: HomeEntryContext | null): HomeEntrySource {
@@ -208,8 +208,8 @@ export function getEntryWelcome(ctx: HomeEntryContext): { html: string; chips: s
 
   if (source === 'evidence') {
     return {
-      html: '您好！请添加待解读的目标材料，如指南、文献或研究原文；也可补充其他参考知识。',
-      chips: ['生成PPT大纲', '直接生成PPT', '生成图文大纲'],
+      html: '您好！请添加待解读的目标材料，如指南、文献或研究原文；也可补充其他参考知识。填写任务提案后即可生成页面级大纲。',
+      chips: ['填写任务提案', '生成PPT大纲', '生成图文大纲'],
     };
   }
 
@@ -222,8 +222,8 @@ export function getEntryWelcome(ctx: HomeEntryContext): { html: string; chips: s
 
   if (source === 'more') {
     return {
-      html: '您好！可先添加参考知识、品牌策略或任务提案，再描述你想生成的内容。',
-      chips: FLEXIBLE_WORKFLOW_CHIPS,
+      html: '您好，我将协助您制作患者教育短视频。请先在中间区域确认视频需求，再生成主角形象、分镜脚本和视频画面。',
+      chips: [],
     };
   }
 
@@ -250,8 +250,8 @@ export function getEntryWelcome(ctx: HomeEntryContext): { html: string; chips: s
       };
     case 'video':
       return {
-        html: '可直接描述视频主题与受众，一键生成视频方案。',
-        chips: ['直接生成视频', '直接生成文案', '生成话题洞察', '直接生成PPT'],
+        html: '请先确认中间区域的视频需求，再生成主角形象、分镜脚本和视频画面。',
+        chips: [],
       };
     case 'ppt':
       return {

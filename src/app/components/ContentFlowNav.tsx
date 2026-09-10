@@ -40,6 +40,10 @@ export function ContentFlowNav({
     copy: progress.copy,
     visual: progress.visual,
     video: progress.video,
+    videoBrief: progress.videoBrief,
+    videoHero: progress.videoHero,
+    videoStoryboard: progress.videoStoryboard,
+    videoFrames: progress.videoFrames,
     team: progress.team,
   }, source);
   const currentId = currentStepId ?? activeFlowStepId(activeTab);
@@ -49,6 +53,7 @@ export function ContentFlowNav({
       {steps.map((step, index) => {
         const status = flowStepStatus(step, index, currentId, progress, steps);
         const complete = step.placeholder ? false : progress[step.id];
+        const lockedVideoStep = source === 'more' && status === 'todo' && !complete;
         return (
           <div key={`${step.id}-${index}`} className="content-flow-item">
             {index > 0 && (
@@ -70,10 +75,16 @@ export function ContentFlowNav({
                 step.placeholder && 'is-placeholder'
               )}
               onClick={() => {
-                if (!step.placeholder) onSelect(step);
+                if (!step.placeholder && !lockedVideoStep) onSelect(step);
               }}
-              disabled={step.placeholder}
-              title={step.placeholder ? '待第一步操作后展开' : step.label}
+              disabled={step.placeholder || lockedVideoStep}
+              title={
+                step.placeholder
+                  ? '待第一步操作后展开'
+                  : lockedVideoStep
+                    ? '完成上一步后解锁'
+                    : step.label
+              }
             >
               <span className="content-flow-dot">
                 {complete ? <Check className="h-3 w-3" strokeWidth={2.6} /> : step.placeholder ? '' : index + 1}

@@ -13,7 +13,7 @@ import { cn } from '@/app/components/ui/utils';
 
 interface ContextMaterialsPanelProps {
   library: LibraryItem[];
-  variant?: 'default' | 'case' | 'poster' | 'evidence' | 'insight' | 'promo';
+  variant?: 'default' | 'case' | 'poster' | 'evidence' | 'insight' | 'promo' | 'video';
   citedItemIds?: number[];
   onOpenPicker: (cat: string) => void;
   onPreview: (item: LibraryItem) => void;
@@ -219,6 +219,12 @@ const POSTER_SECTIONS: MaterialSectionDef[] = [
   { title: '视觉参考', cats: ['视觉参考'], category: '视觉参考' },
 ];
 
+const VIDEO_SECTIONS: MaterialSectionDef[] = [
+  { title: '品牌策略', groupId: 'strategy', category: '品牌策略' },
+  { title: '视频参考资料', cats: ['视频参考资料'], category: '视频参考资料' },
+  { title: '视觉参考', cats: ['视觉参考'], category: '视觉参考' },
+];
+
 const EVIDENCE_SECTIONS: MaterialSectionDef[] = [
   { title: '目标解读材料', cats: ['目标解读材料'], category: '目标解读材料' },
   { title: '其他参考知识', groupId: 'knowledge', cats: ['其他参考知识'], category: '其他参考知识' },
@@ -232,6 +238,7 @@ const INSIGHT_SECTIONS: MaterialSectionDef[] = [
 function sectionsForVariant(variant: ContextMaterialsPanelProps['variant']): MaterialSectionDef[] {
   if (variant === 'case') return CASE_SECTIONS;
   if (variant === 'poster') return POSTER_SECTIONS;
+  if (variant === 'video') return VIDEO_SECTIONS;
   if (variant === 'evidence') return EVIDENCE_SECTIONS;
   if (variant === 'insight') return INSIGHT_SECTIONS;
   if (variant === 'promo') return PROMO_SECTIONS;
@@ -240,6 +247,7 @@ function sectionsForVariant(variant: ContextMaterialsPanelProps['variant']): Mat
 
 function unifiedAddCategory(variant: ContextMaterialsPanelProps['variant']): string {
   if (variant === 'poster') return '视觉参考';
+  if (variant === 'video') return '视频参考资料';
   if (variant === 'evidence') return '目标解读材料';
   return '参考知识';
 }
