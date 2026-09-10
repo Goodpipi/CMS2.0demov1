@@ -60,6 +60,7 @@ function MeetingPosterCanvas({
   onEdit,
   onImport,
   onReuploadInfo,
+  onRegenerateLatest,
   onToast,
   workspaceElementId,
   onWorkspaceElementSelect,
@@ -70,6 +71,7 @@ function MeetingPosterCanvas({
   onEdit: () => void;
   onImport?: () => void;
   onReuploadInfo?: () => void;
+  onRegenerateLatest?: () => void;
   onToast?: (text: string) => void;
   workspaceElementId?: string | null;
   onWorkspaceElementSelect?: (selection: SelectableSvgSelection | null, slideIndex: number) => void;
@@ -109,6 +111,11 @@ function MeetingPosterCanvas({
         </div>
       </div>
       <div className="image-preview-submit-actions">
+        {onRegenerateLatest ? (
+          <button type="button" className="btn primary" onClick={onRegenerateLatest}>
+            基于最新内容重新生成
+          </button>
+        ) : null}
         {onReuploadInfo ? (
           <button type="button" className="btn soft" onClick={onReuploadInfo}>
             重新上传会议信息
@@ -178,6 +185,7 @@ function MeetingPptCanvas({
   onEditSlide,
   onImport,
   onReuploadInfo,
+  onRegenerateLatest,
   onToast,
   workspaceElementId,
   onWorkspaceElementSelect,
@@ -187,6 +195,7 @@ function MeetingPptCanvas({
   onEditSlide: (index: number) => void;
   onImport?: () => void;
   onReuploadInfo?: () => void;
+  onRegenerateLatest?: () => void;
   onToast?: (text: string) => void;
   workspaceElementId?: string | null;
   onWorkspaceElementSelect?: (selection: SelectableSvgSelection | null, slideIndex: number) => void;
@@ -263,6 +272,11 @@ function MeetingPptCanvas({
         </div>
       </div>
       <div className="content-submit-actions">
+        {onRegenerateLatest ? (
+          <button type="button" className="btn primary" onClick={onRegenerateLatest}>
+            基于最新内容重新生成
+          </button>
+        ) : null}
         {onReuploadInfo ? (
           <button type="button" className="btn soft" onClick={onReuploadInfo}>
             重新上传会议信息
@@ -474,6 +488,9 @@ interface MeetingTemplatesPanelProps {
   tab: MeetingTemplateTab;
   onTabChange: (tab: MeetingTemplateTab) => void;
   onAddSession: () => void;
+  outdatedPosterCount?: number;
+  outdatedPptCount?: number;
+  onRefreshSessionMaterials?: () => void;
   onEditPoster: () => void;
   onImportPoster?: () => void;
   onEditPpt: (index: number) => void;
@@ -489,6 +506,9 @@ export function MeetingTemplatesPanel({
   tab,
   onTabChange,
   onAddSession,
+  outdatedPosterCount = 0,
+  outdatedPptCount = 0,
+  onRefreshSessionMaterials,
   onEditPoster,
   onImportPoster,
   onEditPpt,
@@ -505,6 +525,21 @@ export function MeetingTemplatesPanel({
           新增场次
         </button>
       </div>
+      {outdatedPosterCount > 0 || outdatedPptCount > 0 ? (
+        <div className="meeting-update-notice">
+          <div>
+            <strong>会议模板已更新</strong>
+            <span>
+              {outdatedPosterCount > 0 ? `${outdatedPosterCount} 个场次的会议海报待更新` : ''}
+              {outdatedPosterCount > 0 && outdatedPptCount > 0 ? '，' : ''}
+              {outdatedPptCount > 0 ? `${outdatedPptCount} 个场次的串场PPT待更新` : ''}
+            </span>
+          </div>
+          <button type="button" className="btn primary" onClick={onRefreshSessionMaterials}>
+            更新场次物料
+          </button>
+        </div>
+      ) : null}
       <div className="meeting-folder-chrome">
         <MeetingFolderTabs
           items={[
@@ -659,6 +694,8 @@ interface MeetingSessionsPanelProps {
   onCancelInfo: () => void;
   onGeneratePoster: () => void;
   onGeneratePpt: () => void;
+  onRegeneratePoster: () => void;
+  onRegeneratePpt: () => void;
   onEditPoster: () => void;
   onImportPoster?: () => void;
   onEditPpt: (index: number) => void;
@@ -685,6 +722,8 @@ export function MeetingSessionsPanel({
   onCancelInfo,
   onGeneratePoster,
   onGeneratePpt,
+  onRegeneratePoster,
+  onRegeneratePpt,
   onEditPoster,
   onImportPoster,
   onEditPpt,
@@ -718,6 +757,19 @@ export function MeetingSessionsPanel({
               </span>
               <strong>{session.name}</strong>
               <small>{session.info ? '已上传会议信息' : '待上传会议信息'}</small>
+              {session.posterUpdateReasons?.length || session.pptUpdateReasons?.length ? (
+                <span className="meeting-session-update-status">
+                  {session.posterUpdateReasons?.length ? '海报待更新' : ''}
+                  {session.posterUpdateReasons?.length && session.pptUpdateReasons?.length ? ' · ' : ''}
+                  {session.pptUpdateReasons?.length ? 'PPT待更新' : ''}
+                </span>
+              ) : null}
+              {session.posterUpdateReasons?.length || session.pptUpdateReasons?.length ? (
+                <span className="meeting-session-update-tags">
+                  {session.posterUpdateReasons?.length ? <em>海报待更新</em> : null}
+                  {session.pptUpdateReasons?.length ? <em>PPT待更新</em> : null}
+                </span>
+              ) : null}
             </button>
           ))}
           <button type="button" className="meeting-session-tile is-add" onClick={onAddSession}>
@@ -731,8 +783,12 @@ export function MeetingSessionsPanel({
 
   const folderItems: { id: MeetingSessionTab; label: string }[] = [
     { id: 'info', label: '会议信息' },
-    ...(current.posterReady ? [{ id: 'poster' as const, label: '会议海报' }] : []),
-    ...(current.pptReady ? [{ id: 'ppt' as const, label: '串场PPT' }] : []),
+    ...(current.posterReady
+      ? [{ id: 'poster' as const, label: current.posterUpdateReasons?.length ? '会议海报（待更新）' : '会议海报' }]
+      : []),
+    ...(current.pptReady
+      ? [{ id: 'ppt' as const, label: current.pptUpdateReasons?.length ? '串场PPT（待更新）' : '串场PPT' }]
+      : []),
   ];
   const activeTab = folderItems.some((item) => item.id === tab) ? tab : 'info';
 
@@ -817,6 +873,7 @@ export function MeetingSessionsPanel({
               onEdit={onEditPoster}
               onImport={onImportPoster}
               onReuploadInfo={() => uploadRef.current?.click()}
+              onRegenerateLatest={current.posterUpdateReasons?.length ? onRegeneratePoster : undefined}
               onToast={onToast}
               workspaceElementId={workspaceElementId}
               onWorkspaceElementSelect={onWorkspaceElementSelect}
@@ -830,6 +887,7 @@ export function MeetingSessionsPanel({
               onEditSlide={onEditPpt}
               onImport={onImportPpt}
               onReuploadInfo={() => uploadRef.current?.click()}
+              onRegenerateLatest={current.pptUpdateReasons?.length ? onRegeneratePpt : undefined}
               onToast={onToast}
               workspaceElementId={workspaceElementId}
               onWorkspaceElementSelect={onWorkspaceElementSelect}

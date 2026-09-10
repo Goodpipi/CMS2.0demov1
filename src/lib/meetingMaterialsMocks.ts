@@ -3,6 +3,7 @@ import type { PptSlide } from '@/types/content';
 
 export type MeetingTemplateTab = 'poster' | 'ppt';
 export type MeetingSessionTab = 'info' | 'poster' | 'ppt';
+export type MeetingUpdateReason = 'template' | 'info';
 
 export interface MeetingSpeaker {
   name: string;
@@ -25,6 +26,8 @@ export interface MeetingSession {
   pptReady: boolean;
   posterUrl?: string;
   pptSlides?: PptSlide[];
+  posterUpdateReasons?: MeetingUpdateReason[];
+  pptUpdateReasons?: MeetingUpdateReason[];
 }
 
 export interface MeetingTaskProposal {
