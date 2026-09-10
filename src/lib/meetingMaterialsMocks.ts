@@ -27,7 +27,16 @@ export interface MeetingSession {
   pptSlides?: PptSlide[];
 }
 
+export interface MeetingTaskProposal {
+  theme: string;
+  colorPalette: string;
+  style: string;
+  mainVisualElements: string;
+  other: string;
+}
+
 export interface MeetingMaterialsState {
+  taskProposal?: MeetingTaskProposal;
   templatesReady: boolean;
   sessions: MeetingSession[];
   currentSessionId: string | null;
@@ -37,6 +46,16 @@ export interface MeetingMaterialsState {
   infoFormOpen: boolean;
   templatePosterUrl?: string;
   templatePptSlides?: PptSlide[];
+}
+
+export function emptyMeetingTaskProposal(): MeetingTaskProposal {
+  return {
+    theme: '',
+    colorPalette: '',
+    style: '',
+    mainVisualElements: '',
+    other: '',
+  };
 }
 
 export function emptyMeetingMaterials(): MeetingMaterialsState {

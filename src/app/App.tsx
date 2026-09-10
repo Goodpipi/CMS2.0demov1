@@ -100,6 +100,7 @@ import { AddMeetingSessionModal } from '@/app/components/AddMeetingSessionModal'
 import {
   MeetingKvPanel,
   MeetingSessionsPanel,
+  MeetingTaskProposalPanel,
   MeetingTemplatesPanel,
   MeetingWelcomePanel,
 } from '@/app/components/MeetingMaterialsPanels';
@@ -122,6 +123,7 @@ import {
   buildSessionPosterDataUrl,
   buildSessionPptSlides,
   currentMeetingSession,
+  emptyMeetingTaskProposal,
   emptyMeetingMaterials,
   isAddMeetingSessionIntent,
   isFillMeetingInfoIntent,
@@ -137,6 +139,7 @@ import {
   type MeetingMaterialsState,
   type MeetingSession,
   type MeetingSessionInfo,
+  type MeetingTaskProposal,
 } from '@/lib/meetingMaterialsMocks';
 import {
   emptyContentBrief,
@@ -2042,6 +2045,19 @@ export default function App() {
   };
 
   const startTaskProposal = () => {
+    if (entryContext?.source === 'poster' || flowEntry === 'conferencePoster') {
+      setMeetingMaterials((prev) => ({
+        ...prev,
+        taskProposal: prev.taskProposal ?? emptyMeetingTaskProposal(),
+      }));
+      setState((prev) => ({
+        ...prev,
+        tabs: prev.tabs.includes('brief') ? prev.tabs : [...prev.tabs, 'brief'],
+        active: 'brief',
+        brief: true,
+      }));
+      return;
+    }
     setContentBrief((prev) => prev ?? emptyContentBrief());
     setFlowEntry((prev) => nextLockedFlowEntry(prev, 'brief'));
     setState((prev) => ({
@@ -8207,6 +8223,10 @@ export default function App() {
                   setWorkspacePreviewMaterial(null);
                   return;
                 }
+                if (step.id === 'brief') {
+                  startTaskProposal();
+                  return;
+                }
                 if (step.id === 'kv') {
                   if (!hasVisualAsset('kv')) {
                     toast('请先输入「生成主KV」');
@@ -8258,6 +8278,7 @@ export default function App() {
             }}
             onUploadBrief={() => openMaterialPicker('workspace', 'Brief')}
             onFillTaskProposal={startTaskProposal}
+            onOpenVisualReference={() => openMaterialPicker('workspace', '视觉参考')}
             onOpenAddEvidenceMaterial={() => {
               setPickerTarget('workspace');
               setPickerCat('目标解读材料');
@@ -9258,6 +9279,7 @@ function WorkspaceRightPanel({
   onGenerateInsightReport,
   onRecommendLiterature,
   onOpenStoryline,
+  onOpenVisualReference,
 }: {
   state: AppState;
   setState: React.Dispatch<React.SetStateAction<AppState>>;
@@ -9399,6 +9421,7 @@ function WorkspaceRightPanel({
   onGenerateInsightReport?: () => void;
   onRecommendLiterature?: (source?: 'brief' | 'storyline') => void;
   onOpenStoryline?: () => void;
+  onOpenVisualReference?: () => void;
   taskTitle: string;
   onDownloadInsightReport: () => void;
   onStartVisualFlow: () => void;
@@ -9427,7 +9450,10 @@ function WorkspaceRightPanel({
   const flowProgress: ContentFlowProgress = {
     create: true,
     insight: Boolean(topicInsightReportText.trim() || insightSummary.trim() || hotInsightReport),
-    brief: Boolean(contentBrief),
+    brief:
+      flowEntry === 'conferencePoster' || entryContext?.source === 'poster'
+        ? Boolean(meetingMaterials?.taskProposal)
+        : Boolean(contentBrief),
     literature: literatureResults.length > 0 || addedLiteratureIds.length > 0,
     storyline: Boolean(storylineContent?.trim()),
     outline: Boolean(pptOutline),
@@ -9490,6 +9516,8 @@ function WorkspaceRightPanel({
     flowEntry === 'conferencePoster'
       ? !state.active
         ? 'create'
+        : state.active === 'brief'
+          ? 'brief'
         : state.active === 'meeting-sessions'
           ? 'sessionMaterials'
           : state.active === 'meeting-templates'
@@ -9768,7 +9796,12 @@ function WorkspaceRightPanel({
         );
       }
       if (entryContext?.source === 'poster') {
-        return <MeetingWelcomePanel onGenerateKv={() => fillQuick('生成主KV')} />;
+        return (
+          <MeetingWelcomePanel
+            onOpenVisualReference={() => onOpenVisualReference?.()}
+            onOpenTaskProposal={() => onFillTaskProposal?.()}
+          />
+        );
       }
       if (entryContext?.source === 'evidence') {
         return (
@@ -10258,6 +10291,18 @@ function WorkspaceRightPanel({
       }
 
       case 'brief':
+        if (flowEntry === 'conferencePoster' || entryContext?.source === 'poster') {
+          const proposal = meetingMaterials?.taskProposal ?? emptyMeetingTaskProposal();
+          return (
+            <MeetingTaskProposalPanel
+              proposal={proposal}
+              onChange={(next: MeetingTaskProposal) =>
+                onMeetingMaterialsChange?.((prev) => ({ ...prev, taskProposal: next }))
+              }
+              onGenerateKv={() => fillQuick('生成主KV')}
+            />
+          );
+        }
         if (!contentBrief) {
           return (
             <div className="detail-card">

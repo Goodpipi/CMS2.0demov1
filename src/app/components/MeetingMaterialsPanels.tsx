@@ -22,6 +22,7 @@ import {
   type MeetingSession,
   type MeetingSessionInfo,
   type MeetingSessionTab,
+  type MeetingTaskProposal,
   type MeetingTemplateTab,
 } from '@/lib/meetingMaterialsMocks';
 
@@ -266,17 +267,117 @@ function MeetingPptCanvas({
   );
 }
 
-export function MeetingWelcomePanel({ onGenerateKv }: { onGenerateKv: () => void }) {
+export function MeetingWelcomePanel({
+  onOpenVisualReference,
+  onOpenTaskProposal,
+}: {
+  onOpenVisualReference: () => void;
+  onOpenTaskProposal: () => void;
+}) {
   return (
     <div className="detail-card content-flow-task-card meeting-welcome-card">
       <h4>会议物料任务已创建</h4>
-      <p className="small content-flow-task-hint">
-        从主KV开始，再生成海报模板和串场PPT模板。模板准备完成后，即可新增会议场次，并为各场次分别生成海报与串场PPT。
-      </p>
-      <div className="content-flow-start-actions" style={{ marginTop: 12 }}>
-        <button type="button" className="btn primary" onClick={onGenerateKv}>
+      <ol className="content-flow-start-steps">
+        <li className="content-flow-start-step">
+          <span className="content-flow-start-index" aria-hidden>
+            1
+          </span>
+          <div className="content-flow-start-body">
+            <p>您可以上传视觉参考素材，用于后续生成物料风格、配色和视觉元素的参考。</p>
+            <div className="content-flow-start-actions">
+              <button type="button" className="btn primary" onClick={onOpenVisualReference}>
+                上传视觉参考
+              </button>
+            </div>
+          </div>
+        </li>
+        <li className="content-flow-start-step">
+          <span className="content-flow-start-index" aria-hidden>
+            2
+          </span>
+          <div className="content-flow-start-body">
+            <p>您可以填写任务提案，开始会议物料的制作。</p>
+            <div className="content-flow-start-actions">
+              <button type="button" className="btn primary" onClick={onOpenTaskProposal}>
+                填写任务提案
+              </button>
+            </div>
+          </div>
+        </li>
+      </ol>
+    </div>
+  );
+}
+
+export function MeetingTaskProposalPanel({
+  proposal,
+  onChange,
+  onGenerateKv,
+}: {
+  proposal: MeetingTaskProposal;
+  onChange: (proposal: MeetingTaskProposal) => void;
+  onGenerateKv: () => void;
+}) {
+  const update = (field: keyof MeetingTaskProposal, value: string) => {
+    onChange({ ...proposal, [field]: value });
+  };
+
+  return (
+    <div className="workspace-surface-panel content-brief-panel meeting-task-proposal-panel">
+      <div className="topic-insight-title-row">
+        <h1>任务提案</h1>
+        <button type="button" className="btn primary topic-insight-copy-btn" onClick={onGenerateKv}>
           生成主KV
         </button>
+      </div>
+      <div className="content-brief-fields">
+        <label className="content-brief-field is-wide">
+          <span>主题</span>
+          <input
+            className="input"
+            value={proposal.theme}
+            placeholder="请输入主题"
+            onChange={(event) => update('theme', event.target.value)}
+          />
+        </label>
+        <label className="content-brief-field">
+          <span>配色</span>
+          <input
+            className="input"
+            value={proposal.colorPalette}
+            placeholder="请输入配色"
+            onChange={(event) => update('colorPalette', event.target.value)}
+          />
+        </label>
+        <label className="content-brief-field">
+          <span>风格</span>
+          <input
+            className="input"
+            value={proposal.style}
+            placeholder="请输入风格"
+            onChange={(event) => update('style', event.target.value)}
+          />
+        </label>
+        <label className="content-brief-field is-wide">
+          <span>主视觉元素</span>
+          <textarea
+            className="input content-brief-textarea"
+            value={proposal.mainVisualElements}
+            rows={3}
+            placeholder="请输入主视觉元素"
+            onChange={(event) => update('mainVisualElements', event.target.value)}
+          />
+        </label>
+        <label className="content-brief-field is-wide">
+          <span>其他</span>
+          <textarea
+            className="input content-brief-textarea"
+            value={proposal.other}
+            rows={3}
+            placeholder="请输入其他要求"
+            onChange={(event) => update('other', event.target.value)}
+          />
+        </label>
       </div>
     </div>
   );

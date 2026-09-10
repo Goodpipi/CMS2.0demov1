@@ -366,7 +366,12 @@ export function buildContentFlowSteps(
   } else if (locked === 'copy') {
     steps.push(step('copy', true));
   } else if (locked === 'conferencePoster') {
-    steps.push(step('kv', true), step('meetingTemplates', true), step('sessionMaterials', true));
+    steps.push(
+      step('brief', true),
+      step('kv', true),
+      step('meetingTemplates', true),
+      step('sessionMaterials', true)
+    );
   } else if (locked === 'video') {
     if (source === 'more') {
       steps.push(
