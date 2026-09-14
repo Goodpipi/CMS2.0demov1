@@ -161,6 +161,16 @@ export function ArticleOutlineEditor({
     setManualImageOpen(false);
   };
 
+  const removeImage = (chapter: ArticleOutlineChapter, index: number) => {
+    updateChapter(
+      chapter.id,
+      rematchArticleCitations({
+        ...chapter,
+        referencedImages: (chapter.referencedImages || []).filter((_, itemIndex) => itemIndex !== index),
+      })
+    );
+  };
+
   return (
     <div className="ppt-outline-inline article-outline-inline">
       <div className="ppt-outline-inline-panel">
@@ -232,7 +242,6 @@ export function ArticleOutlineEditor({
                     >
                       <DragHandle label="拖拽排序章节" />
                     </span>
-                    <div className={`ppt-page-title-text ${titleAi ? 'is-ai-active' : ''}`}>{chapter.title || '未命名章节'}</div>
                     {isEditing ? (
                       <button
                         type="button"
@@ -241,7 +250,9 @@ export function ArticleOutlineEditor({
                       >
                         AI修改
                       </button>
-                    ) : (
+                    ) : null}
+                    <div className={`ppt-page-title-text ${titleAi ? 'is-ai-active' : ''}`}>{chapter.title || '未命名章节'}</div>
+                    {isEditing ? null : (
                       <button
                         type="button"
                         className="ppt-page-edit-btn"
@@ -324,6 +335,7 @@ export function ArticleOutlineEditor({
                   />
                   <OutlineReferencedImages
                     images={chapter.referencedImages}
+                    onRemove={isEditing ? (index) => removeImage(chapter, index) : undefined}
                     action={
                       isEditing ? (
                         manualImageOpen ? (

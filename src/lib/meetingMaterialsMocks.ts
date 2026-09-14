@@ -3,6 +3,15 @@ import type { PptSlide } from '@/types/content';
 
 export type MeetingTemplateTab = 'poster' | 'ppt';
 export type MeetingSessionTab = 'info' | 'poster' | 'ppt';
+
+export function sessionMaterialsTab(
+  session: Pick<MeetingSession, 'info'> | null | undefined,
+  requested?: MeetingSessionTab | null
+): MeetingSessionTab {
+  if (!session?.info) return 'info';
+  if (requested === 'ppt' || requested === 'poster') return requested;
+  return 'poster';
+}
 export type MeetingUpdateReason = 'template' | 'info';
 
 export interface MeetingSpeaker {

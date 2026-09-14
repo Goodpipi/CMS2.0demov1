@@ -2,7 +2,7 @@ import type { ContentBrief } from '@/types/content';
 import type { BriefAnalysis } from '@/app/components/conversationGuide';
 
 export const CONTENT_BRIEF_FORMATS = ['PPT', '推文', '长图'] as const;
-export const EVIDENCE_BRIEF_FORMATS = ['PPT', '推文', '图'] as const;
+export const EVIDENCE_BRIEF_FORMATS = ['PPT', '推文', '长图'] as const;
 
 export type ContentBriefVariant = 'default' | 'evidence';
 
@@ -13,6 +13,7 @@ export type ContentBriefFieldDef = {
   multiline?: boolean;
   rows?: number;
   options?: readonly string[];
+  wide?: boolean;
 };
 
 export const CONTENT_BRIEF_FIELDS: ContentBriefFieldDef[] = [
@@ -29,8 +30,8 @@ export const CONTENT_BRIEF_FIELDS: ContentBriefFieldDef[] = [
 export const EVIDENCE_BRIEF_FIELDS: ContentBriefFieldDef[] = [
   { key: 'scenario', label: '主题', required: true },
   { key: 'audience', label: '受众', required: true },
-  { key: 'format', label: '形式', required: true, options: EVIDENCE_BRIEF_FORMATS },
-  { key: 'notes', label: '其他补充', required: false, multiline: true, rows: 3 },
+  { key: 'format', label: '形式', required: true, options: EVIDENCE_BRIEF_FORMATS, wide: true },
+  { key: 'notes', label: '其他补充', required: false, multiline: true, rows: 2 },
 ];
 
 export function briefFieldsFor(variant: ContentBriefVariant = 'default'): ContentBriefFieldDef[] {
@@ -107,11 +108,8 @@ export function generateContentBrief(input: {
   const scenario =
     analysis?.scenario ||
     (hasInsight ? '医学沟通与话题延展' : /学术|会议/.test(prompt) ? '学术会议' : '疾病教育');
-  const evidence = input.variant === 'evidence';
   const format = /长图|一图读懂|^图$/.test(prompt)
-    ? evidence
-      ? '图'
-      : '长图'
+    ? '长图'
     : /推文|图文/.test(prompt)
       ? '推文'
       : 'PPT';

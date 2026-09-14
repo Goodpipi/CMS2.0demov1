@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { PptOutline, PptOutlinePage, PptOutlinePageKind } from '@/types/content';
 import { genId, makeOutlinePage, movePageInOutline, outlinePageCount } from './pptUtils';
-import { PPT_BUILTIN_TEMPLATES, isBlankPptTemplate, type PptBuiltinTemplate } from './pptTemplates';
+import { PPT_BUILTIN_TEMPLATES, type PptBuiltinTemplate } from './pptTemplates';
 import { PptTemplatePickerModal, PptTemplateThumb } from './PptTemplatePickerModal';
 import { OutlineAiPrompt, OutlineManualCiteImageForm, OutlineReferencedImages, OutlineStaticField, OutlineStaticList } from './OutlinePageEditModal';
 import {
@@ -30,29 +30,25 @@ interface PptOutlineEditorProps {
 
 export function PptOutlineGenerateFooter({
   isGenerating = false,
-  selectedTemplateId,
-  templates = PPT_BUILTIN_TEMPLATES,
   onGenerateDesigns,
 }: {
   isGenerating?: boolean;
-  selectedTemplateId: string | null;
+  selectedTemplateId?: string | null;
   templates?: PptBuiltinTemplate[];
   onGenerateDesigns: (mode: 'template' | 'no-template') => void;
 }) {
-  const selected = templates.find((item) => item.id === selectedTemplateId);
   return (
     <footer className="ppt-outline-foot ppt-outline-generate-foot">
       <div className="ppt-generate-actions">
         <button
           type="button"
           className="btn ppt-generate-btn primary"
-          disabled={isGenerating || !selectedTemplateId}
-          onClick={() => onGenerateDesigns(isBlankPptTemplate(selected) ? 'no-template' : 'template')}
+          disabled={isGenerating}
+          onClick={() => onGenerateDesigns('no-template')}
         >
-          {isGenerating ? '生成中…' : '按模板生成 PPT'}
+          {isGenerating ? '生成中…' : '生成PPT'}
         </button>
       </div>
-      {selected ? null : <div className="small ppt-generate-hint">请先选择一套模板</div>}
     </footer>
   );
 }
@@ -187,6 +183,18 @@ export function PptOutlineEditor({
     setManualImageOpen(false);
   };
 
+  const removeImage = (page: PptOutlinePage, index: number) => {
+    if (!pageEdit) return;
+    updatePage(
+      pageEdit.chId,
+      pageEdit.pgId,
+      rematchPageCitations({
+        ...page,
+        referencedImages: (page.referencedImages || []).filter((_, itemIndex) => itemIndex !== index),
+      })
+    );
+  };
+
   const addPage = () => {
     const page = blankOutlinePage();
     const chId = genId('ch');
@@ -304,10 +312,6 @@ export function PptOutlineEditor({
                       >
                         <DragHandle label="拖拽排序页面" />
                       </span>
-                      <div className={`ppt-page-title-text ${titleAi ? 'is-ai-active' : ''}`}>{pg.title || '未命名页面'}</div>
-                      {pageKindLabel(pg.kind) && (
-                        <span className={`ppt-page-kind-badge is-${pg.kind}`}>{pageKindLabel(pg.kind)}</span>
-                      )}
                       {isEditing ? (
                         <button
                           type="button"
@@ -316,7 +320,12 @@ export function PptOutlineEditor({
                         >
                           AI修改
                         </button>
-                      ) : (
+                      ) : null}
+                      <div className={`ppt-page-title-text ${titleAi ? 'is-ai-active' : ''}`}>{pg.title || '未命名页面'}</div>
+                      {pageKindLabel(pg.kind) && (
+                        <span className={`ppt-page-kind-badge is-${pg.kind}`}>{pageKindLabel(pg.kind)}</span>
+                      )}
+                      {isEditing ? null : (
                         <button
                           type="button"
                           className="ppt-page-edit-btn"
@@ -367,6 +376,7 @@ export function PptOutlineEditor({
                     />
                     <OutlineReferencedImages
                       images={pg.referencedImages}
+                      onRemove={isEditing ? (index) => removeImage(pg, index) : undefined}
                       action={
                         isEditing ? (
                           manualImageOpen ? (

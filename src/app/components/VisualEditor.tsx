@@ -39,6 +39,7 @@ import {
   type SvgElementInfo,
 } from './svgEditorUtils';
 import { ConfirmModal } from '@/app/components/ConfirmModal';
+import { SvgImageMagicWand } from '@/app/components/SvgImageMagicWand';
 
 export type EditMode = 'brush' | 'drag';
 export type BrushTool = 'brush' | 'eraser';
@@ -106,6 +107,8 @@ interface VisualEditorProps {
   allowBrush?: boolean;
   /** false 时仅保留插入文字 */
   allowShapes?: boolean;
+  /** PPT 手动编辑：选中图片时在虚线框右上角显示魔法棒 */
+  showImageMagicWand?: boolean;
 }
 
 function getMaskBounds(canvas: HTMLCanvasElement): { x: number; y: number; w: number; h: number } | null {
@@ -149,6 +152,7 @@ export function VisualEditor({
   isGenerating = false,
   allowBrush = true,
   allowShapes = true,
+  showImageMagicWand = false,
 }: VisualEditorProps) {
   const [mode, setMode] = useState<EditMode>(allowBrush ? 'brush' : 'drag');
   const insertTools = allowShapes ? SHAPE_TOOLS : TEXT_ONLY_TOOLS;
@@ -186,6 +190,7 @@ export function VisualEditor({
   const [historyTick, setHistoryTick] = useState(0);
 
   const svgHostRef = useRef<HTMLDivElement>(null);
+  const artboardRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -1247,7 +1252,10 @@ export function VisualEditor({
 
       <main className="canvas-large visual-editor-main">
         <div ref={stageRef} className="visual-editor-stage">
-          <div className={`visual-editor-artboard ${mode === 'drag' ? 'drag-mode' : ''} ${insertTool ? 'insert-mode' : ''}`}>
+          <div
+            ref={artboardRef}
+            className={`visual-editor-artboard ${mode === 'drag' ? 'drag-mode' : ''} ${insertTool ? 'insert-mode' : ''}`}
+          >
             {(showRasterBack || loadFailed) && imageSrc ? (
               <img src={imageSrc} alt="" className="visual-editor-raster-back" draggable={false} />
             ) : null}
@@ -1262,6 +1270,9 @@ export function VisualEditor({
             ) : (
               <div className="visual-editor-load-hint">正在加载配图…</div>
             )}
+            {showImageMagicWand ? (
+              <SvgImageMagicWand hostRef={artboardRef} selectedId={selectedId} />
+            ) : null}
             {marquee && marquee.w + marquee.h > 2 && (
               <div
                 className="visual-editor-marquee"

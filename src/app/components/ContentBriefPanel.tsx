@@ -38,12 +38,15 @@ export function ContentBriefPanel({
           )}
         </div>
         <button type="button" className="btn primary topic-insight-copy-btn" onClick={onNext}>
-          {evidence ? '生成页面级大纲' : '下一步：生成故事线'}
+          {evidence ? '生成详细大纲' : '下一步：生成故事线'}
         </button>
       </div>
       <div className="content-brief-fields">
-        {fields.map(({ key, label, required, multiline, rows, options }) => (
-          <label key={key} className={multiline ? 'content-brief-field is-wide' : 'content-brief-field'}>
+        {fields.map(({ key, label, required, multiline, rows, options, wide }) => (
+          <label
+            key={key}
+            className={multiline || wide ? 'content-brief-field is-wide' : 'content-brief-field'}
+          >
             <span>
               {label}
               {required ? <em className="content-brief-required">*</em> : null}

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { ChevronDown, Eraser, Paintbrush } from 'lucide-react';
+import { ChevronDown, Eraser, Paintbrush, Plus } from 'lucide-react';
 import type { PptSlide } from '@/types/content';
 import {
   SelectableSvgPreview,
@@ -97,6 +97,11 @@ function MeetingPosterCanvas({
             <button type="button" className="creator-ppt-tool primary" onClick={onEdit}>
               手动编辑
             </button>
+            {onRegenerateLatest ? (
+              <button type="button" className="creator-ppt-tool" onClick={onRegenerateLatest}>
+                根据最新模板重新生成
+              </button>
+            ) : null}
           </div>
         </div>
         <div className="long-image-canvas">
@@ -111,11 +116,6 @@ function MeetingPosterCanvas({
         </div>
       </div>
       <div className="image-preview-submit-actions">
-        {onRegenerateLatest ? (
-          <button type="button" className="btn primary" onClick={onRegenerateLatest}>
-            基于最新内容重新生成
-          </button>
-        ) : null}
         {onReuploadInfo ? (
           <button type="button" className="btn soft" onClick={onReuploadInfo}>
             重新上传会议信息
@@ -230,6 +230,11 @@ function MeetingPptCanvas({
             <button type="button" className="creator-ppt-tool primary" onClick={() => onEditSlide(pptIndex)}>
               手动编辑
             </button>
+            {onRegenerateLatest ? (
+              <button type="button" className="creator-ppt-tool" onClick={onRegenerateLatest}>
+                根据最新模板重新生成
+              </button>
+            ) : null}
           </div>
         </div>
         <div className="creator-ppt-workspace">
@@ -246,7 +251,7 @@ function MeetingPptCanvas({
               </button>
             ))}
           </div>
-          <div className="creator-ppt-stage">
+          <div className="creator-ppt-stage meeting-ppt-stage">
             <div className="creator-ppt-slide-canvas">
               <SelectableSvgPreview
                 key={`${slide.page}-${pptIndex}-${(slide.svg || slide.imageUrl || '').length}`}
@@ -254,29 +259,14 @@ function MeetingPptCanvas({
                 imageSrc={slideToPreviewUrl(slide)}
                 selectedId={workspaceElementId ?? null}
                 hideToolbar
+                showImageMagicWand
                 onSelect={(selection) => onWorkspaceElementSelect?.(selection, pptIndex)}
-              />
-            </div>
-            <div className="creator-ppt-speaker-notes">
-              <div className="creator-ppt-speaker-notes-head">
-                <strong>Speaker Notes</strong>
-              </div>
-              <textarea
-                value={slide.speakerNotes || slide.bullets.join('\n')}
-                placeholder="在此查看本页演讲备注…"
-                readOnly
-                rows={4}
               />
             </div>
           </div>
         </div>
       </div>
       <div className="content-submit-actions">
-        {onRegenerateLatest ? (
-          <button type="button" className="btn primary" onClick={onRegenerateLatest}>
-            基于最新内容重新生成
-          </button>
-        ) : null}
         {onReuploadInfo ? (
           <button type="button" className="btn soft" onClick={onReuploadInfo}>
             重新上传会议信息
@@ -391,7 +381,7 @@ export function MeetingTaskProposalPanel({
           <textarea
             className="input content-brief-textarea"
             value={proposal.mainVisualElements}
-            rows={3}
+            rows={2}
             placeholder="请输入主视觉元素"
             onChange={(event) => update('mainVisualElements', event.target.value)}
           />
@@ -401,7 +391,7 @@ export function MeetingTaskProposalPanel({
           <textarea
             className="input content-brief-textarea"
             value={proposal.other}
-            rows={3}
+            rows={2}
             placeholder="请输入其他要求"
             onChange={(event) => update('other', event.target.value)}
           />
@@ -522,21 +512,14 @@ export function MeetingTemplatesPanel({
       <div className="topic-insight-title-row">
         <h1>会议模板</h1>
         <button type="button" className="btn primary" onClick={onAddSession}>
-          新增场次
+          上传会议信息
         </button>
       </div>
       {outdatedPosterCount > 0 || outdatedPptCount > 0 ? (
         <div className="meeting-update-notice">
-          <div>
-            <strong>会议模板已更新</strong>
-            <span>
-              {outdatedPosterCount > 0 ? `${outdatedPosterCount} 个场次的会议海报待更新` : ''}
-              {outdatedPosterCount > 0 && outdatedPptCount > 0 ? '，' : ''}
-              {outdatedPptCount > 0 ? `${outdatedPptCount} 个场次的串场PPT待更新` : ''}
-            </span>
-          </div>
+          <strong>会议模板已更新</strong>
           <button type="button" className="btn primary" onClick={onRefreshSessionMaterials}>
-            更新场次物料
+            去更新
           </button>
         </div>
       ) : null}
@@ -686,6 +669,7 @@ interface MeetingSessionsPanelProps {
   infoDraft: MeetingSessionInfo | null;
   onSelectSession: (id: string) => void;
   onAddSession: () => void;
+  onShowAllSessions: () => void;
   onTabChange: (tab: MeetingSessionTab) => void;
   onUploadInfo: () => void;
   onEditInfo: () => void;
@@ -714,6 +698,7 @@ export function MeetingSessionsPanel({
   infoDraft,
   onSelectSession,
   onAddSession,
+  onShowAllSessions,
   onTabChange,
   onUploadInfo,
   onEditInfo,
@@ -739,41 +724,29 @@ export function MeetingSessionsPanel({
     return (
       <div className="workspace-surface-panel meeting-surface-panel meeting-session-list-panel">
         <div className="meeting-session-list-head">
-          <div>
-            <h2 className="meeting-section-title">会议场次</h2>
-            <p className="small meeting-surface-hint">选择场次进入详情，或新增一场会议。</p>
-          </div>
+          <h2 className="meeting-section-title">会议场次</h2>
         </div>
         <div className="meeting-session-grid">
-          {sessions.map((session) => (
-            <button
-              type="button"
-              className="meeting-session-tile"
-              key={session.id}
-              onClick={() => onSelectSession(session.id)}
-            >
-              <span className="meeting-session-tile-icon" aria-hidden>
-                {session.name.slice(0, 1)}
-              </span>
-              <strong>{session.name}</strong>
-              <small>{session.info ? '已上传会议信息' : '待上传会议信息'}</small>
-              {session.posterUpdateReasons?.length || session.pptUpdateReasons?.length ? (
-                <span className="meeting-session-update-status">
-                  {session.posterUpdateReasons?.length ? '海报待更新' : ''}
-                  {session.posterUpdateReasons?.length && session.pptUpdateReasons?.length ? ' · ' : ''}
-                  {session.pptUpdateReasons?.length ? 'PPT待更新' : ''}
-                </span>
-              ) : null}
-              {session.posterUpdateReasons?.length || session.pptUpdateReasons?.length ? (
-                <span className="meeting-session-update-tags">
-                  {session.posterUpdateReasons?.length ? <em>海报待更新</em> : null}
-                  {session.pptUpdateReasons?.length ? <em>PPT待更新</em> : null}
-                </span>
-              ) : null}
-            </button>
-          ))}
+          {sessions.map((session) => {
+            const pendingUpdate = Boolean(
+              session.posterUpdateReasons?.length || session.pptUpdateReasons?.length
+            );
+            return (
+              <button
+                type="button"
+                className="meeting-session-tile"
+                key={session.id}
+                onClick={() => onSelectSession(session.id)}
+              >
+                <strong>{session.name}</strong>
+                {pendingUpdate ? <em className="meeting-session-pending">待更新</em> : null}
+              </button>
+            );
+          })}
           <button type="button" className="meeting-session-tile is-add" onClick={onAddSession}>
-            <span className="meeting-session-add-icon" aria-hidden>+</span>
+            <span className="meeting-session-add-icon" aria-hidden>
+              <Plus className="h-4 w-4" strokeWidth={2.4} />
+            </span>
             <strong>新增场次</strong>
           </button>
         </div>
@@ -781,37 +754,31 @@ export function MeetingSessionsPanel({
     );
   }
 
-  const folderItems: { id: MeetingSessionTab; label: string }[] = [
-    { id: 'info', label: '会议信息' },
-    ...(current.posterReady
-      ? [{ id: 'poster' as const, label: current.posterUpdateReasons?.length ? '会议海报（待更新）' : '会议海报' }]
-      : []),
-    ...(current.pptReady
-      ? [{ id: 'ppt' as const, label: current.pptUpdateReasons?.length ? '串场PPT（待更新）' : '串场PPT' }]
-      : []),
-  ];
-  const activeTab = folderItems.some((item) => item.id === tab) ? tab : 'info';
+  const hasInfo = Boolean(current.info);
+  const folderItems: { id: MeetingSessionTab; label: string }[] = hasInfo
+    ? [
+        {
+          id: 'poster',
+          label: current.posterUpdateReasons?.length ? '会议海报（待更新）' : '会议海报',
+        },
+        {
+          id: 'ppt',
+          label: current.pptUpdateReasons?.length ? '串场PPT（待更新）' : '串场PPT',
+        },
+      ]
+    : [{ id: 'info', label: '会议信息' }];
+  const activeTab = folderItems.some((item) => item.id === tab) ? tab : folderItems[0].id;
 
   return (
     <div className="workspace-surface-panel meeting-surface-panel">
       <div className="meeting-session-toolbar">
-        <label className="meeting-session-select">
+        <div className="meeting-session-current">
           <span>当前场次</span>
-          <select
-            className="input"
-            value={current.id}
-            onChange={(event) => onSelectSession(event.target.value)}
-          >
-            {sessions.map((session) => (
-              <option key={session.id} value={session.id}>
-                {session.name}
-              </option>
-            ))}
-          </select>
-        </label>
+          <strong>{current.name}</strong>
+        </div>
         <div className="meeting-session-toolbar-actions">
-          <button type="button" className="btn primary" onClick={onAddSession}>
-            新增场次
+          <button type="button" className="btn primary" onClick={onShowAllSessions}>
+            返回全部场次列表
           </button>
         </div>
       </div>
@@ -850,7 +817,7 @@ export function MeetingSessionsPanel({
               ) : (
                 <>
                   <p className="small meeting-surface-hint">
-                    请先下载会议信息模板，填写后上传。上传完成后将在此展示本场会议信息，并可继续生成海报与串场PPT。
+                    请先下载会议信息模板，填写后上传。上传完成后将自动生成会议海报与串场PPT。
                   </p>
                   <div className="meeting-action-row">
                     <button type="button" className="btn soft" onClick={downloadConferenceInfoTemplate}>
@@ -880,6 +847,15 @@ export function MeetingSessionsPanel({
             />
           ) : null}
 
+          {activeTab === 'poster' && !(current.posterReady && current.posterUrl) ? (
+            <div className="meeting-action-row">
+              <p className="small meeting-surface-hint">本场会议海报尚未生成。</p>
+              <button type="button" className="btn primary" onClick={onGeneratePoster}>
+                生成会议海报
+              </button>
+            </div>
+          ) : null}
+
           {activeTab === 'ppt' && current.pptReady && current.pptSlides?.length ? (
             <MeetingPptCanvas
               title={`${current.name}串场PPT`}
@@ -892,6 +868,15 @@ export function MeetingSessionsPanel({
               workspaceElementId={workspaceElementId}
               onWorkspaceElementSelect={onWorkspaceElementSelect}
             />
+          ) : null}
+
+          {activeTab === 'ppt' && !(current.pptReady && current.pptSlides?.length) ? (
+            <div className="meeting-action-row">
+              <p className="small meeting-surface-hint">本场串场PPT尚未生成。</p>
+              <button type="button" className="btn primary" onClick={onGeneratePpt}>
+                生成串场PPT
+              </button>
+            </div>
           ) : null}
         </div>
       </div>

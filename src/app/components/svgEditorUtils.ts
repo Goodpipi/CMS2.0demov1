@@ -102,6 +102,20 @@ export function isValidSvgMarkup(svgString: string): boolean {
   return doc.documentElement?.tagName?.toLowerCase() === 'svg';
 }
 
+export function isLockedBackgroundElement(el: Element | null | undefined): boolean {
+  return el?.getAttribute('data-edit-id') === 'el-bg';
+}
+
+export function isSvgPictureElement(el: Element | null | undefined): boolean {
+  if (!el || isLockedBackgroundElement(el)) return false;
+  const tag = el.tagName.toLowerCase();
+  if (tag === 'image') return true;
+  if (tag === 'g') {
+    return Boolean(el.querySelector('image')) && !el.querySelector('text, tspan');
+  }
+  return false;
+}
+
 export function resolveEditableSvgSource(imageSrc: string, initialSvg?: string): string | undefined {
   const fromInitial = initialSvg?.trim();
   if (fromInitial && isValidSvgMarkup(fromInitial)) return fromInitial;

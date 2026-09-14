@@ -266,7 +266,7 @@ body {
   flex-shrink: 0;
   border-top: 1px solid rgba(255, 255, 255, 0.35);
   background: linear-gradient(to bottom, transparent, rgba(255, 255, 255, 0.35));
-  padding: 12px 14px 14px;
+  padding: 8px 14px 10px;
 }
 
 .compose-line,
@@ -275,15 +275,15 @@ body {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.82)) !important;
   backdrop-filter: blur(48px) saturate(220%);
   border-radius: 18px !important;
-  padding: 12px 12px 10px !important;
+  padding: 8px 12px 8px !important;
   box-shadow:
     0 0 24px -6px rgba(84, 185, 249, 0.22),
     inset 0 2px 0 rgba(255, 255, 255, 1);
-  gap: 4px;
+  gap: 2px;
   align-items: stretch;
   display: flex;
   flex-direction: column;
-  min-height: 132px;
+  min-height: 88px;
 }
 
 .compose-shell:focus-within {
@@ -313,13 +313,13 @@ body {
 .compose-line textarea,
 .compose-line input,
 .compose-main textarea {
-  min-height: 76px;
+  min-height: 40px;
   height: auto;
   font-size: 14px;
-  line-height: 1.55;
+  line-height: 1.5;
   background: transparent;
   border: none;
-  padding: 2px 6px 8px;
+  padding: 2px 6px 4px;
 }
 
 .model-select {

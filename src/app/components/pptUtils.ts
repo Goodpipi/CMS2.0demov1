@@ -11,6 +11,38 @@ export function genId(prefix = 'id') {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+export function createBlankPptSlide(page: number): PptSlide {
+  const accent = '#54B9F9';
+  const gid = `blank${page}-${Date.now().toString(36)}`;
+  const title = '空白页';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540">
+    <defs>
+      <linearGradient id="${gid}" x1="0" x2="1" y1="0" y2="1">
+        <stop stop-color="#f7fbff"/>
+        <stop offset="1" stop-color="#f5f0fa"/>
+      </linearGradient>
+    </defs>
+    <rect width="960" height="540" fill="url(#${gid})"/>
+    <rect x="0" y="0" width="26" height="540" fill="${accent}"/>
+    <circle cx="846" cy="86" r="92" fill="${accent}" opacity=".12"/>
+    <circle cx="870" cy="470" r="150" fill="#8AD329" opacity=".08"/>
+    <text x="72" y="82" font-family="Arial,Microsoft YaHei,sans-serif" font-size="18" font-weight="700" fill="${accent}">BAYER · 医学内容</text>
+    <text x="72" y="188" font-family="Arial,Microsoft YaHei,sans-serif" font-size="42" font-weight="800" fill="#18334d">${title}</text>
+    <text x="72" y="244" font-family="Arial,Microsoft YaHei,sans-serif" font-size="22" fill="#536a80">在此补充本页内容</text>
+    <rect x="72" y="314" width="610" height="2" fill="${accent}" opacity=".35"/>
+    <text x="72" y="372" font-family="Arial,Microsoft YaHei,sans-serif" font-size="18" fill="#60758a">• 可手动编辑本页标题、图文与版式</text>
+    <text x="72" y="414" font-family="Arial,Microsoft YaHei,sans-serif" font-size="18" fill="#60758a">• 内容仅用于疾病教育，需经内部合规审核</text>
+    <text x="892" y="504" text-anchor="end" font-family="Arial,sans-serif" font-size="16" fill="#8aa0b3">${String(page).padStart(2, '0')}</text>
+  </svg>`;
+  return {
+    page,
+    title,
+    bullets: ['在此补充本页内容'],
+    speakerNotes: '',
+    svg,
+  };
+}
+
 export function isStructuralSection(chapter?: PptOutlineChapter | null): boolean {
   return chapter?.kind === 'cover' || chapter?.kind === 'toc' || chapter?.kind === 'back';
 }

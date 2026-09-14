@@ -136,6 +136,7 @@ import {
   meetingInfoForSession,
   meetingSessionChips,
   parseViewSessionIntent,
+  sessionMaterialsTab,
   type MeetingMaterialsState,
   type MeetingSession,
   type MeetingSessionInfo,
@@ -208,6 +209,7 @@ import {
   slideToPreviewUrl,
   ensureSlideSpeakerNotes,
   insertCenteredImageIntoSlide,
+  createBlankPptSlide,
 } from '@/app/components/pptUtils';
 import { RoleSwitcher } from '@/app/components/RoleSwitcher';
 import { BrandSwitcher } from '@/app/components/BrandSwitcher';
@@ -2002,7 +2004,12 @@ export default function App() {
           }
         : {}),
     });
-    setMeetingMaterials((prev) => ({ ...prev, infoFormOpen: false, sessionTab: 'info', showAllSessions: false }));
+    setMeetingMaterials((prev) => ({
+      ...prev,
+      infoFormOpen: false,
+      sessionTab: hasExistingOutputs && prev.sessionTab === 'ppt' ? 'ppt' : 'poster',
+      showAllSessions: false,
+    }));
     setMeetingInfoDraft(null);
     if (source === 'upload' && session) {
       if (hasExistingOutputs) {
@@ -2221,6 +2228,10 @@ export default function App() {
     const missing = missingRequiredBriefLabels(contentBrief, 'evidence');
     if (missing.length) {
       toast(`请先填写必填项：${missing.join('、')}`);
+      return;
+    }
+    if (!['PPT', '推文', '长图', '图'].includes(contentBrief.format.trim())) {
+      toast('请先选择形式：PPT、推文或长图');
       return;
     }
     fillQuick(outlineCommandFromEvidenceFormat(contentBrief.format));
@@ -4119,6 +4130,17 @@ export default function App() {
       return;
     }
     if (!opts?.skipUserMsg) addMsg('user', userNote || '生成PPT', selectedModel);
+
+    const compactNote = (userNote || '').replace(/\s+/g, '');
+    if (
+      !opts?.path &&
+      pptOutline &&
+      (compactNote === '生成PPT' || compactNote.toLowerCase() === '生成ppt')
+    ) {
+      setPptWizard(null);
+      confirmPptDesigns('no-template');
+      return;
+    }
 
     const fullContext = getRecentUserContext(userNote);
     const audience =
@@ -6487,6 +6509,61 @@ export default function App() {
     [pptResult, selectedPptVersionId, currentSessionId, toast]
   );
 
+  const handleAddCreatorPptSlide = useCallback(() => {
+    if (!pptResult) return;
+    const insertIndex = Math.min(creatorPptPageIndex + 1, pptResult.slides.length);
+    const blank = createBlankPptSlide(insertIndex + 1);
+    const nextSlides = [
+      ...pptResult.slides.slice(0, insertIndex),
+      blank,
+      ...pptResult.slides.slice(insertIndex),
+    ].map((slide, index) => ({ ...slide, page: index + 1 }));
+
+    const remapIndex = (oldIndex: number) => (oldIndex >= insertIndex ? oldIndex + 1 : oldIndex);
+
+    setPptResult((prev) => (prev ? { ...prev, slides: nextSlides } : prev));
+    setPptVersions((prev) =>
+      prev.map((version) =>
+        version.id === selectedPptVersionId || (!selectedPptVersionId && version.id === prev[0]?.id)
+          ? { ...version, slides: nextSlides, coverDataUrl: nextSlides[0]?.imageUrl || version.coverDataUrl }
+          : version
+      )
+    );
+    setCreatorPptPageIndex(insertIndex);
+    setWorkspaceElementSel((prev) =>
+      prev ? { ...prev, slideIndex: remapIndex(prev.slideIndex) } : prev
+    );
+    setModificationTasks((prev) =>
+      prev.map((task) => {
+        if (task.targetTab !== 'ppt-design' || task.pageIndex == null) return task;
+        const nextPage = remapIndex(task.pageIndex);
+        if (nextPage === task.pageIndex) return task;
+        return {
+          ...task,
+          pageIndex: nextPage,
+          targetLabel: `PPT 设计 · 第 ${nextPage + 1} 页`,
+          updatedAt: Date.now(),
+        };
+      })
+    );
+    const nextReviewTasks = loadReviewTasks().map((task) => {
+      if (task.sessionId !== currentSessionId || task.contentType !== 'ppt' || !task.pptComments?.length) {
+        return task;
+      }
+      return {
+        ...task,
+        pptComments: task.pptComments.map((comment) => ({
+          ...comment,
+          pageIndex: remapIndex(comment.pageIndex),
+        })),
+        updatedAt: Date.now(),
+      };
+    });
+    saveReviewTasks(nextReviewTasks);
+    setReviewTasks(nextReviewTasks);
+    toast('已添加空白页');
+  }, [pptResult, creatorPptPageIndex, selectedPptVersionId, currentSessionId, toast]);
+
   const handleWorkspaceElementSelect = useCallback((selection: SelectableSvgSelection | null, slideIndex: number) => {
     if (!selection) {
       setWorkspaceElementSel(null);
@@ -7727,7 +7804,7 @@ export default function App() {
                     className="compose-input"
                     placeholder={getComposerPlaceholder()}
                     value={inputValue}
-                    rows={4}
+                    rows={2}
                     onChange={(e) => {
                       setInputValue(e.target.value);
                       voiceBaseRef.current = e.target.value;
@@ -8240,6 +8317,7 @@ export default function App() {
             pptPageVersionEpoch={pptPageVersionEpoch}
             onCreatorPptPageChange={handleCreatorPptPageChange}
             onReorderCreatorPptSlides={handleReorderCreatorPptSlides}
+            onAddCreatorPptSlide={handleAddCreatorPptSlide}
             pageModificationTasks={currentPageModificationTasks}
             imageModificationTasks={visualModificationTasks}
             imagePageVersionEpoch={imagePageVersionEpoch}
@@ -8776,6 +8854,9 @@ export default function App() {
                 isGenerating={isGenerating}
                 allowBrush={editorTarget?.kind === 'image'}
                 allowShapes={editorTarget?.kind === 'image'}
+                showImageMagicWand={
+                  editorTarget?.kind === 'ppt-slide' || editorTarget?.kind === 'meeting-ppt'
+                }
               />
             </>
           )}
@@ -9368,6 +9449,7 @@ function WorkspaceRightPanel({
   pptPageVersionEpoch,
   onCreatorPptPageChange,
   onReorderCreatorPptSlides,
+  onAddCreatorPptSlide,
   pageModificationTasks,
   imageModificationTasks,
   imagePageVersionEpoch,
@@ -9527,6 +9609,7 @@ function WorkspaceRightPanel({
   pptPageVersionEpoch: number;
   onCreatorPptPageChange: (index: number) => void;
   onReorderCreatorPptSlides: (fromIndex: number, toIndex: number) => void;
+  onAddCreatorPptSlide: () => void;
   pageModificationTasks: ModificationTask[];
   imageModificationTasks: ModificationTask[];
   imagePageVersionEpoch: number;
@@ -10004,22 +10087,20 @@ function WorkspaceRightPanel({
       if (entryContext?.source === 'evidence') {
         return (
           <div className="detail-card content-flow-task-card">
-            <div className="content-flow-task-card-head">
-              <h4>任务已创建</h4>
-              <button type="button" className="btn primary" onClick={() => onFillTaskProposal?.()}>
-                填写任务提案
-              </button>
-            </div>
+            <h4>任务已创建</h4>
             <ol className="content-flow-start-steps">
               <li className="content-flow-start-step">
                 <span className="content-flow-start-index" aria-hidden>
                   1
                 </span>
                 <div className="content-flow-start-body">
-                  <p>您可以上传目标解读文献，作为本次学术证据解读的依据。</p>
+                  <p>您可以先上传目标解读文献，作为本次学术证据解读的依据，并填写任务提案。</p>
                   <div className="content-flow-start-actions">
                     <button type="button" className="btn primary" onClick={() => onOpenAddEvidenceMaterial?.()}>
-                      文献
+                      添加材料
+                    </button>
+                    <button type="button" className="btn primary" onClick={() => onFillTaskProposal?.()}>
+                      填写任务提案
                     </button>
                   </div>
                 </div>
@@ -10399,7 +10480,7 @@ function WorkspaceRightPanel({
             outdatedPptCount={materials.sessions.filter((session) =>
               session.pptUpdateReasons?.includes('template')
             ).length}
-            onRefreshSessionMaterials={() => onRefreshMeetingMaterials?.()}
+            onRefreshSessionMaterials={() => onOpenMeetingSessions?.({ showAll: true })}
             onEditPoster={() =>
               onOpenMeetingCanvasEditor?.(posterUrl, { kind: 'meeting-poster', source: 'template' }, parseSvgFromDataUrl(posterUrl))
             }
@@ -10433,14 +10514,20 @@ function WorkspaceRightPanel({
             infoFormOpen={materials.infoFormOpen}
             infoDraft={meetingInfoDraft}
             onSelectSession={(id) =>
-              onMeetingMaterialsChange?.((prev) => ({
-                ...prev,
-                currentSessionId: id,
-                showAllSessions: false,
-                sessionTab: 'info',
-              }))
+              onMeetingMaterialsChange?.((prev) => {
+                const session = prev.sessions.find((item) => item.id === id);
+                return {
+                  ...prev,
+                  currentSessionId: id,
+                  showAllSessions: false,
+                  sessionTab: sessionMaterialsTab(session, prev.sessionTab),
+                };
+              })
             }
             onAddSession={() => onAddMeetingSession?.()}
+            onShowAllSessions={() =>
+              onMeetingMaterialsChange?.((prev) => ({ ...prev, showAllSessions: true }))
+            }
             onTabChange={(tab) => onMeetingMaterialsChange?.((prev) => ({ ...prev, sessionTab: tab }))}
             onUploadInfo={() => {
               const session = currentMeetingSession(materials);
@@ -10466,6 +10553,8 @@ function WorkspaceRightPanel({
             }}
             onGeneratePoster={() => fillQuick('生成会议海报')}
             onGeneratePpt={() => fillQuick('生成串场PPT')}
+            onRegeneratePoster={() => onRegenerateCurrentMeetingArtifact?.('poster')}
+            onRegeneratePpt={() => onRegenerateCurrentMeetingArtifact?.('ppt')}
             onEditPoster={() => {
               const session = currentMeetingSession(materials);
               if (session?.posterUrl) {
@@ -11148,7 +11237,7 @@ function WorkspaceRightPanel({
               variant="inline"
               outline={previewOutline || pptOutline}
               onChange={onPptOutlineChange}
-              onGenerateDesigns={onConfirmPptDesigns}
+              onGenerateDesigns={() => fillQuick('生成PPT')}
               onRegenerateOutline={onRegeneratePptOutline}
               selectedTemplateId={selectedPptTemplateId}
               templates={pptTemplateOptions}
@@ -11163,9 +11252,7 @@ function WorkspaceRightPanel({
               <div className="ppt-outline-tab-foot">
                 <PptOutlineGenerateFooter
                   isGenerating={isGenerating}
-                  selectedTemplateId={selectedPptTemplateId}
-                  templates={pptTemplateOptions}
-                  onGenerateDesigns={onConfirmPptDesigns}
+                  onGenerateDesigns={() => fillQuick('生成PPT')}
                 />
               </div>
             )}
@@ -11276,7 +11363,7 @@ function WorkspaceRightPanel({
             <div className="detail-card">
               <h4>PPT 生成</h4>
               <div className="small">
-                请先在「PPT大纲」中确认大纲并点击「按模板生成 PPT」。
+                请先在「PPT大纲」中确认大纲并点击「生成PPT」。
               </div>
               <button
                 type="button"
@@ -11539,6 +11626,20 @@ function WorkspaceRightPanel({
                         </button>
                       );
                     })}
+                    {canReorderThumbs && !viewingHistoricalVersion ? (
+                      <button
+                        type="button"
+                        className="is-add"
+                        title="添加页面"
+                        aria-label="添加页面"
+                        onClick={onAddCreatorPptSlide}
+                      >
+                        <span className="creator-ppt-thumbnail-add" aria-hidden>
+                          +
+                        </span>
+                        <span>添加页面</span>
+                      </button>
+                    ) : null}
                   </div>
                   <div className="creator-ppt-stage">
                     <div className="creator-ppt-slide-canvas">
@@ -11550,6 +11651,7 @@ function WorkspaceRightPanel({
                         selectedId={viewingHistoricalVersion ? null : workspaceElementId}
                         disabled={Boolean(selectedHistory) || viewingHistoricalVersion}
                         hideToolbar
+                        showImageMagicWand
                         onSelect={(selection) =>
                           onWorkspaceElementSelect(selection, creatorActivePageIndex)
                         }

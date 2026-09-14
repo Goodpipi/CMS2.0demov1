@@ -5582,9 +5582,9 @@ button.chip {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 4px;
-  min-height: 132px;
-  padding: 12px 12px 10px;
+  gap: 2px;
+  min-height: 88px;
+  padding: 8px 12px 8px;
   border: 1px solid #d7e4f0;
   border-radius: 18px;
   background: #fff;
@@ -5625,16 +5625,16 @@ button.chip {
 .compose-main textarea {
   flex: 1;
   min-width: 0;
-  min-height: 76px;
-  max-height: 168px;
+  min-height: 40px;
+  max-height: 120px;
   height: auto;
   resize: none;
   border: 0;
   background: transparent;
   outline: none;
-  padding: 2px 6px 8px;
+  padding: 2px 6px 4px;
   font-size: 14px;
-  line-height: 1.55;
+  line-height: 1.5;
   color: var(--ink);
 }
 
@@ -7764,6 +7764,35 @@ textarea {
   filter: drop-shadow(0 0 6px rgba(29, 107, 255, 0.35));
 }
 
+.svg-image-magic-frame {
+  position: absolute;
+  z-index: 6;
+  pointer-events: none;
+}
+
+.svg-image-magic-wand {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  transform: translate(42%, -42%);
+  background: linear-gradient(135deg, #54b9f9, #8ad329);
+  color: #fff;
+  box-shadow: 0 4px 10px -3px rgba(59, 166, 232, 0.72);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.svg-image-magic-wand:hover {
+  filter: brightness(1.06);
+}
+
 .visual-editor-props {
   max-height: calc(100vh - 120px);
   max-height: calc(100dvh - 120px);
@@ -8813,7 +8842,7 @@ textarea {
 .ppt-page-field-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 8px;
 }
 
@@ -9268,6 +9297,30 @@ textarea {
   box-shadow: 0 1px 4px rgba(16, 60, 143, 0.28);
 }
 
+.outline-ref-image-remove {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 1;
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(24, 51, 77, 0.78);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.outline-ref-image-remove:hover {
+  background: #c23a3a;
+}
+
 .outline-ref-image img {
   width: 100%;
   height: 92px;
@@ -9316,15 +9369,16 @@ textarea {
 }
 
 .content-brief-panel {
-  gap: 16px;
+  gap: 12px;
   padding: 20px 22px;
 }
 
 .content-brief-fields {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px 16px;
-  flex: 1 1 auto;
+  gap: 8px 16px;
+  flex: 0 1 auto;
+  align-content: start;
   min-height: 0;
   overflow-y: auto;
 }
@@ -9390,7 +9444,7 @@ textarea {
 }
 
 .content-brief-textarea {
-  min-height: 64px;
+  min-height: 56px;
   resize: vertical;
 }
 
@@ -11098,6 +11152,8 @@ textarea {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 6px;
 }
 
@@ -11210,15 +11266,40 @@ textarea {
     0 6px 14px -8px rgba(59, 150, 210, .3);
 }
 
-.creator-ppt-thumbnails button.active::before {
-  content: "";
-  position: absolute;
-  top: 10px;
-  bottom: 10px;
-  left: 0;
-  width: 2.5px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, #54B9F9, #8AD329);
+.creator-ppt-thumbnails button.is-add {
+  cursor: pointer;
+  min-height: 72px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1.5px dashed #9fc8e8;
+  background: linear-gradient(135deg, rgba(234, 247, 255, 0.58), rgba(244, 255, 240, 0.72));
+  color: #2f6f9f;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.creator-ppt-thumbnails button.is-add:hover {
+  border-color: #54b9f9;
+  background: linear-gradient(135deg, rgba(225, 244, 255, 0.92), rgba(239, 255, 229, 0.94));
+  color: #1952a0;
+}
+
+.creator-ppt-thumbnails button.is-add:active {
+  cursor: pointer;
+}
+
+.creator-ppt-thumbnail-add {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #54b9f9, #8ad329);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1;
 }
 
 .creator-ppt-thumbnails button.is-dragging {
@@ -11655,6 +11736,7 @@ textarea {
 }
 
 .selectable-svg-host {
+  position: relative;
   display: block;
   width: 100%;
   height: 100%;
@@ -11696,7 +11778,7 @@ textarea {
   flex: 1;
   min-height: 0;
   place-items: center;
-  overflow: hidden;
+  overflow: visible;
   border-radius: 8px;
   background: transparent;
   box-shadow: none;
@@ -13193,6 +13275,10 @@ textarea {
   min-height: 360px;
 }
 
+.meeting-ppt-stage {
+  grid-template-rows: minmax(0, 1fr);
+}
+
 .meeting-folder-body .ppt-design-fit-panel {
   gap: 8px;
 }
@@ -13263,12 +13349,18 @@ textarea {
   justify-content: space-between;
 }
 
-.meeting-session-select {
+.meeting-session-select,
+.meeting-session-current {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 13px;
   color: #3d5268;
+}
+
+.meeting-session-current strong {
+  color: #1d3348;
+  font-size: 15px;
 }
 
 .meeting-session-select .input {
@@ -13376,17 +13468,17 @@ textarea {
 
 .meeting-session-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
   max-width: 760px;
 }
 
 .meeting-session-tile {
   display: grid;
-  min-height: 148px;
+  min-height: 108px;
   place-items: center;
   align-content: center;
-  gap: 8px;
+  gap: 10px;
   padding: 16px 12px;
   border: 1px solid #dce8f2;
   border-radius: 14px;
@@ -13402,51 +13494,55 @@ textarea {
   transform: translateY(-1px);
 }
 
-.meeting-session-tile small {
-  color: #8195a8;
-  font-size: 12px;
+.meeting-session-tile strong {
+  font-size: 14px;
+  font-weight: 700;
 }
 
-.meeting-session-update-status {
+.meeting-session-pending {
   display: inline-flex;
   align-items: center;
-  min-height: 24px;
-  padding: 0 9px;
+  min-height: 22px;
+  padding: 0 8px;
   border-radius: 999px;
   background: #fff4df;
   color: #a35a00;
   font-size: 11px;
-  font-weight: 750;
+  font-style: normal;
+  font-weight: 700;
 }
 
 .meeting-session-tile-icon,
 .meeting-session-add-icon {
   display: grid;
-  width: 52px;
-  height: 52px;
+  width: 30px;
+  height: 30px;
   place-items: center;
-  border-radius: 14px;
-  background: #eaf6ff;
-  color: #0b66b3;
-  font-size: 22px;
-  font-weight: 800;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #54b9f9, #8ad329);
+  color: #fff;
+  box-shadow: 0 6px 14px -5px rgba(59, 166, 232, 0.62);
 }
 
 .meeting-session-tile.is-add {
-  border: 1.5px dashed #a8c4d9;
-  background: #fbfdff;
+  border: 1.5px dashed #9fc8e8;
+  background: linear-gradient(135deg, rgba(234, 247, 255, 0.58), rgba(244, 255, 240, 0.72));
+  color: #2f6f9f;
 }
 
-.meeting-session-tile.is-add .meeting-session-add-icon {
-  background: transparent;
-  color: #54a8d8;
-  font-size: 38px;
-  font-weight: 400;
-  line-height: 1;
+.meeting-session-tile.is-add:hover {
+  border-color: #54b9f9;
+  background: linear-gradient(135deg, rgba(225, 244, 255, 0.92), rgba(239, 255, 229, 0.94));
+  color: #1952a0;
+}
+
+.meeting-session-tile.is-add strong {
+  font-size: 12px;
+  font-weight: 650;
 }
 
 .meeting-task-proposal-panel {
-  min-height: 100%;
+  min-height: 0;
 }
 
 .meeting-update-notice {
@@ -13455,16 +13551,11 @@ textarea {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 14px;
-  padding: 12px 14px;
+  padding: 10px 14px;
   border: 1px solid #f1d29a;
   border-radius: 12px;
   background: #fff9ec;
   color: #694315;
-}
-
-.meeting-update-notice > div {
-  display: grid;
-  gap: 3px;
 }
 
 .meeting-update-notice strong {

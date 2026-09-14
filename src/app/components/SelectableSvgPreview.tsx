@@ -14,6 +14,7 @@ import {
   serializeSvgFromContainer,
   type SvgElementInfo,
 } from '@/app/components/svgEditorUtils';
+import { SvgImageMagicWand } from '@/app/components/SvgImageMagicWand';
 
 export interface SelectableSvgSelection {
   id: string;
@@ -50,6 +51,9 @@ interface SelectableSvgPreviewProps {
   className?: string;
   /** 隐藏内置工具条，改由外部 Toolbar 控制 */
   hideToolbar?: boolean;
+  /** PPT 工作台：选中图片时在虚线框右上角显示魔法棒 */
+  showImageMagicWand?: boolean;
+  onImageMagicWandClick?: () => void;
   /** 禁止点选 SVG 元素，仅保留画笔圈选 */
   disableSelect?: boolean;
   onToolStateChange?: (state: SelectableSvgToolState) => void;
@@ -71,12 +75,15 @@ export const SelectableSvgPreview = forwardRef<
     disabled = false,
     className = '',
     hideToolbar = false,
+    showImageMagicWand = false,
+    onImageMagicWandClick,
     disableSelect = false,
     onToolStateChange,
   },
   ref
 ) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [brushActive, setBrushActive] = useState(false);
   const [eraserActive, setEraserActive] = useState(false);
@@ -288,12 +295,20 @@ export const SelectableSvgPreview = forwardRef<
       className={`image-draw-editor selectable-svg-preview ${disabled ? 'is-disabled' : ''} ${className}`.trim()}
     >
       {toolbar}
-      <div className="image-draw-canvas">
+      <div ref={canvasRef} className="image-draw-canvas">
         <div
           ref={hostRef}
           className="selectable-svg-host"
           dangerouslySetInnerHTML={{ __html: prepared.svg }}
         />
+        {showImageMagicWand ? (
+          <SvgImageMagicWand
+            hostRef={hostRef}
+            frameRef={canvasRef}
+            selectedId={selectedId}
+            onClick={onImageMagicWandClick}
+          />
+        ) : null}
         <svg
           viewBox="0 0 1000 1000"
           preserveAspectRatio="none"

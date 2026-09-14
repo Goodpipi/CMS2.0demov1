@@ -14,7 +14,6 @@ export function OutlineFieldHeader({
 }) {
   return (
     <div className="ppt-page-field-head">
-      <span>{label}</span>
       {showAi && onAi ? (
         <button
           type="button"
@@ -24,6 +23,7 @@ export function OutlineFieldHeader({
           AI修改
         </button>
       ) : null}
+      <span>{label}</span>
     </div>
   );
 }
@@ -247,21 +247,36 @@ export function OutlineReferencedImages({
   images,
   empty = '暂无引用图片',
   action,
+  onRemove,
 }: {
   label?: string;
   images?: OutlineRefImage[];
   empty?: string;
   action?: ReactNode;
+  onRemove?: (index: number) => void;
 }) {
   const list = (images || []).filter((item) => item.url);
   return (
     <div className="ppt-page-field">
-      <span>{label}</span>
+      <div className="ppt-page-field-head">
+        <span>{label}</span>
+      </div>
       {list.length ? (
         <div className="outline-ref-images">
           {list.map((item, index) => (
             <figure key={`${item.url}-${index}`} className="outline-ref-image">
               <img src={item.url} alt={item.alt || item.caption || '引用图片'} />
+              {onRemove ? (
+                <button
+                  type="button"
+                  className="outline-ref-image-remove"
+                  aria-label={`删除引用图片${item.caption ? `：${item.caption}` : ''}`}
+                  title="删除引用图片"
+                  onClick={() => onRemove(index)}
+                >
+                  ×
+                </button>
+              ) : null}
               {item.cites?.length ? (
                 <span className="outline-ref-image-badge" aria-label={`参考文献 ${item.cites.join('、')}`}>
                   {item.cites.join(',')}
