@@ -1,23 +1,21 @@
-import { useMemo, useRef, useState } from 'react';
-import { Eraser, Paintbrush } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Eraser, Paintbrush, Play, Settings2, Trash2 } from 'lucide-react';
 import {
   SelectableSvgPreview,
   type SelectableSvgPreviewHandle,
   type SelectableSvgToolState,
 } from '@/app/components/SelectableSvgPreview';
 import { parseSvgFromDataUrl } from '@/app/components/svgEditorUtils';
-import { downloadDataUrl } from '@/lib/copyRevisionUtils';
 import {
-  VIDEO_CLIPS,
-  VIDEO_HERO_POSES,
+  VIDEO_HERO_IMAGE_URL,
   VIDEO_STUDIO_FULL_URL,
   VIDEO_STUDIO_OPINIONS,
+  findShotDef,
   firstFrameUrl,
   finalVideoMeta,
-  heroPoseUrl,
   isVideoBriefComplete,
+  shotsFromStoryboard,
   type VideoBrief,
-  type VideoHeroPose,
   type VideoStudioAction,
   type VideoStudioState,
   type VideoTransition,
@@ -30,12 +28,14 @@ function ActionRow({ children }: { children: React.ReactNode }) {
 function StageHeader({
   title,
   children,
+  centerActions = false,
 }: {
   title: string;
   children?: React.ReactNode;
+  centerActions?: boolean;
 }) {
   return (
-    <div className="video-studio-stage-header">
+    <div className={`video-studio-stage-header ${centerActions ? 'is-actions-centered' : ''}`}>
       <h1>{title}</h1>
       {children ? <div className="video-studio-stage-actions">{children}</div> : null}
     </div>
@@ -73,6 +73,7 @@ function BrushCanvas({
     eraserActive: false,
     canClear: false,
   });
+  const isSvg = imageUrl.startsWith('data:image/svg') || imageUrl.includes('image/svg');
 
   return (
     <div className={`video-studio-brush ${active ? 'is-active' : ''}`}>
@@ -99,16 +100,20 @@ function BrushCanvas({
           </button>
         </div>
       ) : null}
-      <SelectableSvgPreview
-        ref={previewRef}
-        svgMarkup={parseSvgFromDataUrl(imageUrl)}
-        imageSrc={imageUrl}
-        selectedId={null}
-        disableSelect
-        hideToolbar
-        onSelect={() => undefined}
-        onToolStateChange={setToolState}
-      />
+      {isSvg ? (
+        <SelectableSvgPreview
+          ref={previewRef}
+          svgMarkup={parseSvgFromDataUrl(imageUrl)}
+          imageSrc={imageUrl}
+          selectedId={null}
+          disableSelect
+          hideToolbar
+          onSelect={() => undefined}
+          onToolStateChange={setToolState}
+        />
+      ) : (
+        <img src={imageUrl} alt="主视觉参考" />
+      )}
     </div>
   );
 }
@@ -133,12 +138,9 @@ function BriefPanel({
           disabled={!complete}
           onClick={() => dispatch({ type: 'generateHero' })}
         >
-          生成主角形象
+          生成主视觉参考
         </button>
       </StageHeader>
-      <p className="small meeting-surface-hint">
-        请先填写视频主题、画面风格等必填项。填写完成后直接点击右上角生成主角形象。
-      </p>
       <div className="video-studio-form">
         <label>
           视频主题<span>*</span>
@@ -168,91 +170,77 @@ function BriefPanel({
           内容语言
           <input className="input" value={brief.language} onChange={(e) => set({ language: e.target.value })} />
         </label>
-        <label>
-          旁白形式
-          <input className="input" value={brief.narrationType} onChange={(e) => set({ narrationType: e.target.value })} />
-        </label>
-        <label>
-          品牌
-          <input className="input" value={brief.brand} onChange={(e) => set({ brand: e.target.value })} />
-        </label>
-        <label>
-          主角或人物要求
-          <input className="input" value={brief.heroRequirement} onChange={(e) => set({ heroRequirement: e.target.value })} />
-        </label>
-        <label>
-          旁白语气
-          <input className="input" value={brief.tone} onChange={(e) => set({ tone: e.target.value })} />
-        </label>
-        <label>
-          参考视频
-          <input className="input" value={brief.refVideo} onChange={(e) => set({ refVideo: e.target.value })} />
-        </label>
-        <label>
-          人物参考图
-          <input className="input" value={brief.personRef} onChange={(e) => set({ personRef: e.target.value })} />
-        </label>
-        <label>
-          场景或风格参考图
-          <input className="input" value={brief.sceneRef} onChange={(e) => set({ sceneRef: e.target.value })} />
-        </label>
-        <label className="is-wide">
-          品牌Brief和参考资料
-          <textarea className="input" rows={3} value={brief.brandBrief} onChange={(e) => set({ brandBrief: e.target.value })} />
-        </label>
       </div>
     </div>
   );
 }
 
-function HeroPanel({
+function VisualRefPanel({
   studio,
   dispatch,
+  onOpenMaterialsPicker,
 }: {
   studio: VideoStudioState;
   dispatch: (action: VideoStudioAction) => void;
+  onOpenMaterialsPicker?: () => void;
 }) {
-  const [selectedPose, setSelectedPose] = useState<VideoHeroPose>('front');
-  const selectedUrl = heroPoseUrl(selectedPose, studio.heroCape);
+  const uploadRef = useRef<HTMLInputElement>(null);
+  const imageUrl = studio.visualRefUrl || VIDEO_HERO_IMAGE_URL;
 
   return (
     <div className="workspace-surface-panel video-studio-panel">
-      <StageHeader title="主角形象（Hero）">
+      <StageHeader title="主视觉参考">
+        <button type="button" className="btn soft" onClick={() => onOpenMaterialsPicker?.()}>
+          上传参考资料
+        </button>
         <button type="button" className="btn primary" onClick={() => dispatch({ type: 'generateStoryboard' })}>
           生成分镜脚本
         </button>
       </StageHeader>
-      <div className="video-studio-hero-tabs" role="tablist" aria-label="主角形象视图">
-        {VIDEO_HERO_POSES.map((pose) => (
-          <button
-            key={pose.id}
-            type="button"
-            role="tab"
-            aria-selected={selectedPose === pose.id}
-            className={selectedPose === pose.id ? 'is-active' : ''}
-            onClick={() => setSelectedPose(pose.id)}
-          >
-            {pose.label}
-          </button>
-        ))}
+      <div className="video-studio-visual-ref">
+        <BrushCanvas imageUrl={imageUrl} active />
       </div>
-      <div className="video-studio-hero-stage">
-        <img
-          src={selectedUrl}
-          alt={VIDEO_HERO_POSES.find((pose) => pose.id === selectedPose)?.label || '主角形象'}
-        />
-      </div>
-      <p className="small meeting-surface-hint">
-        如需调整形象，请直接在右侧对话中描述，例如“把小K的披风改成深红色”。
-      </p>
+      {studio.heroCompared ? (
+        <div className="video-studio-compare">
+          <figure>
+            <img src={VIDEO_HERO_IMAGE_URL} alt="修改前" />
+            <figcaption>修改前</figcaption>
+          </figure>
+          <figure>
+            <img src={VIDEO_HERO_IMAGE_URL} alt="修改后" />
+            <figcaption>披风加深红</figcaption>
+          </figure>
+        </div>
+      ) : null}
       <ActionRow>
+        <button type="button" className="btn soft" onClick={() => uploadRef.current?.click()}>
+          上传图片
+        </button>
         <button type="button" className="btn soft" onClick={() => dispatch({ type: 'regenerateHero' })}>
           重新生成
         </button>
-        <button type="button" className="btn soft" onClick={() => downloadDataUrl(selectedUrl, '小K主角形象.svg')}>
-          下载当前视图
-        </button>
+        <a className="btn soft" href={imageUrl} download="主视觉参考.jpg">
+          下载当前主视觉
+        </a>
       </ActionRow>
+      <input
+        ref={uploadRef}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = () => {
+            if (typeof reader.result === 'string') {
+              dispatch({ type: 'setVisualRefUrl', url: reader.result });
+            }
+          };
+          reader.readAsDataURL(file);
+          event.target.value = '';
+        }}
+      />
     </div>
   );
 }
@@ -268,12 +256,9 @@ function StoryboardPanel({
     <div className="workspace-surface-panel video-studio-panel">
       <StageHeader title="完整分镜脚本">
         <button type="button" className="btn primary" onClick={() => dispatch({ type: 'generateFrames' })}>
-          确认并生成片段首帧
+          确认并生成分镜参考图
         </button>
       </StageHeader>
-      <p className="small meeting-surface-hint">
-        脚本按时间从头到尾连续编写，并标明每一秒的镜头、画面、台词、解说词、字幕与衔接。确认后系统再拆成制作片段。
-      </p>
       <textarea
         className="input video-studio-storyboard-text"
         aria-label="完整分镜脚本"
@@ -281,11 +266,13 @@ function StoryboardPanel({
         onChange={(event) => dispatch({ type: 'setStoryboardText', text: event.target.value })}
       />
       <ActionRow>
-        <button type="button" className="btn soft" onClick={() => dispatch({ type: 'checkCompliance' })}>
-          检查脚本合规
+        <button type="button" className="btn soft" onClick={() => dispatch({ type: 'startTeamReview' })}>
+          收集团队意见
+        </button>
+        <button type="button" className="btn primary" onClick={() => dispatch({ type: 'confirmSubmit' })}>
+          提交Veeva
         </button>
       </ActionRow>
-      {studio.complianceChecked ? <div className="small video-studio-ok">脚本合规检查：已完成</div> : null}
     </div>
   );
 }
@@ -297,94 +284,76 @@ function FramesPanel({
   studio: VideoStudioState;
   dispatch: (action: VideoStudioAction) => void;
 }) {
-  const [preview, setPreview] = useState<string | null>(null);
-  const selectedClip = VIDEO_CLIPS.find((clip) => clip.id === studio.selectedClipId) || VIDEO_CLIPS[0];
-  const selectedVersion = studio.frameVersions[selectedClip.id] || 'base';
-  const selectedUrl = firstFrameUrl(selectedClip.id, selectedVersion);
-  const brushing = studio.frameBrushClipId === selectedClip.id;
+  const shots = shotsFromStoryboard(studio.storyboard);
+  const allSelected = shots.length > 0 && shots.every((shot) => studio.selectedFrameIds.includes(shot.id));
+  const hasSelection = studio.selectedFrameIds.length > 0;
+
   return (
     <div className="workspace-surface-panel video-studio-panel">
-      <StageHeader title="片段首帧">
-        <button
-          type="button"
-          className="btn soft"
-          onClick={() => dispatch({ type: 'confirmAllFrames' })}
-        >
-          {studio.framesConfirmed ? '全部首帧已确认' : '确认全部首帧'}
-        </button>
-        <button
-          type="button"
-          className="btn primary"
-          disabled={!studio.framesConfirmed}
-          onClick={() => dispatch({ type: 'generateClips' })}
-        >
-          生成分段视频
+      <StageHeader title="分镜参考图">
+        <button type="button" className="btn primary" onClick={() => dispatch({ type: 'generateClips' })}>
+          视频生成
         </button>
       </StageHeader>
-      <p className="small meeting-surface-hint">请从右侧对话区选择一张片段首帧，在这里进行圈选修改或重新生成。</p>
-      <article className="video-studio-frame-focus">
-        <header>
-          <div>
-            <strong>{selectedClip.name}</strong>
-            <span>{selectedClip.range}</span>
-          </div>
-          <span>当前版本：{selectedVersion === 'rice' ? '米饭缩小版' : 'V1'}</span>
-        </header>
-        {brushing ? (
-          <BrushCanvas imageUrl={selectedUrl} active />
-        ) : (
-          <img src={selectedUrl} alt={`${selectedClip.name}首帧`} />
-        )}
-        <p>{selectedClip.summary}</p>
-        <ActionRow>
-          <button type="button" className="btn soft" onClick={() => setPreview(selectedUrl)}>
-            打开预览
-          </button>
-          <button
-            type="button"
-            className="btn soft"
-            onClick={() => dispatch({ type: 'openFrameBrush', clipId: selectedClip.id })}
-          >
-            画笔圈选修改
-          </button>
-          <button
-            type="button"
-            className="btn soft"
-            onClick={() => dispatch({ type: 'regenerateFrame', clipId: selectedClip.id })}
-          >
-            重新生成
-          </button>
+      <div className="video-studio-frame-toolbar">
+        <div className="video-studio-toolbar-actions">
+          <label className="video-studio-select-all">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={(event) => dispatch({ type: 'selectAllFrames', selected: event.target.checked })}
+            />
+            全选
+          </label>
           <button
             type="button"
             className="btn primary"
-            onClick={() => dispatch({ type: 'confirmFrame', clipId: selectedClip.id })}
+            disabled={!hasSelection}
+            onClick={() => dispatch({ type: 'regenerateSelectedFrames' })}
           >
-            确认该首帧
+            重新生成
           </button>
-        </ActionRow>
-      </article>
+        </div>
+      </div>
+      <div className="video-studio-frame-strip" role="list">
+        {shots.map((clip) => {
+          const version = studio.frameVersions[clip.id] || 'base';
+          const checked = studio.selectedFrameIds.includes(clip.id);
+          return (
+            <article
+              key={clip.id}
+              className={`video-studio-frame-strip-card ${checked ? 'is-selected' : ''}`}
+              role="listitem"
+            >
+              <label className="video-studio-frame-check">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  aria-label={`选择${clip.name}`}
+                  onChange={() => dispatch({ type: 'toggleFrameSelect', id: clip.id })}
+                />
+              </label>
+              <img src={firstFrameUrl(clip.id, version)} alt={`${clip.name}参考图`} />
+              <div className="video-studio-frame-strip-meta">
+                <strong>
+                  {clip.range} · {clip.name}
+                </strong>
+                <p>{clip.summary}</p>
+              </div>
+            </article>
+          );
+        })}
+      </div>
       {studio.frameCompared ? (
         <div className="video-studio-compare">
           <figure>
-            <img src={firstFrameUrl('clip-2', 'base')} alt="修改前" />
+            <img src={firstFrameUrl('clip-2')} alt="修改前" />
             <figcaption>片段2 修改前</figcaption>
           </figure>
           <figure>
-            <img src={firstFrameUrl('clip-2', 'rice')} alt="修改后" />
+            <img src={firstFrameUrl('clip-3')} alt="修改后" />
             <figcaption>米饭份量缩小</figcaption>
           </figure>
-        </div>
-      ) : null}
-      {selectedClip.id === 'clip-2' && studio.frameVersions['clip-2'] === 'rice' ? (
-        <ActionRow>
-          <button type="button" className="btn soft" onClick={() => dispatch({ type: 'compareFrame' })}>
-            对比修改前后
-          </button>
-        </ActionRow>
-      ) : null}
-      {preview ? (
-        <div className="video-studio-lightbox" onClick={() => setPreview(null)}>
-          <img src={preview} alt="首帧预览" />
         </div>
       ) : null}
     </div>
@@ -398,179 +367,189 @@ function ClipsPanel({
   studio: VideoStudioState;
   dispatch: (action: VideoStudioAction) => void;
 }) {
-  const playing = studio.timelinePreviewing ? VIDEO_STUDIO_FULL_URL : null;
-  const [playingVersion, setPlayingVersion] = useState<string | null>(null);
-  return (
-    <div className="workspace-surface-panel video-studio-panel">
-      <StageHeader title="视频生成与拼接">
-        <button type="button" className="btn soft" onClick={() => dispatch({ type: 'previewTimeline' })}>
-          预览拼接效果
-        </button>
-        <button type="button" className="btn primary" onClick={() => dispatch({ type: 'composeFinal' })}>
-          合并完整视频
-        </button>
-      </StageHeader>
-      <p className="small meeting-surface-hint">
-        已生成多个制作片段。可拖动或左右移动调整顺序，确认后合并为完整视频。
-      </p>
-      <div className="video-studio-clip-grid">
-        {VIDEO_CLIPS.map((clip) => {
-          const state = studio.clips.find((item) => item.id === clip.id);
-          const selected = state?.versions.find((item) => item.id === state.selectedVersionId) || state?.versions[0];
-          return (
-            <article
-              key={clip.id}
-              className={`video-studio-clip-card ${studio.selectedClipId === clip.id ? 'is-selected' : ''}`}
-            >
-              <header>
-                <strong>
-                  {clip.name} · {clip.range}
-                </strong>
-                <span>{clip.duration}</span>
-              </header>
-              <img src={selected?.posterUrl || firstFrameUrl(clip.id)} alt={clip.name} />
-              <p>{clip.narration}</p>
-              <div className="small">衔接到下一片段：{clip.bridge}</div>
-              <div className="video-studio-versions">
-                {(state?.versions || []).map((version) => (
-                  <div
-                    key={version.id}
-                    className={`video-studio-version ${state?.selectedVersionId === version.id ? 'is-selected' : ''}`}
-                  >
-                    <strong>{version.label}</strong>
-                    <span>{version.note}</span>
-                    <div className="video-studio-card-actions">
-                      <button
-                        type="button"
-                        className="btn soft"
-                        onClick={() => {
-                          dispatch({ type: 'selectClip', clipId: clip.id });
-                          setPlayingVersion(`${clip.id}-${version.id}`);
-                        }}
-                      >
-                        播放
-                      </button>
-                      <button
-                        type="button"
-                        className="btn primary"
-                        onClick={() => dispatch({ type: 'selectClipVersion', clipId: clip.id, versionId: version.id })}
-                      >
-                        设为当前版本
-                      </button>
-                    </div>
-                    {playingVersion === `${clip.id}-${version.id}` ? (
-                      <StudioPlayer src={version.videoUrl} poster={version.posterUrl} title={version.label} compact />
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-              <ActionRow>
-                <button type="button" className="btn soft" onClick={() => dispatch({ type: 'addClipVersion', clipId: clip.id })}>
-                  生成新版本
-                </button>
-              </ActionRow>
-            </article>
-          );
-        })}
-      </div>
-      <TimelineBlock studio={studio} dispatch={dispatch} playing={Boolean(playing)} />
-    </div>
-  );
-}
-
-function TimelineBlock({
-  studio,
-  dispatch,
-  playing,
-}: {
-  studio: VideoStudioState;
-  dispatch: (action: VideoStudioAction) => void;
-  playing: boolean;
-}) {
-  const visible = studio.clipOrder.filter((id) => !studio.removedClipIds.includes(id));
+  const compositeVideoRef = useRef<HTMLVideoElement>(null);
+  const [compositePlaying, setCompositePlaying] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
+  const [transitionEditorId, setTransitionEditorId] = useState<string | null>(null);
+  const visibleIds = studio.clipOrder.filter((id) => !studio.removedClipIds.includes(id));
+  const allSelected = visibleIds.length > 0 && visibleIds.every((id) => studio.selectedClipIds.includes(id));
+  const hasSelection = studio.selectedClipIds.length > 0;
+  const meta = finalVideoMeta(studio);
+  const firstVisibleClip = studio.clips.find((item) => item.id === visibleIds[0]);
+  const firstVisibleVersion =
+    firstVisibleClip?.versions.find((item) => item.id === firstVisibleClip.selectedVersionId) ||
+    firstVisibleClip?.versions[0];
+  const compositePoster = firstVisibleVersion?.posterUrl || firstFrameUrl(visibleIds[0] || 'clip-1');
 
   const moveClip = (from: number, to: number) => {
-    if (to < 0 || to >= visible.length || from === to) return;
-    const next = [...visible];
+    if (to < 0 || to >= visibleIds.length || from === to) return;
+    const next = [...visibleIds];
     const [item] = next.splice(from, 1);
     next.splice(to, 0, item);
     dispatch({ type: 'reorderClips', order: next });
   };
 
   return (
-    <section className="video-studio-timeline">
-      <h2>片段排序与合并</h2>
-      <div className="video-studio-track">
-        {visible.map((clipId, index) => {
-          const clip = VIDEO_CLIPS.find((item) => item.id === clipId);
-          if (!clip) return null;
-          const nextId = visible[index + 1];
-          return (
-            <div
-              key={clipId}
-              className={`video-studio-track-item ${dragId === clipId ? 'is-dragging' : ''}`}
-              draggable
-              onDragStart={(event) => {
-                if ((event.target as HTMLElement).closest('button, select, label, input')) {
-                  event.preventDefault();
-                  return;
-                }
-                setDragId(clipId);
-              }}
-              onDragEnd={() => setDragId(null)}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={() => {
-                if (!dragId || dragId === clipId) return;
-                moveClip(visible.indexOf(dragId), index);
-                setDragId(null);
-              }}
+    <div className="workspace-surface-panel video-studio-panel">
+      <StageHeader title="视频生成与拼接" />
+      <section className="video-studio-composite" aria-label="完整视频预览">
+        <div className="video-studio-composite-head">
+          <strong>完整视频预览</strong>
+          <span>{meta.duration} · {meta.ratio} · {visibleIds.length} 个片段</span>
+        </div>
+        <div className="video-studio-composite-player">
+          <div className="video-studio-composite-media">
+            <video
+              ref={compositeVideoRef}
+              src={VIDEO_STUDIO_FULL_URL}
+              poster={compositePoster}
+              controls
+              preload="metadata"
+              title="当前配置的完整视频"
+              onPlay={() => setCompositePlaying(true)}
+              onPause={() => setCompositePlaying(false)}
+              onEnded={() => setCompositePlaying(false)}
+            />
+          </div>
+          {!compositePlaying ? (
+            <button
+              type="button"
+              className="video-studio-composite-play"
+              aria-label="播放完整视频"
+              onClick={() => void compositeVideoRef.current?.play()}
             >
-              <div className="video-studio-track-clip">
-                <strong>{clip.name}</strong>
-                <span>{clip.range}</span>
-                <div className="video-studio-card-actions">
-                  <button type="button" className="btn soft" onClick={() => dispatch({ type: 'selectClip', clipId })}>
-                    播放
-                  </button>
-                  <button type="button" className="btn soft" disabled={index === 0} onClick={() => moveClip(index, index - 1)}>
-                    左移
-                  </button>
+              <Play className="h-6 w-6" fill="currentColor" aria-hidden />
+            </button>
+          ) : null}
+        </div>
+      </section>
+      <div className="video-studio-frame-toolbar">
+        <div className="video-studio-toolbar-actions">
+          <label className="video-studio-select-all">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={(event) => dispatch({ type: 'selectAllClips', selected: event.target.checked })}
+            />
+            全选
+          </label>
+          <button
+            type="button"
+            className="btn primary"
+            disabled={!hasSelection}
+            onClick={() => dispatch({ type: 'regenerateSelectedClips' })}
+          >
+            重新生成
+          </button>
+        </div>
+      </div>
+      <div className="video-studio-frame-strip video-studio-clip-strip" role="list">
+        {visibleIds.map((clipId, index) => {
+          const clip = findShotDef(clipId, studio.storyboard);
+          if (!clip) return null;
+          const state = studio.clips.find((item) => item.id === clipId);
+          const selected = state?.versions.find((item) => item.id === state.selectedVersionId) || state?.versions[0];
+          const checked = studio.selectedClipIds.includes(clipId);
+          const nextId = visibleIds[index + 1];
+          const transition = studio.transitions[clipId] || 'cut';
+          return (
+            <div key={clipId} className="video-studio-clip-unit">
+              <article
+                className={`video-studio-frame-strip-card video-studio-clip-strip-card ${checked ? 'is-selected' : ''} ${dragId === clipId ? 'is-dragging' : ''}`}
+                role="listitem"
+                draggable
+                onDragStart={(event) => {
+                  if ((event.target as HTMLElement).closest('button, label, input, select, a, video')) {
+                    event.preventDefault();
+                    return;
+                  }
+                  setDragId(clipId);
+                }}
+                onDragEnd={() => setDragId(null)}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={() => {
+                  if (!dragId || dragId === clipId) return;
+                  moveClip(visibleIds.indexOf(dragId), index);
+                  setDragId(null);
+                }}
+              >
+                <div className="video-studio-clip-media">
+                  <label className="video-studio-frame-check">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      aria-label={`选择${clip.name}`}
+                      onChange={() => dispatch({ type: 'toggleClipSelect', id: clipId })}
+                    />
+                  </label>
+                  <img src={selected?.posterUrl || firstFrameUrl(clipId)} alt={clip.name} />
+                  <div className="video-studio-clip-float">
+                    <button
+                      type="button"
+                      className="video-studio-clip-icon-btn is-danger"
+                      title="删除"
+                      aria-label={`删除${clip.name}`}
+                      onClick={() => dispatch({ type: 'removeClip', clipId })}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+                <div className="video-studio-frame-strip-meta">
+                  <strong>{clip.name}</strong>
+                  <span className="video-studio-clip-version">
+                    {clip.range}{state && state.versions.length > 1 ? ` · ${selected?.label || '版本A'}` : ''}
+                  </span>
+                </div>
+              </article>
+              {nextId ? (
+                <div className="video-studio-transition-gap">
                   <button
                     type="button"
-                    className="btn soft"
-                    disabled={index === visible.length - 1}
-                    onClick={() => moveClip(index, index + 1)}
+                    className={`video-studio-transition-seam ${transitionEditorId === clipId ? 'is-open' : ''}`}
+                    title="配置转场"
+                    aria-label={`配置 ${clip.name} 到下一片段的转场，当前为${transition === 'fade' ? '淡入淡出' : '直接切换'}`}
+                    onClick={() => setTransitionEditorId((prev) => (prev === clipId ? null : clipId))}
                   >
-                    右移
+                    <Settings2 className="h-3.5 w-3.5" aria-hidden />
+                    <span>{transition === 'fade' ? '淡入淡出' : '转场'}</span>
                   </button>
-                  <button type="button" className="btn soft" onClick={() => dispatch({ type: 'removeClip', clipId })}>
-                    删除
-                  </button>
+                  {transitionEditorId === clipId ? (
+                    <div className="video-studio-transition-menu" role="menu">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className={transition === 'cut' ? 'is-active' : ''}
+                        onClick={() => {
+                          dispatch({ type: 'setTransition', afterClipId: clipId, transition: 'cut' });
+                          setTransitionEditorId(null);
+                        }}
+                      >
+                        直接切换
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className={transition === 'fade' ? 'is-active' : ''}
+                        onClick={() => {
+                          dispatch({ type: 'setTransition', afterClipId: clipId, transition: 'fade' as VideoTransition });
+                          setTransitionEditorId(null);
+                        }}
+                      >
+                        淡入淡出
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
-              </div>
-              {nextId ? (
-                <label className="video-studio-transition">
-                  转场
-                  <select
-                    value={studio.transitions[clipId] || 'cut'}
-                    onChange={(e) =>
-                      dispatch({ type: 'setTransition', afterClipId: clipId, transition: e.target.value as VideoTransition })
-                    }
-                  >
-                    <option value="cut">直接切换</option>
-                    <option value="fade">淡入淡出</option>
-                  </select>
-                </label>
               ) : null}
             </div>
           );
         })}
       </div>
       {studio.removedClipIds.length ? (
-        <div className="video-studio-removed">
+        <div className="video-studio-removed-row">
           {studio.removedClipIds.map((clipId) => {
-            const clip = VIDEO_CLIPS.find((item) => item.id === clipId);
+            const clip = findShotDef(clipId, studio.storyboard);
             return (
               <button key={clipId} type="button" className="btn soft" onClick={() => dispatch({ type: 'restoreClip', clipId })}>
                 恢复 {clip?.name}
@@ -579,8 +558,23 @@ function TimelineBlock({
           })}
         </div>
       ) : null}
-      {playing ? <StudioPlayer src={VIDEO_STUDIO_FULL_URL} poster={firstFrameUrl(visible[0] || 'clip-1')} title="拼接预览" /> : null}
-    </section>
+      <div className="video-studio-actions video-studio-bottom-actions">
+        <a
+          className="btn primary"
+          href={VIDEO_STUDIO_FULL_URL}
+          download
+          onClick={() => dispatch({ type: 'composeFinal' })}
+        >
+          导出完整视频
+        </a>
+        <button type="button" className="btn soft" onClick={() => dispatch({ type: 'startTeamReview' })}>
+          收集团队意见
+        </button>
+        <button type="button" className="btn soft" onClick={() => dispatch({ type: 'confirmSubmit' })}>
+          提交Veeva
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -602,7 +596,7 @@ function FinalPanel({
       <ul className="video-studio-meta">
         <li>视频时长：{meta.duration}</li>
         <li>视频比例：{meta.ratio}</li>
-        <li>主角形象：{meta.hero}</li>
+        <li>主视觉参考：{meta.hero}</li>
         <li>制作片段：{meta.clipCount}个</li>
         <li>当前版本：{meta.version}</li>
         <li>脚本合规检查：{meta.compliance}</li>
@@ -616,13 +610,10 @@ function FinalPanel({
           查看完整脚本
         </button>
         <button type="button" className="btn soft" onClick={() => dispatch({ type: 'goto', view: 'frames' })}>
-          查看片段首帧
+          查看分镜参考图
         </button>
         <button type="button" className="btn soft" onClick={() => dispatch({ type: 'goto', view: 'clips' })}>
           查看分段视频
-        </button>
-        <button type="button" className="btn soft" onClick={() => dispatch({ type: 'goto', view: 'clips' })}>
-          调整拼接
         </button>
         <a className="btn soft" href={meta.videoUrl} download>
           下载视频
@@ -646,7 +637,6 @@ function TeamPanel({
           提交Veeva审批
         </button>
       </StageHeader>
-      <p className="small meeting-surface-hint">意见可关联到完整视频、具体视频片段、具体时间点、分镜脚本或片段首帧。</p>
       <div className="video-studio-opinions">
         {VIDEO_STUDIO_OPINIONS.map((item) => (
           <article key={item.id}>
@@ -690,11 +680,15 @@ function SubmitPanel({ studio }: { studio: VideoStudioState }) {
 export function VideoStudioWorkspace({
   studio,
   dispatch,
+  onOpenMaterialsPicker,
 }: {
   studio: VideoStudioState;
   dispatch: (action: VideoStudioAction) => void;
+  onOpenMaterialsPicker?: () => void;
 }) {
-  if (studio.view === 'hero' && studio.heroReady) return <HeroPanel studio={studio} dispatch={dispatch} />;
+  if (studio.view === 'hero' && studio.heroReady) {
+    return <VisualRefPanel studio={studio} dispatch={dispatch} onOpenMaterialsPicker={onOpenMaterialsPicker} />;
+  }
   if (studio.view === 'storyboard' && studio.storyboardReady) return <StoryboardPanel studio={studio} dispatch={dispatch} />;
   if (studio.view === 'frames' && studio.framesReady) return <FramesPanel studio={studio} dispatch={dispatch} />;
   if ((studio.view === 'clips' || studio.timelinePreviewing) && studio.clipsReady) {
@@ -704,44 +698,4 @@ export function VideoStudioWorkspace({
   if (studio.view === 'team') return <TeamPanel studio={studio} dispatch={dispatch} />;
   if (studio.view === 'submit') return <SubmitPanel studio={studio} />;
   return <BriefPanel studio={studio} dispatch={dispatch} />;
-}
-
-export function VideoStudioArtifacts({
-  studio,
-  onSelect,
-}: {
-  studio: VideoStudioState;
-  onSelect: (view: VideoStudioState['view']) => void;
-}) {
-  const items = useMemo(
-    () =>
-      [
-        studio.briefConfirmed ? { id: 'brief' as const, label: '视频需求' } : null,
-        studio.heroReady ? { id: 'hero' as const, label: '主角形象' } : null,
-        studio.storyboardReady ? { id: 'storyboard' as const, label: '分镜脚本' } : null,
-        studio.framesReady ? { id: 'frames' as const, label: '片段首帧' } : null,
-        studio.clipsReady ? { id: 'clips' as const, label: '分段视频' } : null,
-        studio.finalReady ? { id: 'final' as const, label: '完整视频' } : null,
-      ].filter(Boolean) as { id: VideoStudioState['view']; label: string }[],
-    [studio]
-  );
-
-  if (!items.length) return null;
-  return (
-    <section className="video-studio-artifacts">
-      <h4>视频产物</h4>
-      <div className="video-studio-artifact-list">
-        {items.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            className={`video-studio-artifact ${studio.view === item.id ? 'is-active' : ''}`}
-            onClick={() => onSelect(item.id)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-    </section>
-  );
 }

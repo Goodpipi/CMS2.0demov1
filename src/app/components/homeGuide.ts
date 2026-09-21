@@ -222,7 +222,7 @@ export function getEntryWelcome(ctx: HomeEntryContext): { html: string; chips: s
 
   if (source === 'more') {
     return {
-      html: '您好，我将协助您制作患者教育短视频。请先在中间区域确认视频需求，再生成主角形象、分镜脚本和视频画面。',
+      html: '您好，我将协助您制作患者教育短视频。请先填写视频需求，再生成主视觉参考、分镜脚本和视频画面。',
       chips: [],
     };
   }
@@ -250,7 +250,7 @@ export function getEntryWelcome(ctx: HomeEntryContext): { html: string; chips: s
       };
     case 'video':
       return {
-        html: '请先确认中间区域的视频需求，再生成主角形象、分镜脚本和视频画面。',
+        html: '请先填写中间区域的视频需求，再生成主视觉参考、分镜脚本和视频画面。',
         chips: [],
       };
     case 'ppt':

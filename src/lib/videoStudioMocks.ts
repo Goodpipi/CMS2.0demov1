@@ -3,6 +3,15 @@ import type { VideoResult } from '@/types/content';
 import { getPatientEducationVideoVersion } from '@/lib/demoScenarioFlow';
 
 export const VIDEO_STUDIO_FULL_URL = '/demo-assets/1488265506.mp4';
+export const VIDEO_HERO_IMAGE_URL = '/demo-assets/video-studio/hero.jpg';
+
+const PRODUCTION_STILLS: Record<string, string> = {
+  'clip-1': '/demo-assets/video-studio/clip-1.jpg',
+  'clip-2': '/demo-assets/video-studio/clip-2.jpg',
+  'clip-3': '/demo-assets/video-studio/clip-3.jpg',
+  'clip-4': '/demo-assets/video-studio/clip-4.jpg',
+  'clip-5': '/demo-assets/video-studio/clip-5.jpg',
+};
 
 export type VideoStudioView =
   | 'brief'
@@ -92,6 +101,7 @@ export interface VideoStudioState {
   heroCape: VideoCapeVersion;
   heroBrush: boolean;
   heroCompared: boolean;
+  visualRefUrl: string | null;
   storyboardReady: boolean;
   storyboard: VideoStoryboardRow[];
   storyboardText: string;
@@ -103,10 +113,12 @@ export interface VideoStudioState {
   frameVersions: Record<string, VideoFrameVersion>;
   frameBrushClipId: string | null;
   frameCompared: boolean;
+  selectedFrameIds: string[];
   clipsReady: boolean;
   clips: VideoStudioClipState[];
   clipOrder: string[];
   removedClipIds: string[];
+  selectedClipIds: string[];
   transitions: Record<string, VideoTransition>;
   timelinePreviewing: boolean;
   finalReady: boolean;
@@ -126,6 +138,7 @@ export type VideoStudioAction =
   | { type: 'applyCapeEdit' }
   | { type: 'regenerateHero' }
   | { type: 'confirmHero' }
+  | { type: 'setVisualRefUrl'; url: string | null }
   | { type: 'generateStoryboard' }
   | { type: 'setStoryboardText'; text: string }
   | { type: 'selectRow'; rowId: string }
@@ -142,9 +155,18 @@ export type VideoStudioAction =
   | { type: 'regenerateFrame'; clipId: string }
   | { type: 'confirmFrame'; clipId: string }
   | { type: 'confirmAllFrames' }
+  | { type: 'toggleFrameSelect'; id: string }
+  | { type: 'selectAllFrames'; selected: boolean }
+  | { type: 'removeFrameSelect'; id: string }
+  | { type: 'regenerateSelectedFrames' }
   | { type: 'generateClips' }
   | { type: 'addClipVersion'; clipId?: string }
   | { type: 'selectClipVersion'; clipId: string; versionId: VideoClipVersionId }
+  | { type: 'toggleClipSelect'; id: string }
+  | { type: 'selectAllClips'; selected: boolean }
+  | { type: 'removeClipSelect'; id: string }
+  | { type: 'regenerateSelectedClips' }
+  | { type: 'regenerateSelected' }
   | { type: 'reorderClips'; order: string[] }
   | { type: 'removeClip'; clipId: string }
   | { type: 'restoreClip'; clipId: string }
@@ -378,51 +400,54 @@ export const VIDEO_CLIPS: VideoClipDef[] = [
   {
     id: 'clip-1',
     name: '开场与主题',
-    range: '0–3秒',
-    duration: '3秒',
+    range: '0–2秒',
+    duration: '2秒',
     start: 0,
-    summary: '小K飞入并落在红色光圈上，点出健康饮食主题。',
+    summary: '小K正面出场，点出糖尿病患者如何健康饮食。',
     narration: '糖尿病患者，应该如何健康饮食？记住下面三个简单原则。',
-    bridge: '标题停留，镜头推向饮食画面。',
+    bridge: '镜头推向均衡餐盘。',
   },
   {
     id: 'clip-2',
-    name: '均衡搭配与控制总量',
-    range: '3–6秒',
-    duration: '3秒',
-    start: 3,
-    summary: '餐盘食物环绕进入，小K指向食物并提示主食份量。',
-    narration: '第一点，均衡搭配。第二点，控制总量。主食也要注意份量，别吃太多。',
-    bridge: '镜头横移，切换到饮料选择。',
+    name: '均衡搭配',
+    range: '2–4秒',
+    duration: '2秒',
+    start: 2,
+    summary: '餐盘食物环绕进入，小K指出均衡搭配。',
+    narration: '第一点，均衡搭配。',
+    bridge: '镜头切到主食份量。',
   },
   {
     id: 'clip-3',
-    name: '饮料选择',
-    range: '6–8秒',
+    name: '控制总量',
+    range: '4–6秒',
     duration: '2秒',
-    start: 6,
-    summary: '含糖饮料出现后切换为白水，小K出示叉号并点赞。',
-    narration: '第三点，少糖、少饮料。日常饮品优先选择白水。',
-    bridge: '白水画面接到结尾餐盘总结。',
+    start: 4,
+    summary: '小K提示米饭和主食要注意份量。',
+    narration: '第二点，控制总量。主食也要注意份量，别吃太多。',
+    bridge: '切换到饮料选择。',
   },
   {
     id: 'clip-4',
+    name: '少糖少饮料',
+    range: '6–8秒',
+    duration: '2秒',
+    start: 6,
+    summary: '小K出示叉号，提示少喝含糖饮料。',
+    narration: '第三点，少糖、少饮料。日常饮品优先选择白水。',
+    bridge: '接到结尾餐盘总结。',
+  },
+  {
+    id: 'clip-5',
     name: '结尾总结',
     range: '8–10秒',
     duration: '2秒',
     start: 8,
-    summary: '小K站在完整餐盘中央，面向观众点赞并定格。',
+    summary: '小K站在完整餐盘上点赞并定格。',
     narration: '均衡搭配，控制总量，减少含糖饮料。科学管理饮食，让健康更轻松。',
     bridge: '定格结束，适合接片尾字幕。',
   },
 ];
-
-export function firstFrameUrl(clipId: string, version: VideoFrameVersion = 'base'): string {
-  if (clipId === 'clip-1') return frameSvg('fly');
-  if (clipId === 'clip-2') return frameSvg('plate', version === 'rice');
-  if (clipId === 'clip-3') return frameSvg('drink');
-  return frameSvg('end');
-}
 
 export const DEFAULT_STORYBOARD: VideoStoryboardRow[] = [
   {
@@ -498,7 +523,7 @@ export const DEFAULT_STORYBOARD: VideoStoryboardRow[] = [
     time: '4–5秒',
     start: 4,
     end: 5,
-    clipId: 'clip-2',
+    clipId: 'clip-3',
     shot: '中景横移',
     heroPos: '餐盘前方',
     action: '指向不同食物',
@@ -515,7 +540,7 @@ export const DEFAULT_STORYBOARD: VideoStoryboardRow[] = [
     time: '5–6秒',
     start: 5,
     end: 6,
-    clipId: 'clip-2',
+    clipId: 'clip-3',
     shot: '近景',
     heroPos: '米饭碗右侧',
     action: '伸手提示适量并点赞',
@@ -532,7 +557,7 @@ export const DEFAULT_STORYBOARD: VideoStoryboardRow[] = [
     time: '6–7秒',
     start: 6,
     end: 7,
-    clipId: 'clip-3',
+    clipId: 'clip-4',
     shot: '中景',
     heroPos: '含糖饮料左侧',
     action: '举起带叉号的提示牌',
@@ -549,7 +574,7 @@ export const DEFAULT_STORYBOARD: VideoStoryboardRow[] = [
     time: '7–8秒',
     start: 7,
     end: 8,
-    clipId: 'clip-3',
+    clipId: 'clip-4',
     shot: '中景',
     heroPos: '水杯旁',
     action: '转身指向水杯并点赞',
@@ -566,7 +591,7 @@ export const DEFAULT_STORYBOARD: VideoStoryboardRow[] = [
     time: '8–9秒',
     start: 8,
     end: 9,
-    clipId: 'clip-4',
+    clipId: 'clip-5',
     shot: '全景缓慢拉近',
     heroPos: '餐盘中央',
     action: '站在餐盘中央面向观众',
@@ -583,7 +608,7 @@ export const DEFAULT_STORYBOARD: VideoStoryboardRow[] = [
     time: '9–10秒',
     start: 9,
     end: 10,
-    clipId: 'clip-4',
+    clipId: 'clip-5',
     shot: '近景定格',
     heroPos: '前景餐盘后方',
     action: '面向观众点赞',
@@ -614,6 +639,35 @@ export function storyboardToPlainText(rows: VideoStoryboardRow[]): string {
     .join('\n\n');
 }
 
+export function shotsFromStoryboard(_rows: VideoStoryboardRow[] = DEFAULT_STORYBOARD): VideoClipDef[] {
+  return VIDEO_CLIPS;
+}
+
+export function findShotDef(id: string, rows: VideoStoryboardRow[] = DEFAULT_STORYBOARD): VideoClipDef | undefined {
+  return shotsFromStoryboard(rows).find((item) => item.id === id) || VIDEO_CLIPS.find((item) => item.id === id);
+}
+
+export function productionClipId(id: string, rows: VideoStoryboardRow[] = DEFAULT_STORYBOARD): string {
+  if (PRODUCTION_STILLS[id]) return id;
+  return rows.find((row) => row.id === id)?.clipId || id;
+}
+
+export function firstFrameUrl(clipId: string, version: VideoFrameVersion = 'base'): string {
+  const prodId = productionClipId(clipId);
+  if (prodId === 'clip-2' && version === 'rice') return PRODUCTION_STILLS['clip-3'];
+  return PRODUCTION_STILLS[prodId] || VIDEO_HERO_IMAGE_URL;
+}
+
+function shotIds(rows: VideoStoryboardRow[]): string[] {
+  return shotsFromStoryboard(rows).map((item) => item.id);
+}
+
+function resolveStudioClipId(studio: VideoStudioState, clipId: string): string {
+  if (studio.clips.some((clip) => clip.id === clipId) || studio.clipOrder.includes(clipId)) return clipId;
+  const fromStory = studio.storyboard.find((row) => row.clipId === clipId);
+  return fromStory?.id || clipId;
+}
+
 function clipVersions(clipId: string): VideoClipVersion[] {
   const poster = firstFrameUrl(clipId);
   return [
@@ -628,6 +682,7 @@ function clipVersions(clipId: string): VideoClipVersion[] {
 }
 
 export function emptyVideoStudio(brand = '可申达'): VideoStudioState {
+  const shots = shotsFromStoryboard();
   return {
     brief: defaultVideoBrief(brand),
     briefConfirmed: false,
@@ -637,26 +692,29 @@ export function emptyVideoStudio(brand = '可申达'): VideoStudioState {
     heroCape: 'base',
     heroBrush: false,
     heroCompared: false,
+    visualRefUrl: null,
     storyboardReady: false,
     storyboard: DEFAULT_STORYBOARD.map((row) => ({ ...row })),
     storyboardText: storyboardToPlainText(DEFAULT_STORYBOARD),
     selectedRowId: 's0',
-    selectedClipId: 'clip-1',
+    selectedClipId: shots[0]?.id || 'clip-1',
     complianceChecked: false,
     framesReady: false,
     framesConfirmed: false,
-    frameVersions: { 'clip-1': 'base', 'clip-2': 'base', 'clip-3': 'base', 'clip-4': 'base' },
+    frameVersions: Object.fromEntries(shots.map((shot) => [shot.id, 'base' as VideoFrameVersion])),
     frameBrushClipId: null,
     frameCompared: false,
+    selectedFrameIds: [],
     clipsReady: false,
-    clips: VIDEO_CLIPS.map((clip) => ({
-      id: clip.id,
+    clips: shots.map((shot) => ({
+      id: shot.id,
       selectedVersionId: 'A',
-      versions: clipVersions(clip.id),
+      versions: clipVersions(shot.id),
     })),
-    clipOrder: VIDEO_CLIPS.map((clip) => clip.id),
+    clipOrder: shots.map((shot) => shot.id),
     removedClipIds: [],
-    transitions: { 'clip-1': 'cut', 'clip-2': 'cut', 'clip-3': 'cut' },
+    selectedClipIds: [],
+    transitions: Object.fromEntries(shots.slice(0, -1).map((shot) => [shot.id, 'cut' as VideoTransition])),
     timelinePreviewing: false,
     finalReady: false,
     teamReady: false,
@@ -712,7 +770,7 @@ export function toVideoResult(studio: VideoStudioState): VideoResult {
 }
 
 function extraClipVersion(clipId: string, nextId: VideoClipVersionId): VideoClipVersion {
-  const rice = clipId === 'clip-2' && nextId !== 'A';
+  const rice = productionClipId(clipId) === 'clip-2' && nextId !== 'A';
   return {
     id: nextId,
     label: `版本${nextId}`,
@@ -727,23 +785,25 @@ function extraClipVersion(clipId: string, nextId: VideoClipVersionId): VideoClip
 
 export const VIDEO_STUDIO_REPLIES = {
   confirmBrief:
-    '视频需求已经确认。本次将制作一条面向糖尿病患者及家属的10秒竖版科普视频，通过卡通健康助手讲解均衡搭配、控制总量和减少含糖饮料三个核心信息。接下来可以生成视频的主角形象。',
+    '视频需求已经确认。本次将制作一条面向糖尿病患者及家属的10秒竖版科普视频，通过卡通健康助手讲解均衡搭配、控制总量和减少含糖饮料三个核心信息。接下来可以生成主视觉参考。',
   generateHero:
-    '已根据视频需求和现有患者教育视频，生成小K主角形象。当前角色为红白配色的3D卡通健康助手，可用于后续分镜和视频生成。',
-  capeEdit: '已根据您的描述调整主角形象，小K的披风已经改为更深的红色，其他人物特征保持当前设定。',
+    '已根据视频需求和现有患者教育资料，生成主视觉参考。当前为小K红白配色的3D卡通主视觉，可在中间区域画圈修改，或上传替换后继续生成分镜脚本。',
+  capeEdit: '已根据您的描述调整主视觉参考，小K的披风已经改为更深的红色，其他人物特征保持当前设定。',
   generateStoryboard:
-    '已生成完整分镜脚本。当前以纯文本展示，可直接在中间区域编辑每一秒的镜头、动作、台词、解说词、字幕和衔接。确认后可生成片段首帧。',
+    '已生成完整分镜脚本。当前以纯文本展示，可直接在中间区域编辑每一秒的镜头、动作、台词、解说词、字幕和衔接。确认后可生成分镜参考图。',
   simplifyFifth: '已将第五秒的解说词改得更简洁，完整脚本已同步更新。',
   compliance: '已完成脚本合规检查。当前逐秒脚本均为患者教育表述，未出现疗效承诺或超出适应症的内容。',
   generateFrames:
-    '已为4个制作片段生成首帧。请在右侧对话区点选某一张，中间区域会切换到对应首帧；可继续圈选修改或重新生成。',
-  riceEdit: '已根据圈选区域缩小餐盘中的米饭份量。人物、餐盘和其他食物保持当前构图。',
-  generateClips: '已生成4段视频。可在时间线中调整顺序，确认后合并为完整视频。',
+    '已按完整分镜脚本生成分镜参考图。可在中间横向列表中勾选需要修改的参考图，并在右侧输入修改意见。',
+  riceEdit: '已根据您的修改意见缩小餐盘中的米饭份量。人物、餐盘和其他食物保持当前构图。',
+  generateClips: '已按当前分镜参考图生成对应视频片段。可在中间横向缩略图中勾选后重新生成或修改。',
+  regenerateFrames: '已重新生成所选分镜参考图，可继续勾选修改或进入视频生成。',
+  regenerateClips: '已重新生成所选视频片段。可继续播放预览、勾选修改，或合并完整视频。',
   newVersion: '已为片段2生成一个新版本。新版本保持当前主角和首帧设定，并调整了食物进入画面的节奏。您可以在中间区域对比两个版本。',
   selectB: '已将片段2的当前版本切换为版本B，后续合并将使用该版本。',
   preview: '正在按当前时间线顺序预览拼接效果。片段之间使用已选择的转场方式。',
   compose: '完整视频已合并。当前版本为可申达·糖尿病患者如何健康饮食，时长10秒，比例9:16。',
-  team: '已进入意见收集。意见可以关联到完整视频、具体片段、时间点、分镜脚本或片段首帧。',
+  team: '已进入意见收集。意见可以关联到完整视频、具体片段、时间点、分镜脚本或分镜参考图。',
   submit: '已提交 Veeva 审批。提交包包含完整视频 V1、分镜脚本、合规检查记录和意见收集结果。',
 };
 
@@ -751,16 +811,17 @@ export function matchVideoStudioCommand(text: string): VideoStudioAction | null 
   const t = text.replace(/\s+/g, '');
   if (/确认视频需求|完成视频需求/.test(t)) return { type: 'confirmBrief' };
   if (/编辑视频需求/.test(t)) return { type: 'editBrief' };
-  if (/生成主角形象/.test(t)) return { type: 'generateHero' };
-  if (/确认主角形象/.test(t)) return { type: 'confirmHero' };
+  if (/生成主视觉参考|生成主角形象/.test(t)) return { type: 'generateHero' };
+  if (/确认主角形象|确认主视觉/.test(t)) return { type: 'confirmHero' };
   if (/披风/.test(t) && /深红|更深/.test(t)) return { type: 'applyCapeEdit' };
   if (/生成分镜脚本/.test(t)) return { type: 'generateStoryboard' };
   if (/第五秒/.test(t) && /解说/.test(t)) return { type: 'simplifyFifthSecond' };
   if (/检查脚本合规|脚本合规/.test(t)) return { type: 'checkCompliance' };
-  if (/生成片段首帧/.test(t)) return { type: 'generateFrames' };
+  if (/生成分镜参考图|生成片段首帧|确认并生成分镜参考图/.test(t)) return { type: 'generateFrames' };
   if (/米饭/.test(t) && /缩小/.test(t)) return { type: 'applyRiceEdit' };
-  if (/确认全部首帧/.test(t)) return { type: 'confirmAllFrames' };
-  if (/生成分段视频/.test(t)) return { type: 'generateClips' };
+  if (/确认全部首帧|确认全部分镜参考图/.test(t)) return { type: 'confirmAllFrames' };
+  if (/重新生成/.test(t)) return { type: 'regenerateSelected' };
+  if (/视频生成|生成分段视频/.test(t)) return { type: 'generateClips' };
   if ((/为第二/.test(t) || /第二个片段/.test(t)) && /新版本/.test(t)) {
     return { type: 'addClipVersion', clipId: 'clip-2' };
   }
@@ -769,10 +830,10 @@ export function matchVideoStudioCommand(text: string): VideoStudioAction | null 
   if (/选择片段2/.test(t) && /版本B/.test(t)) return { type: 'selectClipVersion', clipId: 'clip-2', versionId: 'B' };
   if (/片段2/.test(t) && /版本B/.test(t)) return { type: 'selectClipVersion', clipId: 'clip-2', versionId: 'B' };
   if (/预览拼接/.test(t)) return { type: 'previewTimeline' };
-  if (/合成完整视频/.test(t)) return { type: 'composeFinal' };
+  if (/合成完整视频|合并完整视频/.test(t)) return { type: 'composeFinal' };
   if (/查看完整视频/.test(t)) return { type: 'goto', view: 'final' };
   if (/查看完整脚本/.test(t)) return { type: 'goto', view: 'storyboard' };
-  if (/查看片段首帧/.test(t)) return { type: 'goto', view: 'frames' };
+  if (/查看分镜参考图|查看片段首帧/.test(t)) return { type: 'goto', view: 'frames' };
   if (/查看分段视频|调整拼接/.test(t)) return { type: 'goto', view: 'clips' };
   if (/意见收集/.test(t)) return { type: 'startTeamReview' };
   if (/提交Veeva|提交veeva|Veeva审批/.test(t)) return { type: 'confirmSubmit' };
@@ -817,6 +878,7 @@ export function reduceVideoStudio(
           heroConfirmed: false,
           view: 'hero',
           heroBrush: false,
+          visualRefUrl: prev.visualRefUrl || VIDEO_HERO_IMAGE_URL,
         },
         VIDEO_STUDIO_REPLIES.generateHero,
         'video-hero'
@@ -829,7 +891,15 @@ export function reduceVideoStudio(
       return reply({ ...prev, view: 'hero', heroCompared: !prev.heroCompared }, undefined, 'video-hero');
     case 'applyCapeEdit':
       return reply(
-        { ...prev, heroReady: true, heroCape: 'deep', heroBrush: false, heroCompared: true, view: 'hero' },
+        {
+          ...prev,
+          heroReady: true,
+          heroCape: 'deep',
+          heroBrush: false,
+          heroCompared: true,
+          visualRefUrl: prev.visualRefUrl || VIDEO_HERO_IMAGE_URL,
+          view: 'hero',
+        },
         VIDEO_STUDIO_REPLIES.capeEdit,
         'video-hero'
       );
@@ -842,17 +912,20 @@ export function reduceVideoStudio(
           heroCape: 'base',
           heroBrush: false,
           heroCompared: false,
+          visualRefUrl: VIDEO_HERO_IMAGE_URL,
           view: 'hero',
         },
-        '已重新生成小K主角形象，当前恢复为红白配色的基础版本。',
+        '已重新生成主视觉参考，当前恢复为红白配色的基础版本。',
         'video-hero'
       );
     case 'confirmHero':
       return reply(
         { ...prev, heroReady: true, heroConfirmed: true, heroBrush: false, view: 'hero' },
-        '主角形象已确认。接下来可以生成分镜脚本。',
+        '主视觉参考已确认。接下来可以生成分镜脚本。',
         'video-hero'
       );
+    case 'setVisualRefUrl':
+      return reply({ ...prev, visualRefUrl: action.url, heroReady: true, view: 'hero' }, undefined, 'video-hero');
     case 'generateStoryboard':
       return reply(
         {
@@ -875,11 +948,12 @@ export function reduceVideoStudio(
         selectedRowId: action.rowId,
         selectedClipId: prev.storyboard.find((row) => row.id === action.rowId)?.clipId || prev.selectedClipId,
       });
-    case 'selectClip':
+    case 'selectClip': {
+      const clipId = resolveStudioClipId(prev, action.clipId);
       return reply(
         {
           ...prev,
-          selectedClipId: action.clipId,
+          selectedClipId: clipId,
           view: prev.clipsReady ? 'clips' : prev.framesReady ? 'frames' : prev.view,
         },
         undefined,
@@ -891,6 +965,7 @@ export function reduceVideoStudio(
               ? 'video-storyboard'
               : undefined
       );
+    }
     case 'editStoryboardRow':
       return reply({
         ...prev,
@@ -929,7 +1004,8 @@ export function reduceVideoStudio(
         VIDEO_STUDIO_REPLIES.compliance,
         'video-storyboard'
       );
-    case 'generateFrames':
+    case 'generateFrames': {
+      const ids = shotIds(prev.storyboard);
       return reply(
         {
           ...prev,
@@ -937,18 +1013,24 @@ export function reduceVideoStudio(
           heroConfirmed: true,
           storyboardReady: true,
           framesReady: true,
+          selectedFrameIds: ids,
+          frameVersions: {
+            ...Object.fromEntries(ids.map((id) => [id, 'base' as VideoFrameVersion])),
+            ...prev.frameVersions,
+          },
           view: 'frames',
         },
         VIDEO_STUDIO_REPLIES.generateFrames,
         'video-frames'
       );
+    }
     case 'openFrameBrush':
     case 'continueFrameBrush':
       return reply(
         {
           ...prev,
           view: 'frames',
-          frameBrushClipId: action.type === 'openFrameBrush' ? action.clipId : prev.frameBrushClipId || 'clip-2',
+          frameBrushClipId: action.type === 'openFrameBrush' ? action.clipId : prev.frameBrushClipId || 'clip-3',
           frameCompared: false,
         },
         undefined,
@@ -956,20 +1038,21 @@ export function reduceVideoStudio(
       );
     case 'compareFrame':
       return reply({ ...prev, view: 'frames', frameCompared: !prev.frameCompared }, undefined, 'video-frames');
-    case 'applyRiceEdit':
+    case 'applyRiceEdit': {
       return reply(
         {
           ...prev,
           framesReady: true,
-          frameVersions: { ...prev.frameVersions, 'clip-2': 'rice' },
+          frameVersions: { ...prev.frameVersions, 'clip-3': 'rice', 'clip-2': 'rice' },
           frameBrushClipId: null,
           frameCompared: true,
           view: 'frames',
-          selectedClipId: 'clip-2',
+          selectedClipId: 'clip-3',
         },
         VIDEO_STUDIO_REPLIES.riceEdit,
         'video-frames'
       );
+    }
     case 'regenerateFrame':
       return reply(
         {
@@ -977,14 +1060,73 @@ export function reduceVideoStudio(
           frameVersions: { ...prev.frameVersions, [action.clipId]: 'base' },
           view: 'frames',
         },
-        `已重新生成${VIDEO_CLIPS.find((clip) => clip.id === action.clipId)?.name || '该片段'}首帧。`,
+        `已重新生成${findShotDef(action.clipId, prev.storyboard)?.name || '该片段'}首帧。`,
         'video-frames'
       );
     case 'confirmFrame':
       return reply({ ...prev, view: 'frames' }, undefined, 'video-frames');
     case 'confirmAllFrames':
-      return reply({ ...prev, framesConfirmed: true, view: 'frames' }, '全部片段首帧已确认，可以生成分段视频。', 'video-frames');
-    case 'generateClips':
+      return reply(
+        {
+          ...prev,
+          framesConfirmed: true,
+          selectedFrameIds: shotIds(prev.storyboard),
+          view: 'frames',
+        },
+        '全部分镜参考图已确认，可以开始视频生成。',
+        'video-frames'
+      );
+    case 'toggleFrameSelect': {
+      const selected = prev.selectedFrameIds.includes(action.id)
+        ? prev.selectedFrameIds.filter((id) => id !== action.id)
+        : [...prev.selectedFrameIds, action.id];
+      return reply({ ...prev, selectedFrameIds: selected, view: 'frames' }, undefined, 'video-frames');
+    }
+    case 'selectAllFrames':
+      return reply(
+        {
+          ...prev,
+          selectedFrameIds: action.selected ? shotIds(prev.storyboard) : [],
+          view: 'frames',
+        },
+        undefined,
+        'video-frames'
+      );
+    case 'removeFrameSelect':
+      return reply(
+        {
+          ...prev,
+          selectedFrameIds: prev.selectedFrameIds.filter((id) => id !== action.id),
+          view: 'frames',
+        },
+        undefined,
+        'video-frames'
+      );
+    case 'regenerateSelectedFrames': {
+      const ids = prev.selectedFrameIds;
+      if (!ids.length) return { state: prev, toast: '请先勾选分镜参考图' };
+      const frameVersions = { ...prev.frameVersions };
+      ids.forEach((id) => {
+        frameVersions[id] = 'base';
+      });
+      return reply(
+        {
+          ...prev,
+          framesReady: true,
+          frameVersions,
+          frameCompared: false,
+          frameBrushClipId: null,
+          view: 'frames',
+        },
+        VIDEO_STUDIO_REPLIES.regenerateFrames,
+        'video-frames'
+      );
+    }
+    case 'generateClips': {
+      const allIds = shotIds(prev.storyboard);
+      const selected = prev.selectedFrameIds.filter((id) => allIds.includes(id));
+      const useIds = selected.length ? selected : allIds;
+      const shots = shotsFromStoryboard(prev.storyboard);
       return reply(
         {
           ...prev,
@@ -992,39 +1134,136 @@ export function reduceVideoStudio(
           framesReady: true,
           framesConfirmed: true,
           clipsReady: true,
+          clips: shots.map((shot) => {
+            const existing = prev.clips.find((clip) => clip.id === shot.id);
+            return (
+              existing || {
+                id: shot.id,
+                selectedVersionId: 'A' as const,
+                versions: clipVersions(shot.id),
+              }
+            );
+          }),
+          clipOrder: useIds,
+          selectedClipIds: useIds,
+          removedClipIds: allIds.filter((id) => !useIds.includes(id)),
+          transitions: {
+            ...Object.fromEntries(useIds.slice(0, -1).map((id) => [id, prev.transitions[id] || ('cut' as VideoTransition)])),
+          },
           view: 'clips',
         },
         VIDEO_STUDIO_REPLIES.generateClips,
         'video-render',
         { syncVideo: true }
       );
+    }
     case 'addClipVersion': {
-      const clipId = action.clipId || prev.selectedClipId || 'clip-2';
+      const clipId = resolveStudioClipId(
+        prev,
+        action.clipId || prev.selectedClipIds[0] || prev.selectedClipId || 'clip-2'
+      );
       const clips = prev.clips.map((clip) => {
         if (clip.id !== clipId) return clip;
         if (clip.versions.length >= 3) return clip;
         const nextId = (['A', 'B', 'C'] as VideoClipVersionId[])[clip.versions.length];
-        return { ...clip, versions: [...clip.versions, extraClipVersion(clip.id, nextId)] };
+        return {
+          ...clip,
+          versions: [...clip.versions, extraClipVersion(clip.id, nextId)],
+          selectedVersionId: nextId,
+        };
       });
       return reply(
         { ...prev, clipsReady: true, clips, selectedClipId: clipId, view: 'clips' },
-        clipId === 'clip-2' ? VIDEO_STUDIO_REPLIES.newVersion : '已为当前片段生成一个新版本。',
+        productionClipId(clipId, prev.storyboard) === 'clip-2' ? VIDEO_STUDIO_REPLIES.newVersion : '已为当前片段生成一个新版本。',
         'video-render'
       );
     }
-    case 'selectClipVersion':
+    case 'selectClipVersion': {
+      const clipId = resolveStudioClipId(prev, action.clipId);
       return reply(
         {
           ...prev,
           clips: prev.clips.map((clip) =>
-            clip.id === action.clipId ? { ...clip, selectedVersionId: action.versionId } : clip
+            clip.id === clipId ? { ...clip, selectedVersionId: action.versionId } : clip
           ),
-          selectedClipId: action.clipId,
+          selectedClipId: clipId,
           view: 'clips',
         },
-        action.clipId === 'clip-2' && action.versionId === 'B' ? VIDEO_STUDIO_REPLIES.selectB : undefined,
+        productionClipId(clipId, prev.storyboard) === 'clip-2' && action.versionId === 'B'
+          ? VIDEO_STUDIO_REPLIES.selectB
+          : undefined,
         'video-render'
       );
+    }
+    case 'toggleClipSelect': {
+      const selected = prev.selectedClipIds.includes(action.id)
+        ? prev.selectedClipIds.filter((id) => id !== action.id)
+        : [...prev.selectedClipIds, action.id];
+      return reply({ ...prev, selectedClipIds: selected, view: 'clips' }, undefined, 'video-render');
+    }
+    case 'selectAllClips':
+      return reply(
+        {
+          ...prev,
+          selectedClipIds: action.selected
+            ? prev.clipOrder.filter((id) => !prev.removedClipIds.includes(id))
+            : [],
+          view: 'clips',
+        },
+        undefined,
+        'video-render'
+      );
+    case 'removeClipSelect':
+      return reply(
+        {
+          ...prev,
+          selectedClipIds: prev.selectedClipIds.filter((id) => id !== action.id),
+          view: 'clips',
+        },
+        undefined,
+        'video-render'
+      );
+    case 'regenerateSelectedClips': {
+      const ids = prev.selectedClipIds;
+      if (!ids.length) return { state: prev, toast: '请先勾选视频片段' };
+      const clips = prev.clips.map((clip) => {
+        if (!ids.includes(clip.id)) return clip;
+        if (clip.versions.length >= 3) {
+          const refreshed = extraClipVersion(clip.id, 'C');
+          return {
+            ...clip,
+            versions: [...clip.versions.slice(0, 2), { ...refreshed, note: '已按当前设定重新生成。' }],
+            selectedVersionId: 'C' as VideoClipVersionId,
+          };
+        }
+        const nextId = (['A', 'B', 'C'] as VideoClipVersionId[])[clip.versions.length] || 'C';
+        const next = extraClipVersion(clip.id, nextId);
+        return {
+          ...clip,
+          versions: [...clip.versions, { ...next, note: '已按当前设定重新生成。' }],
+          selectedVersionId: nextId,
+        };
+      });
+      return reply(
+        {
+          ...prev,
+          clipsReady: true,
+          clips,
+          selectedClipId: ids[0],
+          view: 'clips',
+        },
+        VIDEO_STUDIO_REPLIES.regenerateClips,
+        'video-render'
+      );
+    }
+    case 'regenerateSelected':
+      if (prev.view === 'clips') {
+        return reduceVideoStudio(prev, { type: 'regenerateSelectedClips' });
+      }
+      if (prev.view === 'frames') {
+        return reduceVideoStudio(prev, { type: 'regenerateSelectedFrames' });
+      }
+      return { state: prev, toast: '请在分镜参考图或视频生成页勾选后重新生成' };
     case 'reorderClips':
       return reply({ ...prev, clipOrder: action.order, view: 'clips' });
     case 'removeClip':
@@ -1101,21 +1340,22 @@ export function videoStudioProgress(studio: VideoStudioState) {
 export const VIDEO_STUDIO_OPINIONS = [
   { id: 'op1', target: '完整视频', time: '全片', text: '整体节奏清楚，结尾点赞可以再停留半秒。' },
   { id: 'op2', target: '片段2', time: '4–5秒', text: '主食份量提示很好，字幕可以再大一点。' },
-  { id: 'op3', target: '片段首帧', time: '3秒', text: '餐盘构图清晰，米饭修改后更符合控制总量。' },
+  { id: 'op3', target: '分镜参考图', time: '3秒', text: '餐盘构图清晰，米饭修改后更符合控制总量。' },
   { id: 'op4', target: '分镜脚本', time: '第五秒', text: '解说词简化后更适合口播。' },
 ];
 
 export function finalVideoMeta(studio: VideoStudioState) {
   const full = getPatientEducationVideoVersion();
+  const clipCount = studio.clipOrder.filter((id) => !studio.removedClipIds.includes(id)).length;
   return {
     name: `${studio.brief.brand}·${studio.brief.theme}`,
     duration: studio.brief.duration || '10秒',
     ratio: studio.brief.ratio || '9:16',
     hero: '小K',
-    clipCount: VIDEO_CLIPS.length,
+    clipCount: clipCount || shotsFromStoryboard(studio.storyboard).length,
     version: 'V1',
     compliance: studio.complianceChecked ? '已完成' : '待检查',
     videoUrl: full.videoUrl,
-    posterUrl: firstFrameUrl('clip-1'),
+    posterUrl: firstFrameUrl(studio.clipOrder[0] || 'clip-1'),
   };
 }

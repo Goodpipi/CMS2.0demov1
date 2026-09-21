@@ -8,16 +8,26 @@ import {
   materialFormatLabel,
   materialSourceLabel,
 } from '@/lib/libraryUtils';
-import { BookMarked, ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
+import {
+  BookMarked,
+  ChevronDown,
+  ChevronRight,
+  LoaderCircle,
+  Plus,
+  Trash2,
+  UploadCloud,
+} from 'lucide-react';
 import { cn } from '@/app/components/ui/utils';
 
 interface ContextMaterialsPanelProps {
   library: LibraryItem[];
+  uploadingItems?: LibraryItem[];
   variant?: 'default' | 'case' | 'poster' | 'evidence' | 'insight' | 'promo' | 'video';
   citedItemIds?: number[];
   onOpenPicker: (cat: string) => void;
   onPreview: (item: LibraryItem) => void;
   onRemove: (item: LibraryItem) => void;
+  onCancelUpload?: (item: LibraryItem) => void;
 }
 
 function toneClasses(item: LibraryItem) {
@@ -97,6 +107,53 @@ function MaterialSourceRow({
 
 const LITERATURE_CONTEXT_HINT_THRESHOLD = 10;
 const LITERATURE_CONTEXT_HINT = '由于模型上下文限制，系统会优先筛选关联度最高的文献';
+
+function UploadingMaterialsList({
+  items,
+  onDelete,
+}: {
+  items: LibraryItem[];
+  onDelete?: (item: LibraryItem) => void;
+}) {
+  if (!items.length) return null;
+
+  return (
+    <section className="context-uploading-list" aria-label="正在上传列表" aria-live="polite">
+      <div className="context-uploading-head">
+        <span>正在上传</span>
+        <em>{items.length}</em>
+      </div>
+      <div className="context-uploading-items">
+        {items.map((item) => (
+          <div key={item.id} className="context-uploading-item">
+            <span className="context-uploading-icon" aria-hidden>
+              <UploadCloud className="h-3.5 w-3.5" strokeWidth={2.25} />
+            </span>
+            <div className="context-uploading-copy">
+              <strong title={item.fileName || item.title}>{item.fileName || item.title}</strong>
+              <span>
+                <LoaderCircle className="h-3 w-3 animate-spin" strokeWidth={2.3} />
+                正在上传
+              </span>
+              <i aria-hidden>
+                <b />
+              </i>
+            </div>
+            <button
+              type="button"
+              className="context-uploading-delete"
+              onClick={() => onDelete?.(item)}
+              title={`删除上传：${item.fileName || item.title}`}
+              aria-label={`删除上传：${item.fileName || item.title}`}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 function AssetSection({
   title,
@@ -220,9 +277,7 @@ const POSTER_SECTIONS: MaterialSectionDef[] = [
 ];
 
 const VIDEO_SECTIONS: MaterialSectionDef[] = [
-  { title: '品牌策略', groupId: 'strategy', category: '品牌策略' },
-  { title: '视频参考资料', cats: ['视频参考资料'], category: '视频参考资料' },
-  { title: '视觉参考', cats: ['视觉参考'], category: '视觉参考' },
+  { title: '参考素材', cats: ['参考素材'], category: '参考素材' },
 ];
 
 const EVIDENCE_SECTIONS: MaterialSectionDef[] = [
@@ -247,7 +302,7 @@ function sectionsForVariant(variant: ContextMaterialsPanelProps['variant']): Mat
 
 function unifiedAddCategory(variant: ContextMaterialsPanelProps['variant']): string {
   if (variant === 'poster') return '视觉参考';
-  if (variant === 'video') return '视频参考资料';
+  if (variant === 'video') return '参考素材';
   if (variant === 'evidence') return '目标解读材料';
   return '参考知识';
 }
@@ -270,13 +325,18 @@ function sectionItems(section: MaterialSectionDef, referencedMaterials: LibraryI
 
 export function ContextMaterialsPanel({
   library,
+  uploadingItems = [],
   variant = 'default',
   citedItemIds,
   onOpenPicker,
   onPreview,
   onRemove,
+  onCancelUpload,
 }: ContextMaterialsPanelProps) {
-  const referencedMaterials = library.filter((item) => item.referenced ?? item.def);
+  const uploadingIds = new Set(uploadingItems.map((item) => item.id));
+  const referencedMaterials = library.filter(
+    (item) => (item.referenced ?? item.def) && !uploadingIds.has(item.id)
+  );
   const sections = sectionsForVariant(variant);
 
   return (
@@ -292,6 +352,7 @@ export function ContextMaterialsPanel({
         </span>
         <span>添加材料</span>
       </button>
+      <UploadingMaterialsList items={uploadingItems} onDelete={onCancelUpload} />
       {sections.map((section) => {
         const items = sectionItems(section, referencedMaterials);
         const isLiterature = section.category === '参考文献' || section.groupId === 'literature';

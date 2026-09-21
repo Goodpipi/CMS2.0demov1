@@ -104,11 +104,10 @@ import {
   MeetingTemplatesPanel,
   MeetingWelcomePanel,
 } from '@/app/components/MeetingMaterialsPanels';
-import { VideoStudioArtifacts, VideoStudioWorkspace } from '@/app/components/VideoStudioPanels';
+import { VideoStudioWorkspace } from '@/app/components/VideoStudioPanels';
 import {
-  VIDEO_CLIPS,
+  findShotDef,
   emptyVideoStudio,
-  firstFrameUrl,
   isVideoStudioTab,
   matchVideoStudioCommand,
   reduceVideoStudio,
@@ -367,7 +366,7 @@ import type {
   TabKey,
 } from '@/types/session';
 
-const cats = ['热点洞察', '合规手册', '参考知识', '参考文献', '品牌策略', 'Brief', '模板', '品牌元素', '视觉参考', '视频参考资料', '会议信息', '目标解读材料', '其他参考知识'];
+const cats = ['热点洞察', '合规手册', '参考知识', '参考文献', '品牌策略', 'Brief', '模板', '品牌元素', '视觉参考', '参考素材', '会议信息', '目标解读材料', '其他参考知识'];
 const HOME_TASK_PAGE_SIZE = 7;
 
 function addMeetingUpdateReason(
@@ -442,8 +441,8 @@ const HOME_WORKFLOW_ACTIONS: {
   },
   {
     title: '视频生成',
-    description: '从视频需求出发，生成主角形象、分镜脚本和患者教育短视频。',
-    scenes: ['患者教育短视频', '主角形象', '分镜脚本'],
+    description: '从视频需求出发，生成主视觉参考、分镜脚本和患者教育短视频。',
+    scenes: ['患者教育短视频', '主视觉参考', '分镜脚本'],
     intent: 'video',
     prompt: '生成视频',
     Icon: Video,
@@ -475,7 +474,7 @@ const initialLibrary: LibraryItem[] = [
   { id: 21, cat: '视觉参考', title: 'Radimetrics 剂量管理视觉参考', meta: 'PNG · 视觉参考 · 3:4', cms: false, def: true, addedAt: Date.now() - 5 * 3600000, contentType: 'image', contentUrl: '/image-templates/radimetrics.png', fileName: 'radimetrics.png' },
   { id: 22, cat: '目标解读材料', title: '2024 KDIGO CKD 临床实践指南（节选）', meta: 'PDF · 指南原文 · 待解读', cms: false, def: true, addedAt: Date.now() - 9 * 3600000 },
   { id: 23, cat: '目标解读材料', title: 'FIDELIO-DKD 关键终点数据摘要', meta: 'PDF · 研究原文 · 待解读', cms: true, def: true, addedAt: Date.now() - 7 * 3600000, validUntil: '2027-06-30' },
-  { id: 24, cat: '视频参考资料', title: '糖尿病饮食教育短视频参考要点', meta: '患者教育 · 10秒脚本与画面参考', cms: false, def: true, addedAt: Date.now() - 4 * 3600000 },
+  { id: 24, cat: '参考素材', title: '糖尿病饮食教育短视频参考要点', meta: '患者教育 · 10秒脚本与画面参考', cms: false, def: true, addedAt: Date.now() - 4 * 3600000 },
 ];
 
 const tabNames = {
@@ -490,9 +489,9 @@ const tabNames = {
   'video-script': '视频脚本',
   'video-render': '视频生成',
   'video-brief': '视频需求',
-  'video-hero': '主角形象',
+  'video-hero': '主视觉参考',
   'video-storyboard': '分镜脚本',
-  'video-frames': '片段首帧',
+  'video-frames': '分镜参考图',
   'ppt-outline': '页面级大纲',
   'article-outline': '推文大纲',
   'long-image-outline': '长图大纲',
@@ -567,6 +566,7 @@ export default function App() {
   const [activeCat, setActiveCat] = useState(cats[0]);
   const [libCatFilter, setLibCatFilter] = useState('全部');
   const [library, setLibrary] = useState(initialLibrary);
+  const [uploadingMaterials, setUploadingMaterials] = useState<LibraryItem[]>([]);
   const [libSearch, setLibSearch] = useState('');
   const [libSelectedIds, setLibSelectedIds] = useState<number[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -1580,8 +1580,7 @@ export default function App() {
       setVideoStudio(emptyVideoStudio(product.name));
       setState((prev) => ({
         ...prev,
-        tabs: prev.tabs.includes('video-brief') ? prev.tabs : [...prev.tabs, 'video-brief'],
-        active: 'video-brief',
+        active: null,
         videoBrief: false,
       }));
       setTaskTitle(`${product.name}·糖尿病患者如何健康饮食`);
@@ -1703,7 +1702,7 @@ export default function App() {
           : '描述要生成的图片主题、风格与用途…';
       case 'video':
         return entryContext?.source === 'more'
-          ? '可输入「生成主角形象」「生成分镜脚本」等指令，或使用中间区域按钮…'
+          ? '可输入「生成主视觉参考」「生成分镜脚本」等指令，或使用中间区域按钮…'
           : '描述视频主题、受众与时长偏好…';
       case 'ppt':
       case 'ppt-template':
@@ -2995,7 +2994,7 @@ export default function App() {
       }
       addMsg(
         'ai',
-        '当前处于视频制作流程。请使用中间区域的操作按钮，或输入固定指令，例如「生成主角形象」「生成分镜脚本」。',
+        '当前处于视频制作流程。请使用中间区域的操作按钮，或输入固定指令，例如「生成主视觉参考」「生成分镜脚本」。',
         '本地 Mock'
       );
       return;
@@ -4382,7 +4381,7 @@ export default function App() {
       }
       addMsg(
         'ai',
-        '当前处于视频制作流程。请使用中间区域的操作按钮，或输入固定指令，例如「生成主角形象」「生成分镜脚本」。',
+        '当前处于视频制作流程。请使用中间区域的操作按钮，或输入固定指令，例如「生成主视觉参考」「生成分镜脚本」。',
         '本地 Mock'
       );
       return;
@@ -5979,6 +5978,12 @@ export default function App() {
   const handleMaterialPicked = (item: PickedMaterial) => {
     const now = Date.now();
     const fromInsightUpload = topicInsightUploadPendingRef.current && item.cat === HOT_INSIGHT_CATEGORY;
+    const showInUploadQueue =
+      pickerTarget === 'workspace' &&
+      pickerMode === 'reference' &&
+      Boolean(item.fileName) &&
+      !item.cms &&
+      !fromInsightUpload;
     if (item.existingId !== undefined) {
       setLibrary((prev) =>
         prev.map((entry) => (entry.id === item.existingId ? { ...entry, referenced: true } : entry))
@@ -6010,6 +6015,15 @@ export default function App() {
       validUntil: item.validUntil,
     };
     setLibrary((prev) => [libraryItem, ...prev]);
+    if (showInUploadQueue) {
+      setUploadingMaterials((prev) => [
+        libraryItem,
+        ...prev.filter((entry) => entry.id !== libraryItem.id),
+      ]);
+      window.setTimeout(() => {
+        setUploadingMaterials((prev) => prev.filter((entry) => entry.id !== libraryItem.id));
+      }, 3200);
+    }
     if (item.cat === 'Brief') {
       lockFlowEntry('brief');
       addTab('brief');
@@ -6017,7 +6031,13 @@ export default function App() {
     }
     const pill = materialAttachmentPill(item);
     setAttachments((prev) => [...prev.filter((p) => !p.endsWith('×')), pill]);
-    toast(pickerTarget === 'chat' ? '附件已加入本次对话' : `已添加素材到「${item.cat}」`);
+    toast(
+      showInUploadQueue
+        ? `正在上传「${item.fileName || item.title}」`
+        : pickerTarget === 'chat'
+          ? '附件已加入本次对话'
+          : `已添加素材到「${item.cat}」`
+    );
     if (openPickedMaterialInPreview) {
       setOpenPickedMaterialInPreview(false);
       setHomeAgentIntent(null);
@@ -7482,6 +7502,7 @@ export default function App() {
                 <div className="context-scroll">
                   <ContextMaterialsPanel
                     library={library}
+                    uploadingItems={uploadingMaterials}
                     citedItemIds={citedLiteratureItemIds}
                     variant={
                       entryContext?.source === 'case'
@@ -7505,6 +7526,16 @@ export default function App() {
                       setPickerOpen(true);
                     }}
                     onPreview={setPreviewMaterial}
+                    onCancelUpload={(item) => {
+                      setUploadingMaterials((prev) =>
+                        prev.filter((entry) => entry.id !== item.id)
+                      );
+                      setLibrary((prev) => prev.filter((entry) => entry.id !== item.id));
+                      const pill = materialAttachmentPill(item);
+                      setAttachments((prev) => prev.filter((entry) => entry !== pill));
+                      if (previewMaterial?.id === item.id) setPreviewMaterial(null);
+                      toast(`已删除上传「${item.fileName || item.title}」`);
+                    }}
                     onRemove={(item) => {
                       setLibrary((prev) =>
                         prev.map((entry) =>
@@ -7517,12 +7548,6 @@ export default function App() {
                       toast(`已从引用素材中移除「${item.title}」`);
                     }}
                   />
-                  {entryContext?.source === 'more' ? (
-                    <VideoStudioArtifacts
-                      studio={videoStudio}
-                      onSelect={(view) => applyVideoStudioAction({ type: 'goto', view })}
-                    />
-                  ) : null}
                 </div>
               </>
             ) : (
@@ -7727,36 +7752,58 @@ export default function App() {
                   </div>
                 </div>
               ))}
-              {entryContext?.source === 'more' &&
-              videoStudio.framesReady &&
-              state.active === 'video-frames' ? (
-                <div className="msg ai video-frame-picker-message">
-                  <div className="avatar">AI</div>
-                  <div className="bubble">
-                    <strong>片段首帧</strong>
-                    <p>点选下方任一张首帧，中间区域会切换到对应画面；可继续圈选修改或重新生成。</p>
-                    <div className="video-frame-chat-grid">
-                      {VIDEO_CLIPS.map((clip) => {
-                        const version = videoStudio.frameVersions[clip.id] || 'base';
-                        return (
-                          <button
-                            key={clip.id}
-                            type="button"
-                            className={videoStudio.selectedClipId === clip.id ? 'is-selected' : ''}
-                            onClick={() => applyVideoStudioAction({ type: 'selectClip', clipId: clip.id })}
-                          >
-                            <img src={firstFrameUrl(clip.id, version)} alt={`${clip.name}首帧`} />
-                            <span>{clip.name}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              ) : null}
             </div>
 
             <div className="composer">
+              {entryContext?.source === 'more' &&
+              state.active === 'video-frames' &&
+              videoStudio.framesReady &&
+              videoStudio.selectedFrameIds.length > 0 ? (
+                <div className="video-studio-selected-text" aria-label="已选分镜参考图">
+                  <span className="video-studio-selected-label">已选</span>
+                  {videoStudio.selectedFrameIds.map((clipId) => {
+                    const clip = findShotDef(clipId, videoStudio.storyboard);
+                    if (!clip) return null;
+                    return (
+                      <button
+                        key={clipId}
+                        type="button"
+                        className="video-studio-selected-chip"
+                        title={`取消选择 ${clip.name}`}
+                        onClick={() => applyVideoStudioAction({ type: 'removeFrameSelect', id: clipId })}
+                      >
+                        {clip.range} · {clip.name}
+                        <span aria-hidden>×</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+              {entryContext?.source === 'more' &&
+              state.active === 'video-render' &&
+              videoStudio.clipsReady &&
+              !videoStudio.finalReady &&
+              videoStudio.selectedClipIds.length > 0 ? (
+                <div className="video-studio-selected-text" aria-label="已选视频片段">
+                  <span className="video-studio-selected-label">已选</span>
+                  {videoStudio.selectedClipIds.map((clipId) => {
+                    const clip = findShotDef(clipId, videoStudio.storyboard);
+                    if (!clip) return null;
+                    return (
+                      <button
+                        key={clipId}
+                        type="button"
+                        className="video-studio-selected-chip"
+                        title={`取消选择 ${clip.name}`}
+                        onClick={() => applyVideoStudioAction({ type: 'removeClipSelect', id: clipId })}
+                      >
+                        {clip.range} · {clip.name}
+                        <span aria-hidden>×</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
               {attachments.length > 0 && (
                 <div className="attach-row">
                   {attachments.map((pill, i) => (
@@ -10043,18 +10090,27 @@ function WorkspaceRightPanel({
     if (entryContext?.source === 'more' && videoStudio && onVideoStudioAction) {
       if (!k) {
         return (
-          <div className="workspace-surface-panel video-studio-panel">
-            <div className="topic-insight-title-row">
-              <h1>任务已创建</h1>
-            </div>
-            <p className="small meeting-surface-hint">
-              已选择产品「{selectedProduct?.name || videoStudio.brief.brand}」。请填写视频需求后生成主角形象、分镜脚本和视频画面。
-            </p>
-            <div className="video-studio-actions">
-              <button type="button" className="btn primary" onClick={() => onVideoStudioAction({ type: 'goto', view: 'brief' })}>
-                填写视频需求
-              </button>
-            </div>
+          <div className="detail-card content-flow-task-card">
+            <h4>任务已创建</h4>
+            <ol className="content-flow-start-steps">
+              <li className="content-flow-start-step">
+                <span className="content-flow-start-index" aria-hidden>
+                  1
+                </span>
+                <div className="content-flow-start-body">
+                  <p>请先填写视频需求，明确主题、受众、核心信息和画面风格，再生成主视觉参考与分镜。</p>
+                  <div className="content-flow-start-actions">
+                    <button
+                      type="button"
+                      className="btn primary"
+                      onClick={() => onVideoStudioAction({ type: 'goto', view: 'brief' })}
+                    >
+                      填写视频需求
+                    </button>
+                  </div>
+                </div>
+              </li>
+            </ol>
           </div>
         );
       }
@@ -10063,6 +10119,12 @@ function WorkspaceRightPanel({
           <VideoStudioWorkspace
             studio={{ ...videoStudio, view: videoStudioViewForTab(k, videoStudio) }}
             dispatch={onVideoStudioAction}
+            onOpenMaterialsPicker={() => {
+              setPickerTarget('workspace');
+              setPickerCat('参考素材');
+              setPickerMode('reference');
+              setPickerOpen(true);
+            }}
           />
         );
       }
