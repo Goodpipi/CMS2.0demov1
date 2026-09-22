@@ -76,6 +76,11 @@ import {
 import { applyElementAiToSvg } from '@/lib/elementAiEdit';
 import { SelectableSvgPreview, type SelectableSvgPreviewHandle, type SelectableSvgSelection } from '@/app/components/SelectableSvgPreview';
 import {
+  ImagePreviewZoomControls,
+  ImagePreviewZoomViewport,
+  useImagePreviewZoom,
+} from '@/app/components/ImagePreviewZoom';
+import {
   buildTeamReviewPayload,
   TEAM_CONTENT_LABELS,
   teamReviewSupported,
@@ -7756,30 +7761,6 @@ export default function App() {
 
             <div className="composer">
               {entryContext?.source === 'more' &&
-              state.active === 'video-frames' &&
-              videoStudio.framesReady &&
-              videoStudio.selectedFrameIds.length > 0 ? (
-                <div className="video-studio-selected-text" aria-label="已选分镜参考图">
-                  <span className="video-studio-selected-label">已选</span>
-                  {videoStudio.selectedFrameIds.map((clipId) => {
-                    const clip = findShotDef(clipId, videoStudio.storyboard);
-                    if (!clip) return null;
-                    return (
-                      <button
-                        key={clipId}
-                        type="button"
-                        className="video-studio-selected-chip"
-                        title={`取消选择 ${clip.name}`}
-                        onClick={() => applyVideoStudioAction({ type: 'removeFrameSelect', id: clipId })}
-                      >
-                        {clip.range} · {clip.name}
-                        <span aria-hidden>×</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
-              {entryContext?.source === 'more' &&
               state.active === 'video-render' &&
               videoStudio.clipsReady &&
               !videoStudio.finalReady &&
@@ -10026,6 +10007,9 @@ function WorkspaceRightPanel({
               : `${previewFile.title} · ${activeImageVersion.label}`,
         }
       : previewFile;
+  const selectableImageZoom = useImagePreviewZoom(
+    `${previewedImageAssetKey || 'image'}-${imageVersionId}-${(previewedImageItem?.contentUrl || '').length}`,
+  );
 
   useEffect(() => {
     if (selectedCopyRevisionIndex !== null && selectedCopyRevisionIndex !== revisedCopyIndex) {
@@ -11928,6 +11912,14 @@ function WorkspaceRightPanel({
                           <span>{previewedImageItem.title}</span>
                         </div>
                         <div className="creator-ppt-toolbar-tools" role="toolbar" aria-label="画布操作">
+                          <ImagePreviewZoomControls
+                            scale={selectableImageZoom.scale}
+                            onZoomIn={selectableImageZoom.zoomIn}
+                            onZoomOut={selectableImageZoom.zoomOut}
+                            onReset={selectableImageZoom.reset}
+                            canZoomIn={selectableImageZoom.canZoomIn}
+                            canZoomOut={selectableImageZoom.canZoomOut}
+                          />
                           {!viewingHistoricalImage && (
                             <button
                               type="button"
@@ -11942,15 +11934,21 @@ function WorkspaceRightPanel({
                         </div>
                       </div>
                       <div className="long-image-canvas">
-                        <SelectableSvgPreview
-                          key={`${imageVersionId}-${(previewedImageItem.contentUrl || '').length}`}
-                          svgMarkup={parseSvgFromDataUrl(previewedImageItem.contentUrl || '')}
-                          imageSrc={previewedImageItem.contentUrl || ''}
-                          selectedId={viewingHistoricalImage ? null : workspaceElementId}
-                          disabled={viewingHistoricalImage}
-                          hideToolbar
-                          onSelect={(selection) => onWorkspaceElementSelect(selection, 0)}
-                        />
+                        <ImagePreviewZoomViewport
+                          scale={selectableImageZoom.scale}
+                          offset={selectableImageZoom.offset}
+                          onOffsetChange={selectableImageZoom.setOffset}
+                        >
+                          <SelectableSvgPreview
+                            key={`${imageVersionId}-${(previewedImageItem.contentUrl || '').length}`}
+                            svgMarkup={parseSvgFromDataUrl(previewedImageItem.contentUrl || '')}
+                            imageSrc={previewedImageItem.contentUrl || ''}
+                            selectedId={viewingHistoricalImage ? null : workspaceElementId}
+                            disabled={viewingHistoricalImage}
+                            hideToolbar
+                            onSelect={(selection) => onWorkspaceElementSelect(selection, 0)}
+                          />
+                        </ImagePreviewZoomViewport>
                       </div>
                     </>
                   ) : (

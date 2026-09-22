@@ -7,6 +7,11 @@ import {
   type SelectableSvgSelection,
   type SelectableSvgToolState,
 } from '@/app/components/SelectableSvgPreview';
+import {
+  ImagePreviewZoomControls,
+  ImagePreviewZoomViewport,
+  useImagePreviewZoom,
+} from '@/app/components/ImagePreviewZoom';
 import { parseSvgFromDataUrl } from '@/app/components/svgEditorUtils';
 import { slideToPreviewUrl } from '@/app/components/pptUtils';
 import { downloadDataUrl } from '@/lib/copyRevisionUtils';
@@ -77,6 +82,7 @@ function MeetingPosterCanvas({
   onWorkspaceElementSelect?: (selection: SelectableSvgSelection | null, slideIndex: number) => void;
 }) {
   const [exportOpen, setExportOpen] = useState(false);
+  const zoom = useImagePreviewZoom(imageUrl.length);
 
   const exportPng = () => {
     setExportOpen(false);
@@ -94,6 +100,14 @@ function MeetingPosterCanvas({
             {subtitle ? <span>{subtitle}</span> : null}
           </div>
           <div className="creator-ppt-toolbar-tools" role="toolbar" aria-label="画布操作">
+            <ImagePreviewZoomControls
+              scale={zoom.scale}
+              onZoomIn={zoom.zoomIn}
+              onZoomOut={zoom.zoomOut}
+              onReset={zoom.reset}
+              canZoomIn={zoom.canZoomIn}
+              canZoomOut={zoom.canZoomOut}
+            />
             <button type="button" className="creator-ppt-tool primary" onClick={onEdit}>
               手动编辑
             </button>
@@ -105,14 +119,20 @@ function MeetingPosterCanvas({
           </div>
         </div>
         <div className="long-image-canvas">
-          <SelectableSvgPreview
-            key={imageUrl.length}
-            svgMarkup={parseSvgFromDataUrl(imageUrl)}
-            imageSrc={imageUrl}
-            selectedId={workspaceElementId ?? null}
-            hideToolbar
-            onSelect={(selection) => onWorkspaceElementSelect?.(selection, 0)}
-          />
+          <ImagePreviewZoomViewport
+            scale={zoom.scale}
+            offset={zoom.offset}
+            onOffsetChange={zoom.setOffset}
+          >
+            <SelectableSvgPreview
+              key={imageUrl.length}
+              svgMarkup={parseSvgFromDataUrl(imageUrl)}
+              imageSrc={imageUrl}
+              selectedId={workspaceElementId ?? null}
+              hideToolbar
+              onSelect={(selection) => onWorkspaceElementSelect?.(selection, 0)}
+            />
+          </ImagePreviewZoomViewport>
         </div>
       </div>
       <div className="image-preview-submit-actions">

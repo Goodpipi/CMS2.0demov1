@@ -1,11 +1,16 @@
-import { useRef, useState } from 'react';
+import { forwardRef, useRef, useState } from 'react';
 import { Eraser, Paintbrush, Play, Settings2, Trash2 } from 'lucide-react';
 import {
   SelectableSvgPreview,
   type SelectableSvgPreviewHandle,
   type SelectableSvgToolState,
 } from '@/app/components/SelectableSvgPreview';
-import { parseSvgFromDataUrl } from '@/app/components/svgEditorUtils';
+import {
+  ImagePreviewZoomControls,
+  ImagePreviewZoomViewport,
+  useImagePreviewZoom,
+} from '@/app/components/ImagePreviewZoom';
+import { parseSvgFromDataUrl, wrapRasterAsSvg } from '@/app/components/svgEditorUtils';
 import {
   VIDEO_HERO_IMAGE_URL,
   VIDEO_STUDIO_FULL_URL,
@@ -60,29 +65,39 @@ function StudioPlayer({
   );
 }
 
-function BrushCanvas({
-  imageUrl,
-  active,
-}: {
-  imageUrl: string;
-  active: boolean;
-}) {
-  const previewRef = useRef<SelectableSvgPreviewHandle>(null);
+const BrushCanvas = forwardRef<
+  SelectableSvgPreviewHandle,
+  {
+    imageUrl: string;
+    active: boolean;
+    alt?: string;
+    hideTools?: boolean;
+    onToolStateChange?: (state: SelectableSvgToolState) => void;
+  }
+>(function BrushCanvas({ imageUrl, active, alt = '预览图', hideTools = false, onToolStateChange }, ref) {
+  const localRef = useRef<SelectableSvgPreviewHandle>(null);
   const [toolState, setToolState] = useState<SelectableSvgToolState>({
     brushActive: false,
     eraserActive: false,
     canClear: false,
   });
   const isSvg = imageUrl.startsWith('data:image/svg') || imageUrl.includes('image/svg');
+  const svgMarkup = isSvg ? parseSvgFromDataUrl(imageUrl) : wrapRasterAsSvg(imageUrl, 720, 1280);
+  const showTools = active && !hideTools;
+
+  const handleToolStateChange = (state: SelectableSvgToolState) => {
+    setToolState(state);
+    onToolStateChange?.(state);
+  };
 
   return (
     <div className={`video-studio-brush ${active ? 'is-active' : ''}`}>
-      {active ? (
+      {showTools ? (
         <div className="video-studio-brush-tools" role="toolbar" aria-label="圈选工具">
           <button
             type="button"
             className={`btn image-draw-tool ${toolState.brushActive ? 'primary active' : 'soft'}`}
-            onClick={() => previewRef.current?.setBrushActive(!toolState.brushActive)}
+            onClick={() => localRef.current?.setBrushActive(!toolState.brushActive)}
           >
             <Paintbrush className="h-3.5 w-3.5" />
             画笔圈选
@@ -90,33 +105,35 @@ function BrushCanvas({
           <button
             type="button"
             className={`btn image-draw-tool ${toolState.eraserActive ? 'primary active' : 'soft'}`}
-            onClick={() => previewRef.current?.setEraserActive(!toolState.eraserActive)}
+            onClick={() => localRef.current?.setEraserActive(!toolState.eraserActive)}
           >
             <Eraser className="h-3.5 w-3.5" />
             橡皮擦
           </button>
-          <button type="button" className="btn soft image-draw-tool" onClick={() => previewRef.current?.cancelTools()}>
-            取消
+          <button type="button" className="btn soft image-draw-tool" onClick={() => localRef.current?.clearStrokes()}>
+            清除
           </button>
         </div>
       ) : null}
-      {isSvg ? (
-        <SelectableSvgPreview
-          ref={previewRef}
-          svgMarkup={parseSvgFromDataUrl(imageUrl)}
-          imageSrc={imageUrl}
-          selectedId={null}
-          disableSelect
-          hideToolbar
-          onSelect={() => undefined}
-          onToolStateChange={setToolState}
-        />
-      ) : (
-        <img src={imageUrl} alt="主视觉参考" />
-      )}
+      <SelectableSvgPreview
+        ref={(node) => {
+          localRef.current = node;
+          if (typeof ref === 'function') ref(node);
+          else if (ref) (ref as React.MutableRefObject<SelectableSvgPreviewHandle | null>).current = node;
+        }}
+        svgMarkup={svgMarkup}
+        imageSrc={imageUrl}
+        selectedId={null}
+        disableSelect
+        hideToolbar
+        onSelect={() => undefined}
+        onToolStateChange={handleToolStateChange}
+        className="video-studio-brush-preview"
+      />
+      <span className="sr-only">{alt}</span>
     </div>
   );
-}
+});
 
 function BriefPanel({
   studio,
@@ -284,9 +301,29 @@ function FramesPanel({
   studio: VideoStudioState;
   dispatch: (action: VideoStudioAction) => void;
 }) {
+  const brushRef = useRef<SelectableSvgPreviewHandle>(null);
+  const [toolState, setToolState] = useState<SelectableSvgToolState>({
+    brushActive: false,
+    eraserActive: false,
+    canClear: false,
+  });
   const shots = shotsFromStoryboard(studio.storyboard);
-  const allSelected = shots.length > 0 && shots.every((shot) => studio.selectedFrameIds.includes(shot.id));
-  const hasSelection = studio.selectedFrameIds.length > 0;
+  const focusId =
+    (studio.frameBrushClipId && shots.some((shot) => shot.id === studio.frameBrushClipId)
+      ? studio.frameBrushClipId
+      : null) ||
+    (shots.some((shot) => shot.id === studio.selectedClipId) ? studio.selectedClipId : null) ||
+    shots[0]?.id ||
+    'clip-1';
+  const focusShot = findShotDef(focusId, studio.storyboard) || shots[0];
+  const focusVersion = studio.frameVersions[focusId] || 'base';
+  const focusUrl = firstFrameUrl(focusId, focusVersion);
+  const zoom = useImagePreviewZoom(focusId);
+
+  const selectFrame = (clipId: string) => {
+    dispatch({ type: 'selectClip', clipId });
+    dispatch({ type: 'openFrameBrush', clipId });
+  };
 
   return (
     <div className="workspace-surface-panel video-studio-panel">
@@ -295,52 +332,97 @@ function FramesPanel({
           视频生成
         </button>
       </StageHeader>
+      <section className="video-studio-composite video-studio-frame-focus-stage" aria-label="分镜参考图预览">
+        <div className="video-studio-composite-head">
+          <strong>
+            {focusShot?.range || ''} · {focusShot?.name || '当前分镜'}
+          </strong>
+        </div>
+        <div className="video-studio-composite-player video-studio-frame-focus-player">
+          <div className="video-studio-composite-media">
+            <ImagePreviewZoomViewport
+              scale={zoom.scale}
+              offset={zoom.offset}
+              onOffsetChange={zoom.setOffset}
+              allowPan={!toolState.brushActive && !toolState.eraserActive}
+              className="video-studio-frame-zoom-viewport"
+            >
+              <BrushCanvas
+                ref={brushRef}
+                imageUrl={focusUrl}
+                active
+                hideTools
+                alt={`${focusShot?.name || '分镜'}参考图`}
+                onToolStateChange={setToolState}
+              />
+            </ImagePreviewZoomViewport>
+          </div>
+        </div>
+      </section>
       <div className="video-studio-frame-toolbar">
-        <div className="video-studio-toolbar-actions">
-          <label className="video-studio-select-all">
-            <input
-              type="checkbox"
-              checked={allSelected}
-              onChange={(event) => dispatch({ type: 'selectAllFrames', selected: event.target.checked })}
-            />
-            全选
-          </label>
+        <div className="video-studio-toolbar-actions" role="toolbar" aria-label="分镜参考图工具">
+          <button
+            type="button"
+            className={`btn image-draw-tool ${toolState.brushActive ? 'primary active' : 'soft'}`}
+            onClick={() => brushRef.current?.setBrushActive(!toolState.brushActive)}
+          >
+            <Paintbrush className="h-3.5 w-3.5" />
+            画笔圈选
+          </button>
+          <button
+            type="button"
+            className={`btn image-draw-tool ${toolState.eraserActive ? 'primary active' : 'soft'}`}
+            onClick={() => brushRef.current?.setEraserActive(!toolState.eraserActive)}
+          >
+            <Eraser className="h-3.5 w-3.5" />
+            橡皮擦
+          </button>
+          <button type="button" className="btn soft image-draw-tool" onClick={() => brushRef.current?.clearStrokes()}>
+            清除
+          </button>
+          <ImagePreviewZoomControls
+            scale={zoom.scale}
+            onZoomIn={zoom.zoomIn}
+            onZoomOut={zoom.zoomOut}
+            onReset={zoom.reset}
+            canZoomIn={zoom.canZoomIn}
+            canZoomOut={zoom.canZoomOut}
+          />
           <button
             type="button"
             className="btn primary"
-            disabled={!hasSelection}
-            onClick={() => dispatch({ type: 'regenerateSelectedFrames' })}
+            onClick={() => dispatch({ type: 'regenerateFrame', clipId: focusId })}
           >
             重新生成
           </button>
         </div>
       </div>
-      <div className="video-studio-frame-strip" role="list">
+      <div className="video-studio-frame-strip video-studio-clip-strip" role="list">
         {shots.map((clip) => {
           const version = studio.frameVersions[clip.id] || 'base';
-          const checked = studio.selectedFrameIds.includes(clip.id);
+          const active = clip.id === focusId;
           return (
-            <article
+            <button
               key={clip.id}
-              className={`video-studio-frame-strip-card ${checked ? 'is-selected' : ''}`}
+              type="button"
+              className={`video-studio-frame-strip-card video-studio-clip-strip-card video-studio-frame-thumb ${
+                active ? 'is-selected' : ''
+              }`}
               role="listitem"
+              aria-pressed={active}
+              aria-label={`预览${clip.name}`}
+              onClick={() => selectFrame(clip.id)}
             >
-              <label className="video-studio-frame-check">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  aria-label={`选择${clip.name}`}
-                  onChange={() => dispatch({ type: 'toggleFrameSelect', id: clip.id })}
-                />
-              </label>
-              <img src={firstFrameUrl(clip.id, version)} alt={`${clip.name}参考图`} />
+              <div className="video-studio-clip-media">
+                <img src={firstFrameUrl(clip.id, version)} alt="" />
+              </div>
               <div className="video-studio-frame-strip-meta">
                 <strong>
                   {clip.range} · {clip.name}
                 </strong>
                 <p>{clip.summary}</p>
               </div>
-            </article>
+            </button>
           );
         })}
       </div>

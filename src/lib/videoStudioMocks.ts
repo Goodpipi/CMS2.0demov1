@@ -623,17 +623,22 @@ export const DEFAULT_STORYBOARD: VideoStoryboardRow[] = [
 ];
 
 export function storyboardToPlainText(rows: VideoStoryboardRow[]): string {
-  return rows
-    .map((row) => {
-      const clip = VIDEO_CLIPS.find((item) => item.id === row.clipId);
+  return VIDEO_CLIPS
+    .map((clip, index) => {
+      const clipRows = rows.filter((row) => row.clipId === clip.id);
+      const shots = Array.from(new Set(clipRows.map((row) => row.shot).filter(Boolean)));
+      const actions = clipRows.map((row) => `${row.heroPos}，${row.action}`).filter(Boolean);
+      const subtitles = Array.from(
+        new Set(clipRows.map((row) => row.subtitle).filter((text) => text && text !== '无'))
+      );
+
       return [
-        `【${row.time}｜${clip?.name || '制作片段'}】`,
-        `镜头：${row.shot}；主角位于${row.heroPos}，${row.action}。`,
-        `画面：${row.scene}；包含${row.elements}；${row.change}。`,
-        `人物台词：${row.line || '无'}`,
-        `解说词：${row.narration}`,
-        `屏幕字幕：${row.subtitle}`,
-        `衔接：${row.bridge}`,
+        `【分镜${index + 1}｜${clip.range}｜${clip.name}】`,
+        `画面内容：${clip.summary}`,
+        `镜头与动作：${shots.join('转')}；小K位于${actions.join('；随后位于')}。`,
+        `解说词：${clip.narration}`,
+        `屏幕字幕：${subtitles.join(' / ') || '无'}`,
+        `衔接方式：${clip.bridge}`,
       ].join('\n');
     })
     .join('\n\n');
@@ -790,14 +795,14 @@ export const VIDEO_STUDIO_REPLIES = {
     '已根据视频需求和现有患者教育资料，生成主视觉参考。当前为小K红白配色的3D卡通主视觉，可在中间区域画圈修改，或上传替换后继续生成分镜脚本。',
   capeEdit: '已根据您的描述调整主视觉参考，小K的披风已经改为更深的红色，其他人物特征保持当前设定。',
   generateStoryboard:
-    '已生成完整分镜脚本。当前以纯文本展示，可直接在中间区域编辑每一秒的镜头、动作、台词、解说词、字幕和衔接。确认后可生成分镜参考图。',
+    '已生成五段完整分镜脚本，与五张分镜参考图一一对应。可直接在中间区域编辑每段的画面、镜头动作、解说词、字幕和衔接方式，确认后即可生成分镜参考图。',
   simplifyFifth: '已将第五秒的解说词改得更简洁，完整脚本已同步更新。',
   compliance: '已完成脚本合规检查。当前逐秒脚本均为患者教育表述，未出现疗效承诺或超出适应症的内容。',
   generateFrames:
-    '已按完整分镜脚本生成分镜参考图。可在中间横向列表中勾选需要修改的参考图，并在右侧输入修改意见。',
+    '已按完整分镜脚本生成分镜参考图。可在中间大图预览中用画笔圈选修改，或点下方缩略图切换分镜。',
   riceEdit: '已根据您的修改意见缩小餐盘中的米饭份量。人物、餐盘和其他食物保持当前构图。',
   generateClips: '已按当前分镜参考图生成对应视频片段。可在中间横向缩略图中勾选后重新生成或修改。',
-  regenerateFrames: '已重新生成所选分镜参考图，可继续勾选修改或进入视频生成。',
+  regenerateFrames: '已重新生成当前分镜参考图，可继续用画笔圈选修改或切换其他分镜。',
   regenerateClips: '已重新生成所选视频片段。可继续播放预览、勾选修改，或合并完整视频。',
   newVersion: '已为片段2生成一个新版本。新版本保持当前主角和首帧设定，并调整了食物进入画面的节奏。您可以在中间区域对比两个版本。',
   selectB: '已将片段2的当前版本切换为版本B，后续合并将使用该版本。',
@@ -1006,6 +1011,7 @@ export function reduceVideoStudio(
       );
     case 'generateFrames': {
       const ids = shotIds(prev.storyboard);
+      const focusId = ids[0] || 'clip-1';
       return reply(
         {
           ...prev,
@@ -1014,6 +1020,8 @@ export function reduceVideoStudio(
           storyboardReady: true,
           framesReady: true,
           selectedFrameIds: ids,
+          selectedClipId: focusId,
+          frameBrushClipId: focusId,
           frameVersions: {
             ...Object.fromEntries(ids.map((id) => [id, 'base' as VideoFrameVersion])),
             ...prev.frameVersions,
@@ -1058,6 +1066,8 @@ export function reduceVideoStudio(
         {
           ...prev,
           frameVersions: { ...prev.frameVersions, [action.clipId]: 'base' },
+          selectedClipId: action.clipId,
+          frameBrushClipId: action.clipId,
           view: 'frames',
         },
         `已重新生成${findShotDef(action.clipId, prev.storyboard)?.name || '该片段'}首帧。`,
@@ -1124,8 +1134,7 @@ export function reduceVideoStudio(
     }
     case 'generateClips': {
       const allIds = shotIds(prev.storyboard);
-      const selected = prev.selectedFrameIds.filter((id) => allIds.includes(id));
-      const useIds = selected.length ? selected : allIds;
+      const useIds = allIds;
       const shots = shotsFromStoryboard(prev.storyboard);
       return reply(
         {
