@@ -1,5 +1,16 @@
 import { useRef, useState } from 'react';
-import { ChevronDown, Eraser, Paintbrush, Plus } from 'lucide-react';
+import {
+  ArrowUpRight,
+  ChevronDown,
+  Eraser,
+  FileImage,
+  FileText,
+  Images,
+  Paintbrush,
+  Plus,
+  Upload,
+  X,
+} from 'lucide-react';
 import type { PptSlide } from '@/types/content';
 import {
   SelectableSvgPreview,
@@ -27,9 +38,20 @@ import {
   type MeetingSession,
   type MeetingSessionInfo,
   type MeetingSessionTab,
+  type MeetingTemplateBrief,
   type MeetingTaskProposal,
   type MeetingTemplateTab,
 } from '@/lib/meetingMaterialsMocks';
+import { POSTER_PLAN_B_RATIOS } from '@/lib/posterPlanBMocks';
+
+function readMeetingReference(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 function MeetingFolderTabs<T extends string>({
   items,
@@ -306,10 +328,8 @@ function MeetingPptCanvas({
 }
 
 export function MeetingWelcomePanel({
-  onOpenVisualReference,
   onOpenTaskProposal,
 }: {
-  onOpenVisualReference: () => void;
   onOpenTaskProposal: () => void;
 }) {
   return (
@@ -321,23 +341,10 @@ export function MeetingWelcomePanel({
             1
           </span>
           <div className="content-flow-start-body">
-            <p>您可以上传视觉参考素材，用于后续生成物料风格、配色和视觉元素的参考。</p>
-            <div className="content-flow-start-actions">
-              <button type="button" className="btn primary" onClick={onOpenVisualReference}>
-                上传视觉参考
-              </button>
-            </div>
-          </div>
-        </li>
-        <li className="content-flow-start-step">
-          <span className="content-flow-start-index" aria-hidden>
-            2
-          </span>
-          <div className="content-flow-start-body">
-            <p>您可以填写任务提案，开始会议物料的制作。</p>
+            <p>填写主KV需求并生成候选方案，确认后再补充会议物料模板需求。</p>
             <div className="content-flow-start-actions">
               <button type="button" className="btn primary" onClick={onOpenTaskProposal}>
-                填写任务提案
+                填写主KV需求
               </button>
             </div>
           </div>
@@ -351,10 +358,12 @@ export function MeetingTaskProposalPanel({
   proposal,
   onChange,
   onGenerateKv,
+  onGenerateDirect,
 }: {
   proposal: MeetingTaskProposal;
   onChange: (proposal: MeetingTaskProposal) => void;
   onGenerateKv: () => void;
+  onGenerateDirect?: () => void;
 }) {
   const update = (field: keyof MeetingTaskProposal, value: string) => {
     onChange({ ...proposal, [field]: value });
@@ -364,9 +373,11 @@ export function MeetingTaskProposalPanel({
     <div className="workspace-surface-panel content-brief-panel meeting-task-proposal-panel">
       <div className="topic-insight-title-row">
         <h1>任务提案</h1>
-        <button type="button" className="btn primary topic-insight-copy-btn" onClick={onGenerateKv}>
-          生成主KV
-        </button>
+        {!onGenerateDirect ? (
+          <button type="button" className="btn primary topic-insight-copy-btn" onClick={onGenerateKv}>
+            生成主KV
+          </button>
+        ) : null}
       </div>
       <div className="content-brief-fields">
         <label className="content-brief-field is-wide">
@@ -417,6 +428,218 @@ export function MeetingTaskProposalPanel({
           />
         </label>
       </div>
+      {onGenerateDirect ? (
+        <div className="meeting-task-proposal-route-actions">
+          <div>
+            <strong>选择生成路线</strong>
+            <span>选择后将锁定上方流程，后续仍可在海报列表中持续新增产物。</span>
+          </div>
+          <div className="meeting-action-row">
+            <button type="button" className="btn primary" onClick={onGenerateKv}>
+              生成主KV
+            </button>
+            <button type="button" className="btn soft" onClick={onGenerateDirect}>
+              直接生成海报/图片
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function MeetingTemplateBriefPanel({
+  brief,
+  onChange,
+  onGenerate,
+}: {
+  brief: MeetingTemplateBrief;
+  onChange: (
+    update:
+      | MeetingTemplateBrief
+      | ((current: MeetingTemplateBrief) => MeetingTemplateBrief)
+  ) => void;
+  onGenerate: () => void;
+}) {
+  const referenceInputRef = useRef<HTMLInputElement>(null);
+  const posterTemplateInputRef = useRef<HTMLInputElement>(null);
+  const pptTemplateInputRef = useRef<HTMLInputElement>(null);
+  const canGenerate = Boolean(
+    brief.visualReferences.length && brief.requirement.trim() && brief.posterRatio
+  );
+
+  return (
+    <div className="workspace-surface-panel poster-kv-brief-panel meeting-template-brief-panel">
+      <header className="poster-kv-brief-head">
+        <div>
+          <h1>输入会议物料模板需求</h1>
+          <p>补充模板视觉参考、海报比例和已有模板后，再生成会议物料模板。</p>
+        </div>
+        <button type="button" className="btn primary" disabled={!canGenerate} onClick={onGenerate}>
+          生成会议物料模板
+          <ArrowUpRight className="h-3.5 w-3.5" />
+        </button>
+      </header>
+
+      <div className="poster-kv-brief-form">
+        <section className="poster-kv-reference-section">
+          <div className="poster-kv-field-head">
+            <div>
+              <strong>会议物料模板视觉参考</strong>
+              <span>必填，支持上传最多 10 张图片。</span>
+            </div>
+            <em>{brief.visualReferences.length}/10</em>
+          </div>
+          <div className="poster-kv-reference-list">
+            {brief.visualReferences.map((reference) => (
+              <figure key={reference.id} className="poster-kv-reference-thumb">
+                <img src={reference.url} alt={reference.name} />
+                <button
+                  type="button"
+                  aria-label={`移除参考图：${reference.name}`}
+                  onClick={() =>
+                    onChange({
+                      ...brief,
+                      visualReferences: brief.visualReferences.filter(
+                        (item) => item.id !== reference.id
+                      ),
+                    })
+                  }
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </figure>
+            ))}
+            {brief.visualReferences.length < 10 ? (
+              <button
+                type="button"
+                className="poster-kv-reference-add"
+                onClick={() => referenceInputRef.current?.click()}
+              >
+                <Images className="h-5 w-5" />
+                <span>上传视觉参考</span>
+              </button>
+            ) : null}
+          </div>
+          <input
+            ref={referenceInputRef}
+            type="file"
+            hidden
+            multiple
+            accept="image/*"
+            onChange={(event) => {
+              const files = Array.from(event.currentTarget.files || []).slice(
+                0,
+                10 - brief.visualReferences.length
+              );
+              void Promise.all(
+                files.map(async (file, index) => ({
+                  id: `meeting_template_ref_${Date.now()}_${index}`,
+                  name: file.name,
+                  url: await readMeetingReference(file),
+                }))
+              ).then((references) =>
+                onChange((current) => ({
+                  ...current,
+                  visualReferences: [...current.visualReferences, ...references],
+                }))
+              );
+              event.currentTarget.value = '';
+            }}
+          />
+        </section>
+
+        <label className="poster-kv-requirement">
+          <span>会议物料模板需求</span>
+          <textarea
+            className="input"
+            rows={5}
+            value={brief.requirement}
+            placeholder="描述海报模板与串场PPT需要沿用的版式、信息层级、元素和使用场景。"
+            onChange={(event) => onChange({ ...brief, requirement: event.target.value })}
+          />
+        </label>
+
+        <section className="poster-kv-option-block">
+          <div className="poster-kv-option-title">
+            <span>会议海报比例</span>
+          </div>
+          <div className="poster-kv-ratio-options">
+            {POSTER_PLAN_B_RATIOS.filter((ratio) => ratio !== '智能').map((ratio) => (
+              <button
+                key={ratio}
+                type="button"
+                className={brief.posterRatio === ratio ? 'active' : ''}
+                aria-pressed={brief.posterRatio === ratio}
+                onClick={() => onChange({ ...brief, posterRatio: ratio })}
+              >
+                <i className={`ratio-shape ratio-${ratio.replace(':', '-')}`} />
+                {ratio}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <div className="meeting-template-upload-grid">
+          <section className="poster-kv-upload-own">
+            <span className="poster-plan-b-section-icon">
+              <FileImage className="h-4 w-4" />
+            </span>
+            <div>
+              <strong>已有海报模板</strong>
+              <p>{brief.posterTemplateFileName || '可选，上传图片、PDF 或 PSD 文件。'}</p>
+            </div>
+            <button
+              type="button"
+              className="btn soft"
+              onClick={() => posterTemplateInputRef.current?.click()}
+            >
+              <Upload className="h-3.5 w-3.5" />
+              上传
+            </button>
+            <input
+              ref={posterTemplateInputRef}
+              type="file"
+              hidden
+              accept="image/*,.pdf,.psd"
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                if (file) onChange({ ...brief, posterTemplateFileName: file.name });
+                event.currentTarget.value = '';
+              }}
+            />
+          </section>
+
+          <section className="poster-kv-upload-own">
+            <span className="poster-plan-b-section-icon">
+              <FileText className="h-4 w-4" />
+            </span>
+            <div>
+              <strong>已有PPT模板</strong>
+              <p>{brief.pptTemplateFileName || '可选，上传 PPT 或 PPTX 文件。'}</p>
+            </div>
+            <button
+              type="button"
+              className="btn soft"
+              onClick={() => pptTemplateInputRef.current?.click()}
+            >
+              <Upload className="h-3.5 w-3.5" />
+              上传
+            </button>
+            <input
+              ref={pptTemplateInputRef}
+              type="file"
+              hidden
+              accept=".ppt,.pptx"
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                if (file) onChange({ ...brief, pptTemplateFileName: file.name });
+                event.currentTarget.value = '';
+              }}
+            />
+          </section>
+        </div>
+      </div>
     </div>
   );
 }
@@ -425,9 +648,19 @@ interface MeetingKvPanelProps {
   imageUrl: string;
   onDownload: () => void;
   onGenerateTemplates: () => void;
+  onEdit?: () => void;
+  nextActionLabel?: string;
+  showCaption?: boolean;
 }
 
-export function MeetingKvPanel({ imageUrl, onDownload, onGenerateTemplates }: MeetingKvPanelProps) {
+export function MeetingKvPanel({
+  imageUrl,
+  onDownload,
+  onGenerateTemplates,
+  onEdit,
+  nextActionLabel = '生成会议模板',
+  showCaption = true,
+}: MeetingKvPanelProps) {
   const previewRef = useRef<SelectableSvgPreviewHandle>(null);
   const [toolState, setToolState] = useState<SelectableSvgToolState>({
     brushActive: false,
@@ -440,10 +673,10 @@ export function MeetingKvPanel({ imageUrl, onDownload, onGenerateTemplates }: Me
       <div className="topic-insight-title-row">
         <h1>主KV</h1>
         <button type="button" className="btn primary" onClick={onGenerateTemplates}>
-          生成会议模板
+          {nextActionLabel}
         </button>
       </div>
-      <p className="small meeting-surface-hint">{MEETING_KV_CAPTION}</p>
+      {showCaption ? <p className="small meeting-surface-hint">{MEETING_KV_CAPTION}</p> : null}
       <div className="meeting-kv-stage">
         <div className="meeting-preview-frame">
           <div className="meeting-kv-tools" role="toolbar" aria-label="主KV圈选工具">
@@ -487,6 +720,11 @@ export function MeetingKvPanel({ imageUrl, onDownload, onGenerateTemplates }: Me
         <button type="button" className="btn soft" onClick={onDownload}>
           下载主KV
         </button>
+        {onEdit ? (
+          <button type="button" className="btn primary" onClick={onEdit}>
+            手动编辑
+          </button>
+        ) : null}
       </div>
     </div>
   );

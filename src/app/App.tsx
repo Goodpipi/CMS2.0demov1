@@ -106,9 +106,20 @@ import {
   MeetingKvPanel,
   MeetingSessionsPanel,
   MeetingTaskProposalPanel,
+  MeetingTemplateBriefPanel,
   MeetingTemplatesPanel,
   MeetingWelcomePanel,
 } from '@/app/components/MeetingMaterialsPanels';
+import {
+  PosterPlanBPanel,
+  PosterPlanBKvBriefPanel,
+  PosterPlanBKvGallery,
+} from '@/app/components/PosterPlanBPanel';
+import {
+  imageProductSvg,
+  ImageStudioTabs,
+  ImageStudioWorkspace,
+} from '@/app/components/ImageStudioWorkspace';
 import { VideoStudioWorkspace } from '@/app/components/VideoStudioPanels';
 import {
   findShotDef,
@@ -147,6 +158,22 @@ import {
   type MeetingTaskProposal,
   type MeetingUpdateReason,
 } from '@/lib/meetingMaterialsMocks';
+import {
+  buildPosterPlanBDataUrl,
+  emptyPosterPlanB,
+  posterPlanBTitle,
+  type PosterPlanBState,
+} from '@/lib/posterPlanBMocks';
+import {
+  emptyPosterPlanC,
+  type PosterPlanCState,
+} from '@/lib/posterPlanCMocks';
+import {
+  emptyImageStudio,
+  matchImageStudioMock,
+  type ImageStudioProduct,
+  type ImageStudioState,
+} from '@/lib/imageStudioMocks';
 import {
   emptyContentBrief,
   formatContentBriefText,
@@ -437,11 +464,12 @@ const HOME_WORKFLOW_ACTIONS: {
     art: 'poster',
   },
   {
-    title: '话题洞察',
-    description: '基于素材与渠道趋势，提炼可执行的话题方向与内容机会。',
-    intent: 'insight',
-    prompt: '基于素材生成话题洞察',
-    Icon: Lightbulb,
+    title: '海报与图片',
+    description: '输入视觉需求，快速生成主KV、系列海报与图片产物。',
+    scenes: ['主KV', '倒计时海报', '活动图片'],
+    intent: 'visual',
+    prompt: '制作海报与图片',
+    Icon: ImagePlus,
     art: 'insight',
   },
   {
@@ -483,7 +511,7 @@ const initialLibrary: LibraryItem[] = [
 ];
 
 const tabNames = {
-  insight: '话题洞察',
+  insight: '海报与图片',
   'topic-recommendation': '话题推荐',
   literature: '推荐文献',
   storyline: '故事线',
@@ -502,8 +530,11 @@ const tabNames = {
   'long-image-outline': '长图大纲',
   'ppt-design': 'PPT生成',
   brief: '任务提案',
+  'meeting-template-brief': '会议物料模板需求',
   'meeting-templates': '会议模板',
   'meeting-sessions': '场次物料',
+  'poster-plan-b': '海报列表',
+  'poster-plan-c': '海报/图片列表',
   submit: 'Veeva提交',
 };
 
@@ -535,6 +566,9 @@ type Screen = 'home' | 'library' | 'assets' | 'workspace';
 type EditorTarget =
   | { kind: 'image'; index: number }
   | { kind: 'long-image'; index: number }
+  | { kind: 'poster-plan-b'; requestId: string }
+  | { kind: 'poster-plan-c'; requestId: string }
+  | { kind: 'image-studio'; productId: string }
   | { kind: 'ppt-slide'; index: number }
   | { kind: 'meeting-poster'; source: 'template' | 'session' }
   | { kind: 'meeting-ppt'; source: 'template' | 'session'; index: number };
@@ -563,6 +597,8 @@ const emptyWorkspaceState = (): AppState => ({
   storyline: false,
   meetingTemplates: false,
   meetingSessions: false,
+  posterPlanB: false,
+  posterPlanC: false,
   submit: false,
 });
 
@@ -602,6 +638,9 @@ export default function App() {
   const [contentBrief, setContentBrief] = useState<ContentBrief | null>(null);
   const [storylineContent, setStorylineContent] = useState('');
   const [meetingMaterials, setMeetingMaterials] = useState<MeetingMaterialsState>(emptyMeetingMaterials);
+  const [posterPlanB, setPosterPlanB] = useState<PosterPlanBState>(emptyPosterPlanB);
+  const [posterPlanC, setPosterPlanC] = useState<PosterPlanCState>(emptyPosterPlanC);
+  const [imageStudio, setImageStudio] = useState<ImageStudioState>(emptyImageStudio);
   const [videoStudio, setVideoStudio] = useState<VideoStudioState>(emptyVideoStudio);
   const [addMeetingSessionOpen, setAddMeetingSessionOpen] = useState(false);
   const [meetingReuploadConfirm, setMeetingReuploadConfirm] = useState<{
@@ -727,6 +766,10 @@ export default function App() {
   const [teamModificationInProgress, setTeamModificationInProgress] = useState(false);
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [teamReviewTarget, setTeamReviewTarget] = useState<TeamContentType | null>(null);
+  const [teamReviewPosterPlanBRequestId, setTeamReviewPosterPlanBRequestId] =
+    useState<string | null>(null);
+  const [teamReviewPosterPlanCRequestId, setTeamReviewPosterPlanCRequestId] =
+    useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState('');
   const [deadline, setDeadline] = useState('');
   const [taskTitle, setTaskTitle] = useState(DEFAULT_SESSION_TITLE);
@@ -799,6 +842,9 @@ export default function App() {
       contentBrief,
       storylineContent,
       meetingMaterials,
+      posterPlanB,
+      posterPlanC,
+      imageStudio,
       videoStudio,
       richTextContent,
       scriptContent,
@@ -842,6 +888,9 @@ export default function App() {
       contentBrief,
       storylineContent,
       meetingMaterials,
+      posterPlanB,
+      posterPlanC,
+      imageStudio,
       videoStudio,
       richTextContent,
       scriptContent,
@@ -932,6 +981,8 @@ export default function App() {
       storyline: legacy.storyline ?? false,
       meetingTemplates: legacy.meetingTemplates ?? false,
       meetingSessions: legacy.meetingSessions ?? false,
+      posterPlanB: legacy.posterPlanB ?? false,
+      posterPlanC: legacy.posterPlanC ?? false,
       videoBrief: legacy.videoBrief ?? false,
       videoHero: legacy.videoHero ?? false,
       videoStoryboard: legacy.videoStoryboard ?? false,
@@ -969,7 +1020,93 @@ export default function App() {
     setSelectedPptTemplateId(w.selectedPptTemplateId ?? null);
     setContentBrief(normalizeContentBrief(w.contentBrief));
     setStorylineContent(w.storylineContent ?? '');
-    setMeetingMaterials(w.meetingMaterials ?? emptyMeetingMaterials());
+    const meetingDefaults = emptyMeetingMaterials();
+    setMeetingMaterials({
+      ...meetingDefaults,
+      ...w.meetingMaterials,
+      kvBrief: {
+        ...meetingDefaults.kvBrief,
+        ...w.meetingMaterials?.kvBrief,
+        visualReferences: w.meetingMaterials?.kvBrief?.visualReferences ?? [],
+      },
+      kvCandidates: w.meetingMaterials?.kvCandidates ?? [],
+      templateBrief: {
+        ...meetingDefaults.templateBrief,
+        ...w.meetingMaterials?.templateBrief,
+        posterRatio:
+          w.meetingMaterials?.templateBrief?.posterRatio ||
+          (w.meetingMaterials as { posterRatio?: string } | undefined)?.posterRatio ||
+          meetingDefaults.templateBrief.posterRatio,
+        visualReferences: w.meetingMaterials?.templateBrief?.visualReferences ?? [],
+      },
+    });
+    const posterPlanBDefaults = emptyPosterPlanB();
+    const loadedPosterPlanB: PosterPlanBState = {
+      ...posterPlanBDefaults,
+      ...w.posterPlanB,
+      kvBrief: {
+        ...posterPlanBDefaults.kvBrief,
+        ...w.posterPlanB?.kvBrief,
+        visualReferences: w.posterPlanB?.kvBrief?.visualReferences ?? [],
+      },
+      kvCandidates: w.posterPlanB?.kvCandidates ?? [],
+    };
+    setPosterPlanB(loadedPosterPlanB);
+    const posterPlanCDefaults = emptyPosterPlanC();
+    const loadedPosterPlanC: PosterPlanCState = {
+      ...posterPlanCDefaults,
+      ...w.posterPlanC,
+      kvBrief: {
+        ...posterPlanCDefaults.kvBrief,
+        ...w.posterPlanC?.kvBrief,
+        visualReferences: w.posterPlanC?.kvBrief?.visualReferences ?? [],
+      },
+      kvCandidates: w.posterPlanC?.kvCandidates ?? [],
+    };
+    setPosterPlanC(loadedPosterPlanC);
+    const loadedPosterRequest =
+      loadedPosterPlanB.requests.find(
+        (item) => item.id === loadedPosterPlanB.currentRequestId
+      ) || null;
+    const loadedPosterCRequest =
+      loadedPosterPlanC.requests.find(
+        (item) => item.id === loadedPosterPlanC.currentRequestId
+      ) || null;
+    const loadedPosterPreview =
+      w.entryContext?.source === 'poster-plan-b' && normalizedState.active === 'visual'
+        ? {
+            url: loadedPosterRequest?.posterUrl || loadedPosterPlanB.mainKvUrl,
+            request: loadedPosterRequest,
+            plan: 'B' as const,
+          }
+        : w.entryContext?.source === 'poster-plan-c' && normalizedState.active === 'visual'
+          ? {
+              url: loadedPosterCRequest?.posterUrl || loadedPosterPlanC.mainKvUrl,
+              request: loadedPosterCRequest,
+              plan: 'C' as const,
+            }
+          : undefined;
+    if (loadedPosterPreview?.url) {
+      const isPoster = Boolean(loadedPosterPreview.request);
+      setWorkspacePreviewMaterial({
+        id: -1,
+        cat: '生成图片',
+        title: loadedPosterPreview.request?.title || '主KV',
+        meta: isPoster ? `Plan ${loadedPosterPreview.plan} 海报` : '主KV',
+        cms: false,
+        def: false,
+        addedAt: Date.now(),
+        fileName: isPoster ? `plan-${loadedPosterPreview.plan.toLowerCase()}-poster.svg` : 'main-kv.svg',
+        contentType: 'image',
+        contentUrl: loadedPosterPreview.url,
+        mimeType: 'image/svg+xml',
+      });
+      setPreviewedImageAssetKey(isPoster ? 'poster' : 'kv');
+    } else {
+      setWorkspacePreviewMaterial(null);
+      setPreviewedImageAssetKey(null);
+    }
+    setImageStudio(w.imageStudio ?? emptyImageStudio());
     setVideoStudio(
       w.videoStudio ? { ...emptyVideoStudio(), ...w.videoStudio } : emptyVideoStudio()
     );
@@ -993,12 +1130,19 @@ export default function App() {
     );
     setImageReviewOrigins(loadedOrigins);
     setImageReviewStatuses(loadedStatuses);
+    const loadedPlanBPreviewUrl =
+      loadedPosterPreview?.plan === 'B' ? loadedPosterPreview.url : '';
+    const loadedPlanBPreviewIndex = loadedPlanBPreviewUrl
+      ? (w.generatedImages || []).indexOf(loadedPlanBPreviewUrl)
+      : -1;
     setSelectedImages(
-      w.selectedImages?.length === imgCount
-        ? w.selectedImages
-        : imgCount > 0
-          ? w.generatedImages.map((_, i) => i === 0)
-          : []
+      loadedPlanBPreviewIndex >= 0
+        ? (w.generatedImages || []).map((_, index) => index === loadedPlanBPreviewIndex)
+        : w.selectedImages?.length === imgCount
+          ? w.selectedImages
+          : imgCount > 0
+            ? w.generatedImages.map((_, i) => i === 0)
+            : []
     );
     setInsightSummary(w.insightSummary);
     setTopicInsightReportText(w.topicInsightReportText ?? '');
@@ -1099,7 +1243,11 @@ export default function App() {
   };
 
   const openTeamReview = useCallback(
-    (type: TeamContentType) => {
+    (
+      type: TeamContentType,
+      posterPlanBRequestId?: string,
+      posterPlanCRequestId?: string
+    ) => {
       if (!teamReviewSupported(type, stateRef.current.active)) {
         toast(
           type === 'video'
@@ -1118,6 +1266,8 @@ export default function App() {
         return;
       }
       setTeamReviewTarget(type);
+      setTeamReviewPosterPlanBRequestId(posterPlanBRequestId || null);
+      setTeamReviewPosterPlanCRequestId(posterPlanCRequestId || null);
       setTeamAssigneeRoles([]);
       setShowTeamModal(true);
     },
@@ -1330,6 +1480,8 @@ export default function App() {
     setShowModal(false);
     setShowCopyEditModal(false);
     setShowTeamModal(false);
+    setTeamReviewPosterPlanBRequestId(null);
+    setTeamReviewPosterPlanCRequestId(null);
     setTeamAssigneeRoles([]);
     setDeleteConfirm(null);
     setImageTemplateModal(null);
@@ -1580,7 +1732,45 @@ export default function App() {
     setSelectedProduct(product);
     setProductPickerOpen(false);
     toast(`已选择产品「${product.name}」`);
-    if (entryContext?.source === 'more' || entryContext?.intent === 'video') {
+    if (entryContext?.source === 'insight') {
+      setImageStudio(emptyImageStudio());
+      setTaskTitle(`${product.name}·海报与图片`);
+    } else if (entryContext?.source === 'poster') {
+      setFlowEntry('conferencePoster');
+      setMeetingMaterials(emptyMeetingMaterials());
+      setState((prev) => ({
+        ...prev,
+        tabs: prev.tabs.includes('brief') ? prev.tabs : [...prev.tabs, 'brief'],
+        active: 'brief',
+        brief: true,
+      }));
+      setTaskTitle(`${product.name}·会议物料`);
+    } else if (entryContext?.source === 'poster-plan-b') {
+      setFlowEntry('posterPlanB');
+      setPosterPlanB(emptyPosterPlanB());
+      setState((prev) => ({
+        ...prev,
+        tabs: prev.tabs.includes('brief') ? prev.tabs : [...prev.tabs, 'brief'],
+        active: 'brief',
+        brief: true,
+      }));
+      setTaskTitle(`${product.name}·海报生成 Plan B`);
+    } else if (entryContext?.source === 'poster-plan-c') {
+      setFlowEntry(null);
+      setPosterPlanC(emptyPosterPlanC());
+      setMeetingMaterials((prev) => ({
+        ...prev,
+        taskProposal: emptyMeetingTaskProposal(product.name),
+      }));
+      setState((prev) => ({
+        ...prev,
+        tabs: prev.tabs.includes('brief') ? prev.tabs : [...prev.tabs, 'brief'],
+        active: 'brief',
+        brief: true,
+        posterPlanC: false,
+      }));
+      setTaskTitle(`${product.name}·海报生成 Plan C`);
+    } else if (entryContext?.source === 'more' || entryContext?.intent === 'video') {
       setFlowEntry('video');
       setVideoStudio(emptyVideoStudio(product.name));
       setState((prev) => ({
@@ -1674,17 +1864,41 @@ export default function App() {
         ? `修改「${workspaceElementSel.label}」（${scopeHint}）：例如改成「核心信息」、字号加大…`
         : `修改「${workspaceElementSel.label}」（${scopeHint}）：例如换成绿色、缩小一点…`;
     }
+    if (entryContext?.source === 'insight') {
+      return '输入海报或图片需求，例如风格、尺寸、配色、KV或倒计时天数…';
+    }
     const isPosterWorkspace =
       flowEntry === 'conferencePoster' || entryContext?.source === 'poster';
+    const isPosterPlanBWorkspace =
+      flowEntry === 'posterPlanB' || entryContext?.source === 'poster-plan-b';
+    const isPosterPlanCWorkspace =
+      flowEntry === 'posterPlanCKv' ||
+      flowEntry === 'posterPlanCDirect' ||
+      entryContext?.source === 'poster-plan-c' ||
+      posterPlanC.route !== 'pending';
     if (promptEditScope === 'page') {
       if (longImageOutline && state.active === 'visual') {
         return '针对当前长图说明要改什么…';
       }
       if (isPosterWorkspace) {
+        if (state.active === 'meeting-template-brief') return '填写会议物料模板需求并生成模板…';
         if (state.active === 'meeting-templates') return '输入「新增场次」，或继续生成海报模板 / 串场PPT模板…';
         if (state.active === 'meeting-sessions') return '可输入「上传会议信息」「生成会议海报」或「生成串场PPT」…';
         if (previewedImageAssetKey === 'kv') return '针对当前主KV说明要改什么，或输入「生成会议模板」…';
-        return '输入「生成主KV」开始制作会议物料…';
+        return '先填写任务提案并生成主KV…';
+      }
+      if (isPosterPlanBWorkspace) {
+        if (state.active === 'poster-plan-b') return '补充新海报信息，或点击「生成海报」…';
+        if (previewedImageAssetKey === 'kv') return '针对当前主KV说明要改什么，或输入「填写海报信息」…';
+        if (previewedImageAssetKey === 'poster') return '针对当前海报说明要改什么…';
+        return '先填写任务提案并生成主KV…';
+      }
+      if (isPosterPlanCWorkspace) {
+        if (state.active === 'brief') return '填写任务提案后选择生成路线…';
+        if (state.active === 'poster-plan-c') return '在列表中新增海报/图片，或打开已有产物…';
+        if (previewedImageAssetKey === 'kv') return '可修改当前主KV，或进入海报/图片列表…';
+        if (previewedImageAssetKey === 'poster') return '针对当前海报/图片说明要改什么…';
+        return '先完成任务提案并选择生成路线…';
       }
       if (flowEntry === 'script' || (state.active === 'copy' && Boolean(scriptContent.trim()))) {
         return scriptContent.trim() ? '针对当前话术说明要改什么…' : '输入「生成话术」…';
@@ -1702,8 +1916,14 @@ export default function App() {
           : '描述文案类型、受众与核心信息…';
       case 'visual':
       case 'visual-template':
+        if (ctx.source === 'poster-plan-b') {
+          return '填写任务提案并生成主KV，再补充新海报信息…';
+        }
+        if (ctx.source === 'poster-plan-c') {
+          return '填写任务提案并选择生成主KV或直接生成海报/图片…';
+        }
         return ctx.source === 'poster'
-          ? '输入「生成主KV」开始制作会议物料…'
+          ? '填写任务提案，选择主KV和海报比例…'
           : '描述要生成的图片主题、风格与用途…';
       case 'video':
         return entryContext?.source === 'more'
@@ -1719,6 +1939,7 @@ export default function App() {
 
   const formatScopedUserPrompt = useCallback(
     (text: string) => {
+      if (entryContext?.source === 'insight') return text;
       if (promptEditScope === 'global') {
         return `【全局】${text}`;
       }
@@ -1726,7 +1947,7 @@ export default function App() {
         (workspaceElementSel?.slideIndex ?? creatorPptPageIndex) + 1;
       return `【单页 · 第 ${pageNo} 页】${text}`;
     },
-    [promptEditScope, workspaceElementSel, creatorPptPageIndex]
+    [entryContext?.source, promptEditScope, workspaceElementSel, creatorPptPageIndex]
   );
 
   const reset = (
@@ -1792,6 +2013,9 @@ export default function App() {
     setContentBrief(null);
     setStorylineContent('');
     setMeetingMaterials(emptyMeetingMaterials());
+    setPosterPlanB(emptyPosterPlanB());
+    setPosterPlanC(emptyPosterPlanC());
+    setImageStudio(emptyImageStudio());
     setVideoStudio(emptyVideoStudio());
     setMeetingInfoDraft(null);
     setAddMeetingSessionOpen(false);
@@ -1959,6 +2183,696 @@ export default function App() {
       active: 'meeting-sessions',
       meetingSessions: true,
     }));
+  };
+
+  const generateMeetingKv = () => {
+    if (!meetingMaterials.kvBrief.requirement.trim()) {
+      toast('请先填写主KV需求');
+      return;
+    }
+    const urls = [
+      '/demo-assets/poster-studio/kv.png',
+      '/demo-assets/poster-studio/countdown-3.png',
+      '/demo-assets/poster-studio/countdown-2.png',
+      '/demo-assets/poster-studio/countdown-1.png',
+    ];
+    const candidates = urls.slice(0, meetingMaterials.kvBrief.count).map((url, index) => ({
+      id: `meeting_kv_${Date.now()}_${index}`,
+      title: `会议主KV方案 ${index + 1}`,
+      url,
+    }));
+    const first = candidates[0];
+    if (!first) return;
+    setMeetingMaterials((prev) => ({
+      ...prev,
+      kvCandidates: candidates,
+      activeKvCandidateId: first.id,
+      selectedKvId: null,
+      mainKvUrl: undefined,
+      uploadedKvFileName: undefined,
+      templatesReady: false,
+    }));
+    seedVisualTasks('kv');
+    openMockImageInPreview(first.url, first.title, 'kv');
+    addMsg(
+      'ai',
+      `已根据任务提案生成 ${candidates.length} 个会议主KV方案。请切换预览并选择一个作为主KV。`,
+      '本地 Mock'
+    );
+  };
+
+  const useUploadedMeetingKv = (fileName: string, dataUrl: string) => {
+    const candidate = {
+      id: `meeting_kv_upload_${Date.now()}`,
+      title: fileName.replace(/\.[^.]+$/, '') || '上传主KV',
+      url: dataUrl,
+    };
+    setMeetingMaterials((prev) => ({
+      ...prev,
+      kvCandidates: [candidate],
+      activeKvCandidateId: candidate.id,
+      selectedKvId: candidate.id,
+      mainKvUrl: dataUrl,
+      uploadedKvFileName: fileName,
+      templatesReady: false,
+    }));
+    seedVisualTasks('kv');
+    openMockImageInPreview(dataUrl, candidate.title, 'kv');
+    addMsg('ai', `已将「${fileName}」设为本次系列会议的主KV。`, '本地 Mock');
+  };
+
+  const activateMeetingKv = (candidateId: string) => {
+    const candidate = meetingMaterials.kvCandidates.find((item) => item.id === candidateId);
+    if (!candidate) return;
+    setMeetingMaterials((prev) => ({ ...prev, activeKvCandidateId: candidateId }));
+    openMockImageInPreview(candidate.url, candidate.title, 'kv');
+  };
+
+  const confirmMeetingKv = (candidateId: string) => {
+    const candidate = meetingMaterials.kvCandidates.find((item) => item.id === candidateId);
+    if (!candidate) return;
+    setMeetingMaterials((prev) => ({
+      ...prev,
+      activeKvCandidateId: candidateId,
+      selectedKvId: candidateId,
+      mainKvUrl: candidate.url,
+    }));
+    openMockImageInPreview(candidate.url, candidate.title, 'kv');
+    toast(`已将「${candidate.title}」设置为主KV`);
+  };
+
+  const openMeetingTemplateBrief = () => {
+    if (!meetingMaterials.mainKvUrl) {
+      toast('请先选择并设置主KV');
+      return;
+    }
+    setWorkspacePreviewMaterial(null);
+    setState((prev) => ({
+      ...prev,
+      tabs: prev.tabs.includes('meeting-template-brief')
+        ? prev.tabs
+        : [...prev.tabs, 'meeting-template-brief'],
+      active: 'meeting-template-brief',
+    }));
+  };
+
+  const confirmMeetingKvAndOpenTemplateBrief = (candidateId: string) => {
+    const candidate = meetingMaterials.kvCandidates.find((item) => item.id === candidateId);
+    if (!candidate) return;
+    setMeetingMaterials((prev) => ({
+      ...prev,
+      activeKvCandidateId: candidateId,
+      selectedKvId: candidateId,
+      mainKvUrl: candidate.url,
+    }));
+    setWorkspacePreviewMaterial(null);
+    setState((prev) => ({
+      ...prev,
+      tabs: prev.tabs.includes('meeting-template-brief')
+        ? prev.tabs
+        : [...prev.tabs, 'meeting-template-brief'],
+      active: 'meeting-template-brief',
+    }));
+    toast(`已将「${candidate.title}」设置为主KV`);
+  };
+
+  const generatePosterPlanBKv = () => {
+    if (!posterPlanB.kvBrief.requirement.trim()) {
+      toast('请先填写主KV需求');
+      return;
+    }
+    const urls = [
+      '/demo-assets/poster-studio/kv.png',
+      '/demo-assets/poster-studio/countdown-3.png',
+      '/demo-assets/poster-studio/countdown-2.png',
+      '/demo-assets/poster-studio/countdown-1.png',
+    ];
+    const candidates = urls.slice(0, posterPlanB.kvBrief.count).map((url, index) => ({
+      id: `kv_b_${Date.now()}_${index}`,
+      title: `主KV方案 ${index + 1}`,
+      url,
+    }));
+    const first = candidates[0];
+    if (!first) return;
+    setPosterPlanB((prev) => ({
+      ...prev,
+      kvCandidates: candidates,
+      activeKvCandidateId: first.id,
+      selectedKvId: null,
+      mainKvUrl: undefined,
+      uploadedKvFileName: undefined,
+    }));
+    seedVisualTasks('kv');
+    openMockImageInPreview(first.url, first.title, 'kv');
+    addMsg(
+      'ai',
+      `已根据任务提案生成 ${candidates.length} 个主KV方案。请在下方横轴切换预览，并将其中一个设置为主KV。`,
+      '本地 Mock'
+    );
+  };
+
+  const useUploadedPosterPlanBKv = (fileName: string, dataUrl: string) => {
+    const candidate = {
+      id: `kv_b_upload_${Date.now()}`,
+      title: fileName.replace(/\.[^.]+$/, '') || '上传主KV',
+      url: dataUrl,
+    };
+    setPosterPlanB((prev) => ({
+      ...prev,
+      kvCandidates: [candidate],
+      activeKvCandidateId: candidate.id,
+      selectedKvId: candidate.id,
+      mainKvUrl: dataUrl,
+      uploadedKvFileName: fileName,
+    }));
+    seedVisualTasks('kv');
+    openMockImageInPreview(dataUrl, candidate.title, 'kv');
+    addMsg('ai', `已将「${fileName}」设为本次任务主KV。`, '本地 Mock');
+  };
+
+  const activatePosterPlanBKv = (candidateId: string) => {
+    const candidate = posterPlanB.kvCandidates.find((item) => item.id === candidateId);
+    if (!candidate) return;
+    setPosterPlanB((prev) => ({ ...prev, activeKvCandidateId: candidateId }));
+    openMockImageInPreview(candidate.url, candidate.title, 'kv');
+  };
+
+  const confirmPosterPlanBKv = (candidateId: string) => {
+    const candidate = posterPlanB.kvCandidates.find((item) => item.id === candidateId);
+    if (!candidate) return;
+    setPosterPlanB((prev) => ({
+      ...prev,
+      activeKvCandidateId: candidateId,
+      selectedKvId: candidateId,
+      mainKvUrl: candidate.url,
+    }));
+    openMockImageInPreview(candidate.url, candidate.title, 'kv');
+    toast(`已将「${candidate.title}」设置为主KV`);
+  };
+
+  const confirmPosterPlanBKvAndOpenList = (candidateId: string) => {
+    const candidate = posterPlanB.kvCandidates.find((item) => item.id === candidateId);
+    if (!candidate) return;
+    setPosterPlanB((prev) => ({
+      ...prev,
+      activeKvCandidateId: candidateId,
+      selectedKvId: candidateId,
+      mainKvUrl: candidate.url,
+      view: 'list',
+    }));
+    setWorkspacePreviewMaterial(null);
+    setState((prev) => ({
+      ...prev,
+      tabs: prev.tabs.includes('poster-plan-b')
+        ? prev.tabs
+        : [...prev.tabs, 'poster-plan-b'],
+      active: 'poster-plan-b',
+      posterPlanB: true,
+    }));
+    toast(`已将「${candidate.title}」设置为主KV`);
+  };
+
+  const openPosterPlanBBrief = () => {
+    if (!posterPlanB.mainKvUrl && !hasVisualAsset('kv')) {
+      toast('请先生成主KV');
+      return;
+    }
+    setWorkspacePreviewMaterial(null);
+    setPosterPlanB((prev) => ({ ...prev, view: 'new' }));
+    setState((prev) => ({
+      ...prev,
+      tabs: prev.tabs.includes('poster-plan-b')
+        ? prev.tabs
+        : [...prev.tabs, 'poster-plan-b'],
+      active: 'poster-plan-b',
+      posterPlanB: true,
+    }));
+  };
+
+  const startNewPosterPlanB = () => {
+    setPosterPlanB((prev) => ({
+      ...prev,
+      draftText: '',
+      uploadFileName: undefined,
+      posterTitle: '',
+      posterCoreContent: '',
+      posterAudience: '',
+      posterRatio: '3:4',
+      currentRequestId: null,
+      view: 'new',
+    }));
+    openPosterPlanBBrief();
+  };
+
+  const openPosterPlanBList = () => {
+    if (!posterPlanB.mainKvUrl) {
+      toast('请先选择并设置主KV');
+      return;
+    }
+    setWorkspacePreviewMaterial(null);
+    setPosterPlanB((prev) => ({ ...prev, view: 'list' }));
+    setState((prev) => ({
+      ...prev,
+      tabs: prev.tabs.includes('poster-plan-b')
+        ? prev.tabs
+        : [...prev.tabs, 'poster-plan-b'],
+      active: 'poster-plan-b',
+      posterPlanB: true,
+    }));
+  };
+
+  const openPosterPlanBMainKv = () => {
+    const asset = latestVisualAsset('kv');
+    const imageUrl = posterPlanB.mainKvUrl || asset.url;
+    const selectedCandidate = posterPlanB.kvCandidates.find(
+      (item) => item.id === posterPlanB.selectedKvId
+    );
+    openMockImageInPreview(imageUrl, selectedCandidate?.title || asset.title || '主KV', 'kv');
+    setPosterPlanB((prev) => ({
+      ...prev,
+      currentRequestId: null,
+      activeKvCandidateId: prev.selectedKvId || prev.activeKvCandidateId,
+      mainKvUrl: imageUrl,
+    }));
+  };
+
+  const openPosterPlanBResult = (requestId: string) => {
+    const request = posterPlanB.requests.find((item) => item.id === requestId);
+    if (!request) return;
+    setPosterPlanB((prev) => ({ ...prev, currentRequestId: requestId, view: 'list' }));
+    openMockImageInPreview(request.posterUrl, request.title, 'poster');
+    const nextImages = generatedImages.includes(request.posterUrl)
+      ? generatedImages
+      : [...generatedImages, request.posterUrl];
+    const selectedIndex = nextImages.indexOf(request.posterUrl);
+    setSelectedImages(nextImages.map((_, index) => index === selectedIndex));
+  };
+
+  const generatePosterPlanB = () => {
+    if (!selectedProduct) {
+      toast('请先选择产品');
+      return;
+    }
+    if (!posterPlanB.mainKvUrl && !hasVisualAsset('kv')) {
+      toast('请先生成主KV');
+      return;
+    }
+    const information = [
+      `标题：${posterPlanB.posterTitle.trim()}`,
+      `核心内容：${posterPlanB.posterCoreContent.trim()}`,
+      `受众：${posterPlanB.posterAudience.trim()}`,
+      `比例：${posterPlanB.posterRatio}`,
+    ].join('\n');
+    if (
+      !posterPlanB.posterTitle.trim() ||
+      !posterPlanB.posterCoreContent.trim() ||
+      !posterPlanB.posterAudience.trim()
+    ) {
+      toast('请完成标题、核心内容、受众和比例');
+      return;
+    }
+    const id = `poster_b_${Date.now()}`;
+    const title = posterPlanB.posterTitle.trim();
+    const posterUrl = buildPosterPlanBDataUrl(
+      selectedProduct.name,
+      information,
+      posterPlanB.uploadFileName,
+      posterPlanB.requests.length + 1
+    );
+    const request = {
+      id,
+      title,
+      information,
+      uploadFileName: posterPlanB.uploadFileName,
+      posterUrl,
+      sourceKvUrl: posterPlanB.mainKvUrl || latestVisualAsset('kv').url,
+      teamReviewStatus: 'idle' as const,
+      veevaStatus: 'idle' as const,
+      createdAt: Date.now(),
+    };
+    setPosterPlanB((prev) => ({
+      ...prev,
+      draftText: '',
+      uploadFileName: undefined,
+      posterTitle: '',
+      posterCoreContent: '',
+      posterAudience: '',
+      posterRatio: '3:4',
+      view: 'list',
+      requests: [...prev.requests, request],
+      currentRequestId: id,
+    }));
+    seedVisualTasks('poster');
+    openMockImageInPreview(posterUrl, title, 'poster');
+    const nextImages = generatedImages.includes(posterUrl)
+      ? generatedImages
+      : [...generatedImages, posterUrl];
+    const selectedIndex = nextImages.indexOf(posterUrl);
+    setSelectedImages(nextImages.map((_, index) => index === selectedIndex));
+    addMsg(
+      'ai',
+      `已基于「${selectedProduct.name}」主KV和当前海报信息生成「${title}」。您可以手动编辑，也可以提交团队意见收集或 Veeva 审批。`,
+      '本地 Mock',
+      ['填写新的海报信息', '提交当前版本到Veeva Vault']
+    );
+  };
+
+  const openPosterPlanBTeamReview = (requestId: string) => {
+    const request = posterPlanB.requests.find((item) => item.id === requestId);
+    if (!request) return;
+    openPosterPlanBResult(requestId);
+    openTeamReview('visual', requestId);
+  };
+
+  const submitPosterPlanBToVeeva = (requestId: string) => {
+    const request = posterPlanB.requests.find((item) => item.id === requestId);
+    if (!request) return;
+    setPosterPlanB((prev) => ({
+      ...prev,
+      currentRequestId: requestId,
+      requests: prev.requests.map((item) =>
+        item.id === requestId ? { ...item, veevaStatus: 'prepared' } : item
+      ),
+    }));
+    runSubmit();
+  };
+
+  const confirmPosterPlanBVeeva = () => {
+    const requestId = posterPlanB.currentRequestId;
+    if (!requestId) {
+      toast('已提交至 Veeva Vault');
+      return;
+    }
+    setPosterPlanB((prev) => ({
+      ...prev,
+      requests: prev.requests.map((item) =>
+        item.id === requestId ? { ...item, veevaStatus: 'submitted' } : item
+      ),
+    }));
+    toast('当前海报已提交至 Veeva Vault');
+  };
+
+  const openPosterPlanCList = () => {
+    if (posterPlanC.route === 'pending') {
+      toast('请先选择 Plan C 生成路线');
+      return;
+    }
+    if (posterPlanC.route === 'direct') {
+      const request =
+        posterPlanC.requests.find((item) => item.id === posterPlanC.currentRequestId) ||
+        posterPlanC.requests[0];
+      if (request) openPosterPlanCResult(request.id);
+      return;
+    }
+    setWorkspacePreviewMaterial(null);
+    setPosterPlanC((prev) => ({ ...prev, view: 'list' }));
+    setState((prev) => ({
+      ...prev,
+      tabs: prev.tabs.includes('poster-plan-c')
+        ? prev.tabs
+        : [...prev.tabs, 'poster-plan-c'],
+      active: 'poster-plan-c',
+      posterPlanC: true,
+    }));
+  };
+
+  const startPosterPlanCKvRoute = () => {
+    const asset = latestVisualAsset('kv');
+    setFlowEntry('posterPlanCKv');
+    setPosterPlanC((prev) => ({
+      ...prev,
+      route: 'kv',
+      mainKvUrl: asset.url,
+      currentRequestId: null,
+      view: 'list',
+    }));
+    seedVisualTasks('kv');
+    openMockImageInPreview(asset.url, asset.title, 'kv');
+    addMsg(
+      'ai',
+      '已按任务提案生成主KV。确认或修改主KV后，请进入海报/图片列表新增产物。',
+      '本地 Mock',
+      ['进入海报/图片列表']
+    );
+  };
+
+  const startPosterPlanCDirectRoute = () => {
+    if (!selectedProduct) {
+      toast('请先选择产品');
+      return;
+    }
+    const proposal = meetingMaterials.taskProposal ?? emptyMeetingTaskProposal();
+    const information =
+      [proposal.theme, proposal.style, proposal.mainVisualElements, proposal.other]
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .join('\n') || '根据当前任务提案直接生成海报/图片';
+    const title = proposal.theme.trim() || 'Plan C 直接生成图片';
+    const id = `poster_c_direct_${Date.now()}`;
+    const posterUrl = buildPosterPlanBDataUrl(
+      selectedProduct.name,
+      information,
+      undefined,
+      1,
+      'direct'
+    );
+    const request = {
+      id,
+      title,
+      information,
+      posterUrl,
+      teamReviewStatus: 'idle' as const,
+      veevaStatus: 'idle' as const,
+      createdAt: Date.now(),
+    };
+    setFlowEntry('posterPlanCDirect');
+    setPosterPlanC({
+      route: 'direct',
+      draftText: '',
+      uploadFileName: undefined,
+      mainKvUrl: undefined,
+      requests: [request],
+      currentRequestId: id,
+      view: 'list',
+    });
+    seedVisualTasks('poster');
+    openMockImageInPreview(posterUrl, title, 'poster');
+    addMsg(
+      'ai',
+      '已根据任务提案直接生成一张海报/图片。该路线不需要进入海报列表，可直接编辑、提交意见收集或发起 Veeva 审批。',
+      '本地 Mock'
+    );
+  };
+
+  const startNewPosterPlanC = () => {
+    if (posterPlanC.route === 'direct') {
+      toast('直接生成路线仅生成一张图片');
+      return;
+    }
+    setWorkspacePreviewMaterial(null);
+    setPosterPlanC((prev) => ({
+      ...prev,
+      draftText: '',
+      uploadFileName: undefined,
+      currentRequestId: null,
+      view: 'new',
+    }));
+    setState((prev) => ({
+      ...prev,
+      tabs: prev.tabs.includes('poster-plan-c')
+        ? prev.tabs
+        : [...prev.tabs, 'poster-plan-c'],
+      active: 'poster-plan-c',
+      posterPlanC: true,
+    }));
+  };
+
+  const openPosterPlanCMainKv = () => {
+    if (!posterPlanC.mainKvUrl) return;
+    openMockImageInPreview(posterPlanC.mainKvUrl, 'Plan C 主KV', 'kv');
+    setPosterPlanC((prev) => ({ ...prev, currentRequestId: null }));
+  };
+
+  const openPosterPlanCResult = (requestId: string) => {
+    const request = posterPlanC.requests.find((item) => item.id === requestId);
+    if (!request) return;
+    setPosterPlanC((prev) => ({ ...prev, currentRequestId: requestId, view: 'list' }));
+    openMockImageInPreview(request.posterUrl, request.title, 'poster');
+    const nextImages = generatedImages.includes(request.posterUrl)
+      ? generatedImages
+      : [...generatedImages, request.posterUrl];
+    const selectedIndex = nextImages.indexOf(request.posterUrl);
+    setSelectedImages(nextImages.map((_, index) => index === selectedIndex));
+  };
+
+  const generatePosterPlanC = () => {
+    if (!selectedProduct) {
+      toast('请先选择产品');
+      return;
+    }
+    if (posterPlanC.route === 'pending') {
+      toast('请先选择 Plan C 生成路线');
+      return;
+    }
+    const information = posterPlanC.draftText.trim();
+    if (!information && !posterPlanC.uploadFileName) {
+      toast('请上传文件或填写海报/图片信息');
+      return;
+    }
+    const id = `poster_c_${Date.now()}`;
+    const title = posterPlanBTitle(information, posterPlanC.uploadFileName);
+    const posterUrl = buildPosterPlanBDataUrl(
+      selectedProduct.name,
+      information,
+      posterPlanC.uploadFileName,
+      posterPlanC.requests.length + 1,
+      posterPlanC.route === 'kv' ? 'kv' : 'direct'
+    );
+    const request = {
+      id,
+      title,
+      information,
+      uploadFileName: posterPlanC.uploadFileName,
+      posterUrl,
+      sourceKvUrl: posterPlanC.route === 'kv' ? posterPlanC.mainKvUrl : undefined,
+      teamReviewStatus: 'idle' as const,
+      veevaStatus: 'idle' as const,
+      createdAt: Date.now(),
+    };
+    setPosterPlanC((prev) => ({
+      ...prev,
+      draftText: '',
+      uploadFileName: undefined,
+      view: 'list',
+      requests: [...prev.requests, request],
+      currentRequestId: id,
+    }));
+    seedVisualTasks('poster');
+    openMockImageInPreview(posterUrl, title, 'poster');
+    const nextImages = generatedImages.includes(posterUrl)
+      ? generatedImages
+      : [...generatedImages, posterUrl];
+    const selectedIndex = nextImages.indexOf(posterUrl);
+    setSelectedImages(nextImages.map((_, index) => index === selectedIndex));
+    addMsg(
+      'ai',
+      `已通过 Plan C ${posterPlanC.route === 'kv' ? '主KV' : '直接'}路线生成「${title}」。`,
+      '本地 Mock',
+      ['新增海报/图片', '提交当前版本到Veeva Vault']
+    );
+  };
+
+  const openPosterPlanCTeamReview = (requestId: string) => {
+    const request = posterPlanC.requests.find((item) => item.id === requestId);
+    if (!request) return;
+    openPosterPlanCResult(requestId);
+    openTeamReview('visual', undefined, requestId);
+  };
+
+  const submitPosterPlanCToVeeva = (requestId: string) => {
+    const request = posterPlanC.requests.find((item) => item.id === requestId);
+    if (!request) return;
+    setPosterPlanC((prev) => ({
+      ...prev,
+      currentRequestId: requestId,
+      requests: prev.requests.map((item) =>
+        item.id === requestId ? { ...item, veevaStatus: 'prepared' } : item
+      ),
+    }));
+    runSubmit();
+  };
+
+  const confirmPosterPlanCVeeva = () => {
+    const requestId = posterPlanC.currentRequestId;
+    if (!requestId) {
+      toast('已提交至 Veeva Vault');
+      return;
+    }
+    setPosterPlanC((prev) => ({
+      ...prev,
+      requests: prev.requests.map((item) =>
+        item.id === requestId ? { ...item, veevaStatus: 'submitted' } : item
+      ),
+    }));
+    toast('当前海报/图片已提交至 Veeva Vault');
+  };
+
+  const openImageStudioProduct = (product: ImageStudioProduct) => {
+    setImageStudio((prev) => ({ ...prev, currentProductId: product.id }));
+    openMockImageInPreview(product.imageUrl, product.title, 'poster');
+    const nextImages = generatedImages.includes(product.imageUrl)
+      ? generatedImages
+      : [...generatedImages, product.imageUrl];
+    const selectedIndex = nextImages.indexOf(product.imageUrl);
+    setSelectedImages(nextImages.map((_, index) => index === selectedIndex));
+  };
+
+  const generateImageStudioProduct = (text: string) => {
+    const product = matchImageStudioMock(text);
+    if (!product) {
+      addMsg(
+        'ai',
+        '已记录您的视觉需求。当前演示可在需求中加入「KV」「三天」「两天」或「一天」生成对应产物。',
+        '本地 Mock'
+      );
+      return;
+    }
+    setImageStudio((prev) => ({
+      products: [...prev.products, product],
+      currentProductId: product.id,
+    }));
+    openImageStudioProduct(product);
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: 'ai',
+        html: `已根据您的需求生成「${product.title}」。`,
+        model: '本地 Mock',
+        imageUrl: product.imageUrl,
+        imageTitle: product.title,
+        imageActionLabel: '查看并修改',
+        imageAssetKey: 'poster',
+      },
+    ]);
+  };
+
+  const selectImageStudioProduct = (productId: string) => {
+    const product = imageStudio.products.find((item) => item.id === productId);
+    if (product) openImageStudioProduct(product);
+  };
+
+  const closeImageStudioProduct = (productId: string) => {
+    const closing = imageStudio.products.find((item) => item.id === productId);
+    if (!closing) return;
+    const remaining = imageStudio.products.filter((item) => item.id !== productId);
+    const nextCurrent =
+      productId === imageStudio.currentProductId
+        ? remaining[remaining.length - 1] || null
+        : remaining.find((item) => item.id === imageStudio.currentProductId) || null;
+    setImageStudio({
+      products: remaining,
+      currentProductId: nextCurrent?.id || null,
+    });
+    setGeneratedImages((prev) => prev.filter((image) => image !== closing.imageUrl));
+    setGeneratedImageMeta((prev) =>
+      prev.filter((item) => item.copyTitle !== closing.title)
+    );
+    if (nextCurrent) {
+      window.setTimeout(() => openImageStudioProduct(nextCurrent), 0);
+    } else {
+      setWorkspacePreviewMaterial(null);
+      setPreviewedImageAssetKey(null);
+      setSelectedImages([]);
+      setState((prev) => ({ ...prev, active: null }));
+    }
+  };
+
+  const openImageStudioEditor = (product: ImageStudioProduct) => {
+    openVisualEditor(
+      product.imageUrl,
+      { kind: 'image-studio', productId: product.id },
+      imageProductSvg(product)
+    );
   };
 
   const createMeetingSession = (name: string) => {
@@ -2201,7 +3115,15 @@ export default function App() {
   };
 
   const startTaskProposal = () => {
-    if (entryContext?.source === 'poster' || flowEntry === 'conferencePoster') {
+    if (
+      entryContext?.source === 'poster' ||
+      entryContext?.source === 'poster-plan-b' ||
+      entryContext?.source === 'poster-plan-c' ||
+      flowEntry === 'conferencePoster' ||
+      flowEntry === 'posterPlanB' ||
+      flowEntry === 'posterPlanCKv' ||
+      flowEntry === 'posterPlanCDirect'
+    ) {
       setMeetingMaterials((prev) => ({
         ...prev,
         taskProposal: prev.taskProposal ?? emptyMeetingTaskProposal(),
@@ -2522,11 +3444,25 @@ export default function App() {
     }
 
     if (!demoScriptBusy && isGenerateKeyVisualIntent(text)) {
+      const inPosterPlanB =
+        flowEntry === 'posterPlanB' || entryContext?.source === 'poster-plan-b';
+      if (inPosterPlanB) {
+        generatePosterPlanBKv();
+        return true;
+      }
+      if (flowEntry === 'conferencePoster' || entryContext?.source === 'poster') {
+        generateMeetingKv();
+        return true;
+      }
       seedVisualTasks('kv');
       publishChatImage({
         html:
           attachments.length > 0
-            ? `已结合当前 ${attachments.length} 个附件生成主 KV。后续海报模板和串场PPT模板将沿用当前主KV的视觉风格。`
+            ? inPosterPlanB
+              ? `已结合当前 ${attachments.length} 个附件生成主 KV。后续新海报将沿用当前主KV的视觉风格。`
+              : `已结合当前 ${attachments.length} 个附件生成主 KV。后续海报模板和串场PPT模板将沿用当前主KV的视觉风格。`
+            : inPosterPlanB
+              ? '已生成本次任务的主KV。现在可以进入海报/图片列表新增产物。'
             : (flowEntry === 'conferencePoster' || entryContext?.source === 'poster')
               ? '已生成本次系列会议的主KV。后续海报模板和串场PPT模板将沿用当前主KV的视觉风格。'
               : '主 KV 已生成。',
@@ -2534,10 +3470,22 @@ export default function App() {
         imageTitle: MOCK_KV_VERSIONS.current.title,
         assetKey: 'kv',
         actionLabel:
-          flowEntry === 'conferencePoster' || entryContext?.source === 'poster' ? '查看主KV' : '修改主KV',
-        quick: (flowEntry === 'conferencePoster' || entryContext?.source === 'poster') ? ['生成会议模板'] : ['生成海报'],
+          flowEntry === 'conferencePoster' ||
+          entryContext?.source === 'poster' ||
+          inPosterPlanB
+            ? '查看主KV'
+            : '修改主KV',
+        quick: inPosterPlanB
+          ? ['进入海报/图片列表']
+          : flowEntry === 'conferencePoster' || entryContext?.source === 'poster'
+            ? ['生成会议模板']
+            : ['生成海报'],
       });
-      if (flowEntry === 'conferencePoster' || entryContext?.source === 'poster') {
+      if (
+        flowEntry === 'conferencePoster' ||
+        entryContext?.source === 'poster' ||
+        inPosterPlanB
+      ) {
         openMockImageInPreview(MOCK_KV_VERSIONS.current.dataUrl, MOCK_KV_VERSIONS.current.title, 'kv');
       }
       return true;
@@ -2556,10 +3504,84 @@ export default function App() {
 
     const isPosterWorkspace =
       flowEntry === 'conferencePoster' || entryContext?.source === 'poster';
+    const isPosterPlanBWorkspace =
+      flowEntry === 'posterPlanB' || entryContext?.source === 'poster-plan-b';
+    const isPosterPlanCWorkspace =
+      flowEntry === 'posterPlanCKv' ||
+      flowEntry === 'posterPlanCDirect' ||
+      entryContext?.source === 'poster-plan-c';
+
+    if (
+      !demoScriptBusy &&
+      isPosterPlanBWorkspace &&
+      /进入海报\/?图片列表|查看海报列表|返回海报列表/.test(text.replace(/\s+/g, ''))
+    ) {
+      openPosterPlanBList();
+      return true;
+    }
+
+    if (
+      !demoScriptBusy &&
+      isPosterPlanCWorkspace &&
+      /进入海报\/?图片列表|查看海报列表|返回海报列表/.test(text.replace(/\s+/g, ''))
+    ) {
+      openPosterPlanCList();
+      return true;
+    }
+
+    if (
+      !demoScriptBusy &&
+      isPosterPlanBWorkspace &&
+      /填写(新的?)?海报信息|新增海报|创建海报/.test(text.replace(/\s+/g, ''))
+    ) {
+      startNewPosterPlanB();
+      addMsg('ai', '已打开新海报信息表单。您可以上传文件，也可以直接填写文本。', '本地 Mock');
+      return true;
+    }
+
+    if (
+      !demoScriptBusy &&
+      isPosterPlanCWorkspace &&
+      /新增海报|新增图片|填写(新的?)?海报|创建海报/.test(text.replace(/\s+/g, ''))
+    ) {
+      startNewPosterPlanC();
+      return true;
+    }
+
+    if (
+      !demoScriptBusy &&
+      isPosterPlanCWorkspace &&
+      (isGenerateConferencePosterIntent(text) || isGenerateSessionPosterIntent(text))
+    ) {
+      generatePosterPlanC();
+      return true;
+    }
+
+    if (
+      !demoScriptBusy &&
+      isPosterPlanBWorkspace &&
+      (isGenerateConferencePosterIntent(text) || isGenerateSessionPosterIntent(text))
+    ) {
+      generatePosterPlanB();
+      return true;
+    }
 
     if (!demoScriptBusy && isPosterWorkspace && isGenerateMeetingTemplatesIntent(text)) {
-      if (!hasVisualAsset('kv')) {
-        addMsg('ai', '请先输入「生成主KV」。', '本地 Mock', ['生成主KV']);
+      if (!meetingMaterials.mainKvUrl) {
+        addMsg('ai', '请先生成并确认一个主KV方案。', '本地 Mock', ['生成主KV']);
+        return true;
+      }
+      if (
+        !meetingMaterials.templateBrief.visualReferences.length ||
+        !meetingMaterials.templateBrief.requirement.trim() ||
+        !meetingMaterials.templateBrief.posterRatio
+      ) {
+        addMsg(
+          'ai',
+          '请先上传会议物料模板视觉参考，并填写模板需求和会议海报比例。',
+          '本地 Mock'
+        );
+        openMeetingTemplateBrief();
         return true;
       }
       const wantsPpt = /串场PPT模板/.test(text.replace(/\s+/g, ''));
@@ -3002,6 +4024,10 @@ export default function App() {
         '当前处于视频制作流程。请使用中间区域的操作按钮，或输入固定指令，例如「生成主视觉参考」「生成分镜脚本」。',
         '本地 Mock'
       );
+      return;
+    }
+    if (entryContext?.source === 'insight') {
+      generateImageStudioProduct(text);
       return;
     }
     if (runWorkspaceMockCommand(text)) return;
@@ -4455,6 +5481,15 @@ export default function App() {
     if (runDemoScenarioScript(text, { addUserMessage: true })) return;
     addMsg('user', text, selectedModel);
     if (runWorkspaceMockCommand(text)) return;
+    if (
+      text.includes('Veeva') ||
+      text.includes('veeva') ||
+      text.includes('提交当前') ||
+      (text.includes('提交') && text.includes('审批'))
+    ) {
+      runSubmit({ skipUserMsg: true });
+      return;
+    }
 
     const activeTab = stateRef.current.active;
     const wizard = pptWizardRef.current;
@@ -5282,6 +6317,41 @@ export default function App() {
   };
 
   const openImageEditor = (src: string, index: number) => {
+    if (
+      (flowEntry === 'posterPlanB' || entryContext?.source === 'poster-plan-b') &&
+      previewedImageAssetKey === 'poster'
+    ) {
+      const request =
+        posterPlanB.requests.find((item) => item.id === posterPlanB.currentRequestId) ||
+        posterPlanB.requests.find((item) => item.posterUrl === src);
+      if (request) {
+        openVisualEditor(
+          src,
+          { kind: 'poster-plan-b', requestId: request.id },
+          parseSvgFromDataUrl(src)
+        );
+        return;
+      }
+    }
+    if (
+      (flowEntry === 'posterPlanCKv' ||
+        flowEntry === 'posterPlanCDirect' ||
+        entryContext?.source === 'poster-plan-c' ||
+        posterPlanC.route !== 'pending') &&
+      previewedImageAssetKey === 'poster'
+    ) {
+      const request =
+        posterPlanC.requests.find((item) => item.id === posterPlanC.currentRequestId) ||
+        posterPlanC.requests.find((item) => item.posterUrl === src);
+      if (request) {
+        openVisualEditor(
+          src,
+          { kind: 'poster-plan-c', requestId: request.id },
+          parseSvgFromDataUrl(src)
+        );
+        return;
+      }
+    }
     if (longImageOutline || previewedImageAssetKey === 'poster' || previewedImageAssetKey === 'mobile') {
       openVisualEditor(src, { kind: 'long-image', index }, parseSvgFromDataUrl(src));
       return;
@@ -5525,6 +6595,66 @@ export default function App() {
             ? '长图已更新'
             : '图片已更新'
       );
+    } else if (editorTarget?.kind === 'poster-plan-b') {
+      const request = posterPlanB.requests.find(
+        (item) => item.id === editorTarget.requestId
+      );
+      const nextUrl = svg ? svgToDataUrl(svg) : dataUrl;
+      if (request) {
+        setPosterPlanB((prev) => ({
+          ...prev,
+          requests: prev.requests.map((item) =>
+            item.id === editorTarget.requestId ? { ...item, posterUrl: nextUrl } : item
+          ),
+        }));
+        setGeneratedImages((prev) =>
+          prev.map((image) => (image === request.posterUrl ? nextUrl : image))
+        );
+        setWorkspacePreviewMaterial((prev) =>
+          prev?.cat === '生成图片' ? { ...prev, contentUrl: nextUrl } : prev
+        );
+      }
+      toast('海报已更新');
+    } else if (editorTarget?.kind === 'poster-plan-c') {
+      const request = posterPlanC.requests.find(
+        (item) => item.id === editorTarget.requestId
+      );
+      const nextUrl = svg ? svgToDataUrl(svg) : dataUrl;
+      if (request) {
+        setPosterPlanC((prev) => ({
+          ...prev,
+          requests: prev.requests.map((item) =>
+            item.id === editorTarget.requestId ? { ...item, posterUrl: nextUrl } : item
+          ),
+        }));
+        setGeneratedImages((prev) =>
+          prev.map((image) => (image === request.posterUrl ? nextUrl : image))
+        );
+        setWorkspacePreviewMaterial((prev) =>
+          prev?.cat === '生成图片' ? { ...prev, contentUrl: nextUrl } : prev
+        );
+      }
+      toast('Plan C 海报/图片已更新');
+    } else if (editorTarget?.kind === 'image-studio') {
+      const product = imageStudio.products.find(
+        (item) => item.id === editorTarget.productId
+      );
+      const nextUrl = svg ? svgToDataUrl(svg) : dataUrl;
+      if (product) {
+        setImageStudio((prev) => ({
+          ...prev,
+          products: prev.products.map((item) =>
+            item.id === editorTarget.productId ? { ...item, imageUrl: nextUrl } : item
+          ),
+        }));
+        setGeneratedImages((prev) =>
+          prev.map((image) => (image === product.imageUrl ? nextUrl : image))
+        );
+        setWorkspacePreviewMaterial((prev) =>
+          prev?.cat === '生成图片' ? { ...prev, contentUrl: nextUrl } : prev
+        );
+      }
+      toast('图片已更新');
     } else if (editorTarget?.kind === 'meeting-poster') {
       const nextUrl = svg ? svgToDataUrl(svg) : dataUrl;
       setMeetingMaterials((prev) => {
@@ -5608,6 +6738,9 @@ export default function App() {
     }
     setEditorSrc(
       (editorTarget?.kind === 'long-image' ||
+        editorTarget?.kind === 'poster-plan-b' ||
+        editorTarget?.kind === 'poster-plan-c' ||
+        editorTarget?.kind === 'image-studio' ||
         editorTarget?.kind === 'meeting-poster' ||
         editorTarget?.kind === 'meeting-ppt') &&
       svg
@@ -5622,6 +6755,12 @@ export default function App() {
     const name =
       editorTarget?.kind === 'ppt-slide'
         ? `PPT-第${(editorTarget.index ?? 0) + 1}页.png`
+        : editorTarget?.kind === 'poster-plan-b'
+          ? '海报.png'
+          : editorTarget?.kind === 'poster-plan-c'
+            ? 'Plan-C-海报图片.png'
+          : editorTarget?.kind === 'image-studio'
+            ? '海报与图片.png'
         : editorTarget?.kind === 'long-image'
           ? '长图.png'
           : '配图编辑.png';
@@ -5671,6 +6810,58 @@ export default function App() {
       active: tabs[0],
       tabs,
     }));
+    if (task.contentItemId && session?.workspace.posterPlanB) {
+      const planState = session.workspace.posterPlanB;
+      const request = planState.requests.find((item) => item.id === task.contentItemId);
+      if (request) {
+        setPosterPlanB({ ...planState, currentRequestId: request.id });
+        setWorkspacePreviewMaterial({
+          id: -1,
+          cat: '生成图片',
+          title: request.title,
+          meta: 'Plan B 海报',
+          cms: false,
+          def: false,
+          addedAt: Date.now(),
+          fileName: 'plan-b-poster.svg',
+          contentType: 'image',
+          contentUrl: request.posterUrl,
+          mimeType: 'image/svg+xml',
+        });
+        setPreviewedImageAssetKey('poster');
+        setSelectedImages(
+          (session.workspace.generatedImages || []).map(
+            (image) => image === request.posterUrl
+          )
+        );
+      }
+    }
+    if (task.contentItemId && session?.workspace.posterPlanC) {
+      const planState = session.workspace.posterPlanC;
+      const request = planState.requests.find((item) => item.id === task.contentItemId);
+      if (request) {
+        setPosterPlanC({ ...planState, currentRequestId: request.id });
+        setWorkspacePreviewMaterial({
+          id: -1,
+          cat: '生成图片',
+          title: request.title,
+          meta: 'Plan C 海报/图片',
+          cms: false,
+          def: false,
+          addedAt: Date.now(),
+          fileName: 'plan-c-poster.svg',
+          contentType: 'image',
+          contentUrl: request.posterUrl,
+          mimeType: 'image/svg+xml',
+        });
+        setPreviewedImageAssetKey('poster');
+        setSelectedImages(
+          (session.workspace.generatedImages || []).map(
+            (image) => image === request.posterUrl
+          )
+        );
+      }
+    }
     const revisionBase =
       sessionCopyRevisionBase(task.sessionId) ||
       task.copyRevisionBase ||
@@ -6797,6 +7988,11 @@ export default function App() {
     });
   }, [userRole, reviewTasks, sessions, activeProjectId, sessionSearch]);
   const homeHistoryCount = homeHistoryTab === 'generate' ? homeTaskSessions.length : homeCollectTasks.length;
+  const hideWorkspaceContextPanel =
+    entryContext?.source === 'poster' ||
+    entryContext?.source === 'poster-plan-b' ||
+    flowEntry === 'conferencePoster' ||
+    flowEntry === 'posterPlanB';
   const homeTaskPageCount = Math.max(
     1,
     Math.ceil(homeHistoryCount / HOME_TASK_PAGE_SIZE)
@@ -6937,6 +8133,34 @@ export default function App() {
 
                   <div className="home-inspire-grid relative z-10 mt-6 animate-fade-up [animation-delay:120ms]">
                     <div className="home-inspire-left">
+                      <button
+                        type="button"
+                        className="home-plan-b-entry"
+                        onClick={() => newTask('海报生成 Plan B', 'visual', 'poster-plan-b')}
+                      >
+                        <span className="home-plan-b-entry-icon">
+                          <ImagePlus className="h-3.5 w-3.5" strokeWidth={2.4} />
+                        </span>
+                        <span>
+                          <strong>海报生成 Plan B</strong>
+                          <small>基于主KV快速延展新海报</small>
+                        </span>
+                        <ArrowUpRight className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        className="home-plan-b-entry home-plan-c-entry"
+                        onClick={() => newTask('海报生成 Plan C', 'visual', 'poster-plan-c')}
+                      >
+                        <span className="home-plan-b-entry-icon">
+                          <Sparkles className="h-3.5 w-3.5" strokeWidth={2.4} />
+                        </span>
+                        <span>
+                          <strong>海报生成 Plan C</strong>
+                          <small>任务提案后灵活选择生成路线</small>
+                        </span>
+                        <ArrowUpRight className="h-3.5 w-3.5" />
+                      </button>
                       <div className="home-inspire-actions">
                         {HOME_WORKFLOW_ACTIONS.map(({ title, description, scenes, intent, prompt, Icon, art }) => (
                           <button
@@ -7472,8 +8696,8 @@ export default function App() {
 
       {/* Workspace Screen */}
       <section className={`screen ${currentScreen === 'workspace' ? 'active' : ''}`}>
-        <div className={`workspace relative z-10 ${reviewFocusMode ? 'reviewer-focus' : ''} ${!reviewFocusMode && !contextPanelOpen ? 'context-collapsed' : ''} ${!reviewFocusMode && !chatPanelOpen ? 'chat-collapsed' : ''}`}>
-          {!reviewFocusMode && (
+        <div className={`workspace relative z-10 ${reviewFocusMode ? 'reviewer-focus' : ''} ${entryContext?.source === 'insight' ? 'image-studio-workspace' : ''} ${hideWorkspaceContextPanel ? 'no-context-workspace' : ''} ${!reviewFocusMode && (!contextPanelOpen || entryContext?.source === 'insight' || hideWorkspaceContextPanel) ? 'context-collapsed' : ''} ${!reviewFocusMode && !chatPanelOpen ? 'chat-collapsed' : ''}`}>
+          {!reviewFocusMode && entryContext?.source !== 'insight' && !hideWorkspaceContextPanel && (
           <aside className={`wpanel context context-sidebar ${contextPanelOpen ? 'open' : 'collapsed'}`}>
             {contextPanelOpen ? (
               <>
@@ -7512,7 +8736,8 @@ export default function App() {
                     variant={
                       entryContext?.source === 'case'
                         ? 'case'
-                        : entryContext?.source === 'poster'
+                        : entryContext?.source === 'poster' ||
+                            entryContext?.source === 'poster-plan-b'
                           ? 'poster'
                           : entryContext?.source === 'evidence'
                             ? 'evidence'
@@ -8419,6 +9644,43 @@ export default function App() {
             storylineContent={storylineContent}
             onStorylineChange={setStorylineContent}
             meetingMaterials={meetingMaterials}
+            onGenerateMeetingKv={generateMeetingKv}
+            onUseUploadedMeetingKv={useUploadedMeetingKv}
+            onActivateMeetingKv={activateMeetingKv}
+            onConfirmMeetingKv={confirmMeetingKv}
+            onConfirmMeetingKvAndOpenTemplateBrief={confirmMeetingKvAndOpenTemplateBrief}
+            onOpenMeetingTemplateBrief={openMeetingTemplateBrief}
+            posterPlanB={posterPlanB}
+            onPosterPlanBChange={setPosterPlanB}
+            onGeneratePosterPlanBKv={generatePosterPlanBKv}
+            onUseUploadedPosterPlanBKv={useUploadedPosterPlanBKv}
+            onActivatePosterPlanBKv={activatePosterPlanBKv}
+            onConfirmPosterPlanBKv={confirmPosterPlanBKv}
+            onConfirmPosterPlanBKvAndOpenList={confirmPosterPlanBKvAndOpenList}
+            onGeneratePosterPlanB={generatePosterPlanB}
+            onOpenPosterPlanBResult={openPosterPlanBResult}
+            onOpenPosterPlanBMainKv={openPosterPlanBMainKv}
+            onOpenPosterPlanBList={openPosterPlanBList}
+            onStartNewPosterPlanB={startNewPosterPlanB}
+            onOpenPosterPlanBTeamReview={openPosterPlanBTeamReview}
+            onSubmitPosterPlanBVeeva={submitPosterPlanBToVeeva}
+            onConfirmPosterPlanBVeeva={confirmPosterPlanBVeeva}
+            posterPlanC={posterPlanC}
+            onPosterPlanCChange={setPosterPlanC}
+            onStartPosterPlanCKvRoute={startPosterPlanCKvRoute}
+            onStartPosterPlanCDirectRoute={startPosterPlanCDirectRoute}
+            onGeneratePosterPlanC={generatePosterPlanC}
+            onOpenPosterPlanCResult={openPosterPlanCResult}
+            onOpenPosterPlanCMainKv={openPosterPlanCMainKv}
+            onOpenPosterPlanCList={openPosterPlanCList}
+            onStartNewPosterPlanC={startNewPosterPlanC}
+            onOpenPosterPlanCTeamReview={openPosterPlanCTeamReview}
+            onSubmitPosterPlanCVeeva={submitPosterPlanCToVeeva}
+            onConfirmPosterPlanCVeeva={confirmPosterPlanCVeeva}
+            imageStudio={imageStudio}
+            onSelectImageStudioProduct={selectImageStudioProduct}
+            onCloseImageStudioProduct={closeImageStudioProduct}
+            onEditImageStudioProduct={openImageStudioEditor}
             videoStudio={videoStudio}
             onVideoStudioAction={applyVideoStudioAction}
             meetingInfoDraft={meetingInfoDraft}
@@ -8447,11 +9709,35 @@ export default function App() {
                   applyVideoStudioAction({ type: 'startTeamReview' });
                   return;
                 }
+                if (
+                  (flowEntry === 'posterPlanB' ||
+                    entryContext?.source === 'poster-plan-b') &&
+                  posterPlanB.currentRequestId
+                ) {
+                  openPosterPlanBTeamReview(posterPlanB.currentRequestId);
+                  return;
+                }
+                if (
+                  (flowEntry === 'posterPlanCKv' ||
+                    flowEntry === 'posterPlanCDirect' ||
+                    entryContext?.source === 'poster-plan-c' ||
+                    posterPlanC.route !== 'pending') &&
+                  posterPlanC.currentRequestId
+                ) {
+                  openPosterPlanCTeamReview(posterPlanC.currentRequestId);
+                  return;
+                }
                 const type: TeamContentType =
                   flowEntry === 'conferencePoster' ||
+                  flowEntry === 'posterPlanB' ||
+                  flowEntry === 'posterPlanCKv' ||
+                  flowEntry === 'posterPlanCDirect' ||
                   flowEntry === 'visual' ||
                   flowEntry === 'longImageOutline' ||
-                  entryContext?.source === 'poster'
+                  entryContext?.source === 'poster' ||
+                  entryContext?.source === 'poster-plan-b'
+                  || entryContext?.source === 'poster-plan-c' ||
+                  posterPlanC.route !== 'pending'
                     ? 'visual'
                     : flowEntry === 'articleOutline'
                       ? 'rich-text'
@@ -8495,6 +9781,85 @@ export default function App() {
                   }
                 }
               }
+              if (flowEntry === 'posterPlanB' || entryContext?.source === 'poster-plan-b') {
+                if (step.id === 'create') {
+                  setState((prev) => ({ ...prev, active: null }));
+                  setWorkspacePreviewMaterial(null);
+                  return;
+                }
+                if (step.id === 'brief') {
+                  startTaskProposal();
+                  return;
+                }
+                if (step.id === 'kv') {
+                  const candidateId =
+                    posterPlanB.activeKvCandidateId || posterPlanB.selectedKvId;
+                  if (!candidateId) {
+                    toast('请先完成提案并生成主KV方案');
+                    return;
+                  }
+                  activatePosterPlanBKv(candidateId);
+                  return;
+                }
+                if (step.id === 'posterBrief') {
+                  openPosterPlanBList();
+                  return;
+                }
+                if (step.id === 'poster') {
+                  const current =
+                    posterPlanB.requests.find(
+                      (request) => request.id === posterPlanB.currentRequestId
+                    ) || posterPlanB.requests.at(-1);
+                  if (!current) {
+                    toast('请先填写海报信息并生成海报');
+                    openPosterPlanBBrief();
+                    return;
+                  }
+                  openPosterPlanBResult(current.id);
+                  return;
+                }
+              }
+              if (
+                flowEntry === 'posterPlanCKv' ||
+                flowEntry === 'posterPlanCDirect' ||
+                entryContext?.source === 'poster-plan-c' ||
+                posterPlanC.route !== 'pending'
+              ) {
+                if (step.id === 'create') {
+                  setState((prev) => ({ ...prev, active: null }));
+                  setWorkspacePreviewMaterial(null);
+                  return;
+                }
+                if (step.id === 'brief') {
+                  startTaskProposal();
+                  return;
+                }
+                if (step.id === 'kv') {
+                  if (!posterPlanC.mainKvUrl) {
+                    toast('请先选择并生成主KV路线');
+                    return;
+                  }
+                  openPosterPlanCMainKv();
+                  return;
+                }
+                if (step.id === 'posterBrief') {
+                  openPosterPlanCList();
+                  return;
+                }
+                if (step.id === 'poster') {
+                  const current =
+                    posterPlanC.requests.find(
+                      (request) => request.id === posterPlanC.currentRequestId
+                    ) || posterPlanC.requests.at(-1);
+                  if (!current) {
+                    toast('请先在列表中新增海报/图片');
+                    openPosterPlanCList();
+                    return;
+                  }
+                  openPosterPlanCResult(current.id);
+                  return;
+                }
+              }
               if (flowEntry === 'conferencePoster' || entryContext?.source === 'poster') {
                 if (step.id === 'create') {
                   setState((prev) => ({ ...prev, active: null }));
@@ -8506,12 +9871,17 @@ export default function App() {
                   return;
                 }
                 if (step.id === 'kv') {
-                  if (!hasVisualAsset('kv')) {
-                    toast('请先输入「生成主KV」');
+                  const candidateId =
+                    meetingMaterials.activeKvCandidateId || meetingMaterials.selectedKvId;
+                  if (!candidateId) {
+                    toast('请先完成提案并生成主KV方案');
                     return;
                   }
-                  const asset = latestVisualAsset('kv');
-                  openMockImageInPreview(asset.url, asset.title, 'kv');
+                  activateMeetingKv(candidateId);
+                  return;
+                }
+                if (step.id === 'meetingTemplateBrief') {
+                  openMeetingTemplateBrief();
                   return;
                 }
                 if (step.id === 'meetingTemplates') {
@@ -8883,7 +10253,9 @@ export default function App() {
                 allowBrush={editorTarget?.kind === 'image'}
                 allowShapes={editorTarget?.kind === 'image'}
                 showImageMagicWand={
-                  editorTarget?.kind === 'ppt-slide' || editorTarget?.kind === 'meeting-ppt'
+                  editorTarget?.kind === 'ppt-slide' ||
+                  editorTarget?.kind === 'meeting-ppt' ||
+                  editorTarget?.kind === 'image-studio'
                 }
               />
             </>
@@ -9094,6 +10466,8 @@ export default function App() {
       <div className={`modal-bg ${showTeamModal ? 'show' : ''}`} onClick={e => {
         if ((e.target as HTMLElement).className.includes('modal-bg')) {
           setShowTeamModal(false);
+          setTeamReviewPosterPlanBRequestId(null);
+          setTeamReviewPosterPlanCRequestId(null);
           setTeamAssigneeRoles([]);
         }
       }}>
@@ -9106,6 +10480,20 @@ export default function App() {
                 类型：<strong>{TEAM_CONTENT_LABELS[teamReviewTarget]}</strong>
                 {buildTeamPayload(teamReviewTarget)?.title
                   ? ` · ${buildTeamPayload(teamReviewTarget)?.title}`
+                  : ''}
+                {teamReviewPosterPlanBRequestId
+                  ? ` · ${
+                      posterPlanB.requests.find(
+                        (item) => item.id === teamReviewPosterPlanBRequestId
+                      )?.title || '当前海报'
+                    }`
+                  : ''}
+                {teamReviewPosterPlanCRequestId
+                  ? ` · ${
+                      posterPlanC.requests.find(
+                        (item) => item.id === teamReviewPosterPlanCRequestId
+                      )?.title || '当前海报/图片'
+                    }`
                   : ''}
               </div>
             </div>
@@ -9185,8 +10573,21 @@ export default function App() {
                     (task) =>
                       task.sessionId === currentSessionId &&
                       task.contentType === target &&
-                      task.assigneeRole === role
+                      task.assigneeRole === role &&
+                      (teamReviewPosterPlanBRequestId || teamReviewPosterPlanCRequestId
+                        ? task.contentItemId ===
+                          (teamReviewPosterPlanBRequestId || teamReviewPosterPlanCRequestId)
+                        : !task.contentItemId)
                   );
+                  const posterRequest = teamReviewPosterPlanBRequestId
+                    ? posterPlanB.requests.find(
+                        (item) => item.id === teamReviewPosterPlanBRequestId
+                      )
+                    : teamReviewPosterPlanCRequestId
+                      ? posterPlanC.requests.find(
+                          (item) => item.id === teamReviewPosterPlanCRequestId
+                        )
+                      : null;
                   const now = Date.now();
                   const task: ReviewTask = {
                     ...existingTask,
@@ -9194,8 +10595,12 @@ export default function App() {
                       existingTask?.id ||
                       `rt_${now}_${index}_${Math.random().toString(36).slice(2, 8)}`,
                     sessionId: currentSessionId,
-                    title: taskTitle,
+                    title: posterRequest ? `${taskTitle} · ${posterRequest.title}` : taskTitle,
                     contentType: target,
+                    contentItemId:
+                      teamReviewPosterPlanBRequestId ||
+                      teamReviewPosterPlanCRequestId ||
+                      undefined,
                     assigneeRole: role,
                     assigneeName: assignee.name,
                     assignerName: ROLE_PROFILES.ops.name,
@@ -9214,8 +10619,30 @@ export default function App() {
                   assigneeLabels.push(`${assignee.name}（${assignee.dept}）`);
                 });
                 refreshReviewTasks();
+                if (teamReviewPosterPlanBRequestId) {
+                  setPosterPlanB((prev) => ({
+                    ...prev,
+                    requests: prev.requests.map((item) =>
+                      item.id === teamReviewPosterPlanBRequestId
+                        ? { ...item, teamReviewStatus: 'pending' }
+                        : item
+                    ),
+                  }));
+                }
+                if (teamReviewPosterPlanCRequestId) {
+                  setPosterPlanC((prev) => ({
+                    ...prev,
+                    requests: prev.requests.map((item) =>
+                      item.id === teamReviewPosterPlanCRequestId
+                        ? { ...item, teamReviewStatus: 'pending' }
+                        : item
+                    ),
+                  }));
+                }
                 const namesText = assigneeLabels.join('、');
                 setShowTeamModal(false);
+                setTeamReviewPosterPlanBRequestId(null);
+                setTeamReviewPosterPlanCRequestId(null);
                 setTeamAssigneeRoles([]);
                 toast(`已向 ${namesText} 分配${label}修改任务`);
                 addMsg(
@@ -9236,6 +10663,8 @@ export default function App() {
               className="btn"
               onClick={() => {
                 setShowTeamModal(false);
+                setTeamReviewPosterPlanBRequestId(null);
+                setTeamReviewPosterPlanCRequestId(null);
                 setTeamAssigneeRoles([]);
               }}
             >
@@ -9555,6 +10984,43 @@ function WorkspaceRightPanel({
   storylineContent,
   onStorylineChange,
   meetingMaterials,
+  onGenerateMeetingKv,
+  onUseUploadedMeetingKv,
+  onActivateMeetingKv,
+  onConfirmMeetingKv,
+  onConfirmMeetingKvAndOpenTemplateBrief,
+  onOpenMeetingTemplateBrief,
+  posterPlanB,
+  onPosterPlanBChange,
+  onGeneratePosterPlanBKv,
+  onUseUploadedPosterPlanBKv,
+  onActivatePosterPlanBKv,
+  onConfirmPosterPlanBKv,
+  onConfirmPosterPlanBKvAndOpenList,
+  onGeneratePosterPlanB,
+  onOpenPosterPlanBResult,
+  onOpenPosterPlanBMainKv,
+  onOpenPosterPlanBList,
+  onStartNewPosterPlanB,
+  onOpenPosterPlanBTeamReview,
+  onSubmitPosterPlanBVeeva,
+  onConfirmPosterPlanBVeeva,
+  posterPlanC,
+  onPosterPlanCChange,
+  onStartPosterPlanCKvRoute,
+  onStartPosterPlanCDirectRoute,
+  onGeneratePosterPlanC,
+  onOpenPosterPlanCResult,
+  onOpenPosterPlanCMainKv,
+  onOpenPosterPlanCList,
+  onStartNewPosterPlanC,
+  onOpenPosterPlanCTeamReview,
+  onSubmitPosterPlanCVeeva,
+  onConfirmPosterPlanCVeeva,
+  imageStudio,
+  onSelectImageStudioProduct,
+  onCloseImageStudioProduct,
+  onEditImageStudioProduct,
   videoStudio,
   onVideoStudioAction,
   meetingInfoDraft,
@@ -9699,6 +11165,43 @@ function WorkspaceRightPanel({
   storylineContent?: string;
   onStorylineChange?: (text: string) => void;
   meetingMaterials?: MeetingMaterialsState;
+  onGenerateMeetingKv?: () => void;
+  onUseUploadedMeetingKv?: (fileName: string, dataUrl: string) => void;
+  onActivateMeetingKv?: (candidateId: string) => void;
+  onConfirmMeetingKv?: (candidateId: string) => void;
+  onConfirmMeetingKvAndOpenTemplateBrief?: (candidateId: string) => void;
+  onOpenMeetingTemplateBrief?: () => void;
+  posterPlanB?: PosterPlanBState;
+  onPosterPlanBChange?: (next: PosterPlanBState) => void;
+  onGeneratePosterPlanBKv?: () => void;
+  onUseUploadedPosterPlanBKv?: (fileName: string, dataUrl: string) => void;
+  onActivatePosterPlanBKv?: (candidateId: string) => void;
+  onConfirmPosterPlanBKv?: (candidateId: string) => void;
+  onConfirmPosterPlanBKvAndOpenList?: (candidateId: string) => void;
+  onGeneratePosterPlanB?: () => void;
+  onOpenPosterPlanBResult?: (requestId: string) => void;
+  onOpenPosterPlanBMainKv?: () => void;
+  onOpenPosterPlanBList?: () => void;
+  onStartNewPosterPlanB?: () => void;
+  onOpenPosterPlanBTeamReview?: (requestId: string) => void;
+  onSubmitPosterPlanBVeeva?: (requestId: string) => void;
+  onConfirmPosterPlanBVeeva?: () => void;
+  posterPlanC?: PosterPlanCState;
+  onPosterPlanCChange?: (next: PosterPlanCState) => void;
+  onStartPosterPlanCKvRoute?: () => void;
+  onStartPosterPlanCDirectRoute?: () => void;
+  onGeneratePosterPlanC?: () => void;
+  onOpenPosterPlanCResult?: (requestId: string) => void;
+  onOpenPosterPlanCMainKv?: () => void;
+  onOpenPosterPlanCList?: () => void;
+  onStartNewPosterPlanC?: () => void;
+  onOpenPosterPlanCTeamReview?: (requestId: string) => void;
+  onSubmitPosterPlanCVeeva?: (requestId: string) => void;
+  onConfirmPosterPlanCVeeva?: () => void;
+  imageStudio?: ImageStudioState;
+  onSelectImageStudioProduct?: (productId: string) => void;
+  onCloseImageStudioProduct?: (productId: string) => void;
+  onEditImageStudioProduct?: (product: ImageStudioProduct) => void;
   videoStudio?: VideoStudioState;
   onVideoStudioAction?: (action: VideoStudioAction) => void;
   meetingInfoDraft?: MeetingSessionInfo | null;
@@ -9756,13 +11259,29 @@ function WorkspaceRightPanel({
     reviewerMode && reviewerAllowedTabs?.length
       ? state.tabs.filter((t) => reviewerAllowedTabs.includes(t))
       : state.tabs;
+  const hasPersistedPlanC =
+    Boolean(posterPlanC && posterPlanC.route !== 'pending');
+  const resolvedFlowEntry =
+    entryContext?.source === 'poster-plan-c' || hasPersistedPlanC
+      ? posterPlanC?.route === 'kv'
+        ? 'posterPlanCKv'
+        : posterPlanC?.route === 'direct'
+          ? 'posterPlanCDirect'
+          : null
+      : flowEntry;
   const flowProgress: ContentFlowProgress = {
     create: true,
     insight: Boolean(topicInsightReportText.trim() || insightSummary.trim() || hotInsightReport),
     brief:
-      flowEntry === 'conferencePoster' || entryContext?.source === 'poster'
-        ? Boolean(meetingMaterials?.taskProposal)
-        : Boolean(contentBrief),
+      flowEntry === 'posterPlanB' || entryContext?.source === 'poster-plan-b'
+        ? Boolean(posterPlanB?.kvBrief.requirement.trim())
+        : flowEntry === 'conferencePoster' || entryContext?.source === 'poster'
+          ? Boolean(meetingMaterials?.kvBrief.requirement.trim())
+          : flowEntry === 'posterPlanCKv' ||
+              flowEntry === 'posterPlanCDirect' ||
+              entryContext?.source === 'poster-plan-c'
+            ? Boolean(meetingMaterials?.taskProposal)
+            : Boolean(contentBrief),
     literature: literatureResults.length > 0 || addedLiteratureIds.length > 0,
     storyline: Boolean(storylineContent?.trim()),
     outline: Boolean(pptOutline),
@@ -9771,11 +11290,26 @@ function WorkspaceRightPanel({
     ppt: Boolean(pptResult),
     copy: copies.length > 0 || Boolean(richTextContent.trim()) || Boolean(scriptContent.trim()),
     visual: generatedImages.length > 0,
-    kv: Boolean(hasConferenceKv),
+    kv:
+      flowEntry === 'posterPlanB' || entryContext?.source === 'poster-plan-b'
+        ? Boolean(posterPlanB?.mainKvUrl)
+        : flowEntry === 'conferencePoster' || entryContext?.source === 'poster'
+          ? Boolean(meetingMaterials?.mainKvUrl)
+          : Boolean(hasConferenceKv || posterPlanC?.mainKvUrl),
     poster: Boolean(hasConferencePoster),
     mobile: Boolean(hasConferenceMobile),
+    meetingTemplateBrief: Boolean(
+      meetingMaterials?.templateBrief.visualReferences.length &&
+        meetingMaterials.templateBrief.requirement.trim() &&
+        meetingMaterials.templateBrief.posterRatio
+    ),
     meetingTemplates: Boolean(meetingMaterials?.templatesReady),
     sessionMaterials: Boolean(meetingMaterials?.sessions.length),
+    posterBrief: Boolean(
+      posterPlanB?.posterTitle.trim() ||
+        posterPlanB?.posterCoreContent.trim() ||
+        (posterPlanC && posterPlanC.route !== 'pending')
+    ),
     videoBrief: Boolean(videoStudio?.briefConfirmed),
     videoHero: Boolean(videoStudio?.heroReady),
     videoStoryboard: Boolean(videoStudio?.storyboardReady),
@@ -9821,19 +11355,63 @@ function WorkspaceRightPanel({
     (previewedImageAssetKey === 'poster' || previewedImageAssetKey === 'mobile') && isGeneratedImagePreview;
   const isKvCanvas = previewedImageAssetKey === 'kv' && isGeneratedImagePreview;
   const isSelectableImageProduct = isLongImageProduct || isPosterCanvas;
+  const imageStudioMode = entryContext?.source === 'insight';
+  const currentImageStudioProduct =
+    imageStudio?.products.find((item) => item.id === imageStudio.currentProductId) || null;
+  const conferenceMeetingMode =
+    flowEntry === 'conferencePoster' || entryContext?.source === 'poster';
+  const posterPlanBMode =
+    flowEntry === 'posterPlanB' || entryContext?.source === 'poster-plan-b';
+  const currentPosterPlanBRequest =
+    posterPlanB?.requests.find((item) => item.id === posterPlanB.currentRequestId) || null;
+  const posterPlanCMode =
+    flowEntry === 'posterPlanCKv' ||
+    flowEntry === 'posterPlanCDirect' ||
+    entryContext?.source === 'poster-plan-c' ||
+    hasPersistedPlanC;
+  const currentPosterPlanCRequest =
+    posterPlanC?.requests.find((item) => item.id === posterPlanC.currentRequestId) || null;
   const conferenceFlowCurrentId =
     flowEntry === 'conferencePoster'
       ? !state.active
         ? 'create'
         : state.active === 'brief'
           ? 'brief'
-        : state.active === 'meeting-sessions'
-          ? 'sessionMaterials'
-          : state.active === 'meeting-templates'
-            ? 'meetingTemplates'
-            : previewedImageAssetKey === 'kv' || state.active === 'visual'
-              ? 'kv'
-              : 'create'
+          : state.active === 'meeting-template-brief'
+            ? 'meetingTemplateBrief'
+            : state.active === 'meeting-sessions'
+              ? 'sessionMaterials'
+              : state.active === 'meeting-templates'
+                ? 'meetingTemplates'
+                : previewedImageAssetKey === 'kv' || state.active === 'visual'
+                  ? 'kv'
+                  : 'create'
+      : flowEntry === 'posterPlanB'
+        ? !state.active
+          ? 'create'
+          : state.active === 'brief'
+            ? 'brief'
+            : state.active === 'poster-plan-b'
+              ? 'posterBrief'
+              : state.active === 'visual' && previewedImageAssetKey === 'poster'
+                ? 'poster'
+                : previewedImageAssetKey === 'kv' || state.active === 'visual'
+                  ? 'kv'
+                  : 'create'
+      : entryContext?.source === 'poster-plan-c' && !resolvedFlowEntry
+        ? 'brief'
+      : resolvedFlowEntry === 'posterPlanCKv' || resolvedFlowEntry === 'posterPlanCDirect'
+        ? !state.active
+          ? 'create'
+          : state.active === 'brief'
+            ? 'brief'
+            : state.active === 'poster-plan-c'
+              ? 'posterBrief'
+              : state.active === 'visual' && previewedImageAssetKey === 'poster'
+                ? 'poster'
+                : previewedImageAssetKey === 'kv' || state.active === 'visual'
+                  ? 'kv'
+                  : 'posterBrief'
       : flowEntry === 'video' && entryContext?.source === 'more'
         ? !state.active
           ? 'create'
@@ -9857,7 +11435,10 @@ function WorkspaceRightPanel({
         : undefined;
   const hideContentFlowNav = entryContext?.source === 'insight';
   const showPreviewTabs =
-    Boolean(previewFile && !isGeneratedImagePreview) || reviewerMode || !hideContentFlowNav;
+    imageStudioMode ||
+    Boolean(previewFile && !isGeneratedImagePreview) ||
+    reviewerMode ||
+    !hideContentFlowNav;
   const [selectedCopyRevisionIndex, setSelectedCopyRevisionIndex] = useState<number | null>(null);
   const [previewHistoryId, setPreviewHistoryId] = useState<string | null>(null);
   const [restoredFrom, setRestoredFrom] = useState<string | null>(null);
@@ -10122,10 +11703,47 @@ function WorkspaceRightPanel({
           </div>
         );
       }
+      if (entryContext?.source === 'insight') {
+        return (
+          <div className="image-studio-empty">
+            <span className="image-studio-empty-icon" aria-hidden>
+              <ImagePlus className="h-6 w-6" />
+            </span>
+            <h2>您已进入海报制作工作台页面</h2>
+            <p>
+              您可以上传图片作为视觉参考，也可以在对话框内输入您的需求，包括但不限于风格、尺寸、配色等等。
+            </p>
+          </div>
+        );
+      }
+      if (entryContext?.source === 'poster-plan-b') {
+        return (
+          <div className="detail-card content-flow-task-card meeting-welcome-card">
+            <h4>海报生成 Plan B 任务已创建</h4>
+            <ol className="content-flow-start-steps">
+              <li className="content-flow-start-step">
+                <span className="content-flow-start-index" aria-hidden>
+                  1
+                </span>
+                <div className="content-flow-start-body">
+                  <p>先填写任务提案并生成主KV，后续新海报将沿用这套视觉风格。</p>
+                  <div className="content-flow-start-actions">
+                    <button type="button" className="btn primary" onClick={() => onFillTaskProposal?.()}>
+                      填写任务提案
+                    </button>
+                    <button type="button" className="btn soft" onClick={() => onOpenVisualReference?.()}>
+                      添加视觉参考
+                    </button>
+                  </div>
+                </div>
+              </li>
+            </ol>
+          </div>
+        );
+      }
       if (entryContext?.source === 'poster') {
         return (
           <MeetingWelcomePanel
-            onOpenVisualReference={() => onOpenVisualReference?.()}
             onOpenTaskProposal={() => onFillTaskProposal?.()}
           />
         );
@@ -10236,6 +11854,8 @@ function WorkspaceRightPanel({
           <p className="small content-flow-task-hint">
             {entryContext?.source === 'case'
               ? '请您上传脱敏后的病例原始素材，如需生成专家点评，请上传过往专家点评示例'
+              : entryContext?.source === 'poster-plan-b'
+                ? '填写任务提案并生成主KV后，可上传文件或直接填写新海报信息。'
               : entryContext?.source === 'poster'
                 ? '从主KV开始制作系列会议海报与串场PPT。'
                 : entryContext?.source === 'insight'
@@ -10509,6 +12129,23 @@ function WorkspaceRightPanel({
           />
         );
 
+      case 'meeting-template-brief': {
+        const materials = meetingMaterials || emptyMeetingMaterials();
+        return (
+          <MeetingTemplateBriefPanel
+            brief={materials.templateBrief}
+            onChange={(update) =>
+              onMeetingMaterialsChange?.((prev) => ({
+                ...prev,
+                templateBrief:
+                  typeof update === 'function' ? update(prev.templateBrief) : update,
+              }))
+            }
+            onGenerate={() => fillQuick('生成会议模板')}
+          />
+        );
+      }
+
       case 'meeting-templates': {
         const materials = meetingMaterials || emptyMeetingMaterials();
         const posterUrl = materials.templatePosterUrl || MEETING_POSTER_TEMPLATE_URL;
@@ -10631,8 +12268,77 @@ function WorkspaceRightPanel({
         );
       }
 
+      case 'poster-plan-b': {
+        const planState = posterPlanB || emptyPosterPlanB();
+        return (
+          <PosterPlanBPanel
+            state={planState}
+            productName={selectedProduct?.name || '未选择产品'}
+            onChange={(next) => onPosterPlanBChange?.(next)}
+            onGenerate={() => onGeneratePosterPlanB?.()}
+            onOpenKv={() => onOpenPosterPlanBMainKv?.()}
+            onOpenNew={() => onStartNewPosterPlanB?.()}
+            onOpenPoster={(requestId) => onOpenPosterPlanBResult?.(requestId)}
+            structuredBrief
+          />
+        );
+      }
+
+      case 'poster-plan-c': {
+        const planState = posterPlanC || emptyPosterPlanC();
+        return (
+          <PosterPlanBPanel
+            state={planState}
+            productName={selectedProduct?.name || '未选择产品'}
+            onChange={(next) => onPosterPlanCChange?.(next)}
+            onGenerate={() => onGeneratePosterPlanC?.()}
+            onOpenKv={
+              planState.route === 'kv' ? () => onOpenPosterPlanCMainKv?.() : undefined
+            }
+            onOpenNew={() => onStartNewPosterPlanC?.()}
+            onOpenPoster={(requestId) => onOpenPosterPlanCResult?.(requestId)}
+            workspaceLabel="Plan C"
+            sourceMode={planState.route === 'kv' ? 'kv' : 'direct'}
+          />
+        );
+      }
+
       case 'brief':
-        if (flowEntry === 'conferencePoster' || entryContext?.source === 'poster') {
+        if (flowEntry === 'posterPlanB' || entryContext?.source === 'poster-plan-b') {
+          const planState = posterPlanB || emptyPosterPlanB();
+          return (
+            <PosterPlanBKvBriefPanel
+              state={planState}
+              productName={selectedProduct?.name || '未选择产品'}
+              onChange={(next) => onPosterPlanBChange?.(next)}
+              onGenerate={() => onGeneratePosterPlanBKv?.()}
+              onUseUploadedKv={(fileName, dataUrl) =>
+                onUseUploadedPosterPlanBKv?.(fileName, dataUrl)
+              }
+            />
+          );
+        }
+        if (conferenceMeetingMode) {
+          const meetingState = meetingMaterials || emptyMeetingMaterials();
+          return (
+            <PosterPlanBKvBriefPanel
+              state={meetingState}
+              productName={selectedProduct?.name || '未选择产品'}
+              onChange={(next) => onMeetingMaterialsChange?.(next)}
+              onGenerate={() => onGenerateMeetingKv?.()}
+              onUseUploadedKv={(fileName, dataUrl) =>
+                onUseUploadedMeetingKv?.(fileName, dataUrl)
+              }
+              title="填写主KV需求"
+              hint="填写主KV需求并生成候选方案"
+            />
+          );
+        }
+        if (
+          flowEntry === 'posterPlanCKv' ||
+          flowEntry === 'posterPlanCDirect' ||
+          entryContext?.source === 'poster-plan-c'
+        ) {
           const proposal = meetingMaterials?.taskProposal ?? emptyMeetingTaskProposal();
           return (
             <MeetingTaskProposalPanel
@@ -10640,7 +12346,16 @@ function WorkspaceRightPanel({
               onChange={(next: MeetingTaskProposal) =>
                 onMeetingMaterialsChange?.((prev) => ({ ...prev, taskProposal: next }))
               }
-              onGenerateKv={() => fillQuick('生成主KV')}
+              onGenerateKv={() =>
+                entryContext?.source === 'poster-plan-c'
+                  ? onStartPosterPlanCKvRoute?.()
+                  : fillQuick('生成主KV')
+              }
+              onGenerateDirect={
+                entryContext?.source === 'poster-plan-c'
+                  ? () => onStartPosterPlanCDirectRoute?.()
+                  : undefined
+              }
             />
           );
         }
@@ -11807,7 +13522,18 @@ function WorkspaceRightPanel({
                 <span className="badge warn">VV-2026-05821</span>
               </div>
             </div>
-            <button className="btn green" onClick={() => toast('已提交至 Veeva Vault')}>确认提交</button>{' '}
+            <button
+              className="btn green"
+              onClick={() =>
+                posterPlanBMode && currentPosterPlanBRequest
+                  ? onConfirmPosterPlanBVeeva?.()
+                  : posterPlanCMode && currentPosterPlanCRequest
+                    ? onConfirmPosterPlanCVeeva?.()
+                  : toast('已提交至 Veeva Vault')
+              }
+            >
+              确认提交
+            </button>{' '}
             <button className="btn" onClick={() => toast('审计报告已生成')}>下载审计报告</button>
           </>
         );
@@ -11832,7 +13558,13 @@ function WorkspaceRightPanel({
         {showPreviewTabs && (
           <div className="tabs">
             <div className="tabs-list">
-              {previewFile && !isGeneratedImagePreview ? (
+              {imageStudioMode ? (
+                <ImageStudioTabs
+                  state={imageStudio || emptyImageStudio()}
+                  onSelect={(productId) => onSelectImageStudioProduct?.(productId)}
+                  onClose={(productId) => onCloseImageStudioProduct?.(productId)}
+                />
+              ) : previewFile && !isGeneratedImagePreview ? (
                 <span className="tab active">文件预览</span>
               ) : reviewerMode ? (
                 visibleTabs.map((k) => (
@@ -11847,7 +13579,7 @@ function WorkspaceRightPanel({
                 ))
               ) : hideContentFlowNav ? null : (
                 <ContentFlowNav
-                  entry={flowEntry ?? null}
+                  entry={resolvedFlowEntry ?? null}
                   progress={flowProgress}
                   activeTab={state.active}
                   currentStepId={conferenceFlowCurrentId}
@@ -11874,21 +13606,98 @@ function WorkspaceRightPanel({
           </div>
         )}
         <div className={selectedHistory ? 'preview-history-readonly' : undefined}>
-        {entryContext?.source === 'more' && (isVideoStudioTab(state.active) || !state.active) ? (
+        {imageStudioMode ? (
+          state.active === 'submit' || state.active === 'team' ? (
+            renderDetail()
+          ) : currentImageStudioProduct ? (
+            <ImageStudioWorkspace
+              product={currentImageStudioProduct}
+              teamReviewInProgress={teamModificationInProgress}
+              onEdit={() => onEditImageStudioProduct?.(currentImageStudioProduct)}
+              onTeamReview={() => onOpenTeamReview('visual')}
+              onSubmitVeeva={() => fillQuick('提交当前版本到Veeva Vault审批')}
+              onToast={toast}
+            />
+          ) : (
+            renderDetail()
+          )
+        ) : entryContext?.source === 'more' && (isVideoStudioTab(state.active) || !state.active) ? (
+          renderDetail()
+        ) : (flowEntry === 'posterPlanB' || entryContext?.source === 'poster-plan-b') &&
+          state.active === 'poster-plan-b' ? (
+          renderDetail()
+        ) : posterPlanCMode && state.active === 'poster-plan-c' ? (
           renderDetail()
         ) : (flowEntry === 'conferencePoster' || entryContext?.source === 'poster') &&
-        (state.active === 'meeting-templates' || state.active === 'meeting-sessions') ? (
+        (
+          state.active === 'meeting-template-brief' ||
+          state.active === 'meeting-templates' ||
+          state.active === 'meeting-sessions'
+        ) ? (
           renderDetail()
-        ) : (flowEntry === 'conferencePoster' || entryContext?.source === 'poster') &&
+        ) : (
+          flowEntry === 'conferencePoster' ||
+          flowEntry === 'posterPlanB' ||
+          flowEntry === 'posterPlanCKv' ||
+          entryContext?.source === 'poster' ||
+          entryContext?.source === 'poster-plan-b' ||
+          entryContext?.source === 'poster-plan-c'
+        ) &&
           state.active === 'visual' &&
           previewedImageAssetKey === 'kv' ? (
-          <MeetingKvPanel
-            imageUrl={previewFile?.contentUrl || MOCK_KV_VERSIONS.current.dataUrl}
-            onDownload={() =>
-              downloadDataUrl(previewFile?.contentUrl || MOCK_KV_VERSIONS.current.dataUrl, '主KV.svg')
-            }
-            onGenerateTemplates={() => fillQuick('生成会议模板')}
-          />
+          conferenceMeetingMode && (meetingMaterials?.kvCandidates.length || 0) > 0 ? (
+            <PosterPlanBKvGallery
+              state={meetingMaterials || emptyMeetingMaterials()}
+              onActivate={(candidateId) => onActivateMeetingKv?.(candidateId)}
+              onConfirm={(candidateId) => onConfirmMeetingKv?.(candidateId)}
+              onContinue={() => onOpenMeetingTemplateBrief?.()}
+              onConfirmAndContinue={(candidateId) =>
+                onConfirmMeetingKvAndOpenTemplateBrief?.(candidateId)
+              }
+              combinedActionLabel="设为主KV并填写模板需求"
+              onEdit={(imageUrl) => onOpenImageEditor(imageUrl, 0)}
+            />
+          ) : posterPlanBMode && (posterPlanB?.kvCandidates.length || 0) > 0 ? (
+            <PosterPlanBKvGallery
+              state={posterPlanB || emptyPosterPlanB()}
+              onActivate={(candidateId) => onActivatePosterPlanBKv?.(candidateId)}
+              onConfirm={(candidateId) => onConfirmPosterPlanBKv?.(candidateId)}
+              onContinue={() => onOpenPosterPlanBList?.()}
+              onConfirmAndContinue={(candidateId) =>
+                onConfirmPosterPlanBKvAndOpenList?.(candidateId)
+              }
+              combinedActionLabel="设为主KV并进入海报列表"
+              onEdit={(imageUrl) => onOpenImageEditor(imageUrl, 0)}
+            />
+          ) : (
+            <MeetingKvPanel
+              imageUrl={previewFile?.contentUrl || MOCK_KV_VERSIONS.current.dataUrl}
+              onDownload={() =>
+                downloadDataUrl(previewFile?.contentUrl || MOCK_KV_VERSIONS.current.dataUrl, '主KV.svg')
+              }
+              onGenerateTemplates={() =>
+                posterPlanBMode
+                  ? onOpenPosterPlanBList?.()
+                  : posterPlanCMode
+                    ? onOpenPosterPlanCList?.()
+                    : fillQuick('生成会议模板')
+              }
+              onEdit={() =>
+                onOpenImageEditor(
+                  previewFile?.contentUrl || MOCK_KV_VERSIONS.current.dataUrl,
+                  0
+                )
+              }
+              nextActionLabel={
+                posterPlanBMode
+                  ? '进入海报/图片列表'
+                  : posterPlanCMode
+                    ? '进入海报/图片列表'
+                  : '生成会议模板'
+              }
+              showCaption={!posterPlanBMode}
+            />
+          )
         ) : previewFile && (!isGeneratedImagePreview || state.active === 'visual') ? (
           <div className="workspace-file-preview">
             {previewFile.contentType === 'image' && previewFile.contentUrl ? (
@@ -11907,6 +13716,10 @@ function WorkspaceRightPanel({
                               ? '长图'
                               : previewedImageAssetKey === 'mobile'
                                 ? '手机版海报'
+                                : posterPlanBMode
+                                  ? 'Plan B 海报'
+                                  : posterPlanCMode
+                                    ? 'Plan C 海报/图片'
                                 : '会议海报'}
                           </strong>
                           <span>{previewedImageItem.title}</span>
@@ -11920,6 +13733,49 @@ function WorkspaceRightPanel({
                             canZoomIn={selectableImageZoom.canZoomIn}
                             canZoomOut={selectableImageZoom.canZoomOut}
                           />
+                          {posterPlanBMode &&
+                            currentPosterPlanBRequest &&
+                            !viewingHistoricalImage && (
+                              <>
+                              <button
+                                type="button"
+                                className="creator-ppt-tool"
+                                onClick={() => onOpenPosterPlanBList?.()}
+                              >
+                                返回海报列表
+                              </button>
+                              <button
+                                type="button"
+                                className="creator-ppt-tool"
+                                onClick={() => onStartNewPosterPlanB?.()}
+                              >
+                                <Plus className="h-3.5 w-3.5" />
+                                再生成一张
+                              </button>
+                              </>
+                            )}
+                          {posterPlanCMode &&
+                            currentPosterPlanCRequest &&
+                            posterPlanC?.route === 'kv' &&
+                            !viewingHistoricalImage && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="creator-ppt-tool"
+                                  onClick={() => onOpenPosterPlanCList?.()}
+                                >
+                                  返回海报/图片列表
+                                </button>
+                                <button
+                                  type="button"
+                                  className="creator-ppt-tool"
+                                  onClick={() => onStartNewPosterPlanC?.()}
+                                >
+                                  <Plus className="h-3.5 w-3.5" />
+                                  再生成一张
+                                </button>
+                              </>
+                            )}
                           {!viewingHistoricalImage && (
                             <button
                               type="button"
@@ -12159,16 +14015,51 @@ function WorkspaceRightPanel({
                         type="button"
                         className="btn warn"
                         disabled={teamModificationInProgress}
-                        onClick={() => !teamModificationInProgress && onOpenTeamReview('visual')}
+                        onClick={() => {
+                          if (teamModificationInProgress) return;
+                          if (posterPlanBMode && currentPosterPlanBRequest) {
+                            onOpenPosterPlanBTeamReview?.(currentPosterPlanBRequest.id);
+                            return;
+                          }
+                          if (posterPlanCMode && currentPosterPlanCRequest) {
+                            onOpenPosterPlanCTeamReview?.(currentPosterPlanCRequest.id);
+                            return;
+                          }
+                          onOpenTeamReview('visual');
+                        }}
                       >
-                        {teamModificationInProgress ? '意见收集中...' : '意见收集'}
+                        {teamModificationInProgress
+                          ? '意见收集中...'
+                          : currentPosterPlanBRequest?.teamReviewStatus === 'pending'
+                            ? '已提交意见收集'
+                            : currentPosterPlanCRequest?.teamReviewStatus === 'pending'
+                              ? '已提交意见收集'
+                            : '意见收集'}
                       </button>
                       <button
                         type="button"
                         className="btn green"
-                        onClick={() => fillQuick('提交当前图片和文案到Veeva Vault审批:')}
+                        onClick={() => {
+                          if (posterPlanBMode && currentPosterPlanBRequest) {
+                            onSubmitPosterPlanBVeeva?.(currentPosterPlanBRequest.id);
+                            return;
+                          }
+                          if (posterPlanCMode && currentPosterPlanCRequest) {
+                            onSubmitPosterPlanCVeeva?.(currentPosterPlanCRequest.id);
+                            return;
+                          }
+                          fillQuick('提交当前版本到Veeva Vault审批');
+                        }}
                       >
-                        提交 Veeva 审批
+                        {currentPosterPlanBRequest?.veevaStatus === 'submitted'
+                          ? '已提交 Veeva'
+                          : currentPosterPlanBRequest?.veevaStatus === 'prepared'
+                            ? '继续 Veeva 审批'
+                            : currentPosterPlanCRequest?.veevaStatus === 'submitted'
+                              ? '已提交 Veeva'
+                              : currentPosterPlanCRequest?.veevaStatus === 'prepared'
+                                ? '继续 Veeva 审批'
+                            : '提交 Veeva 审批'}
                       </button>
                     </>
                   )}

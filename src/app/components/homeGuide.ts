@@ -22,6 +22,8 @@ export type HomeEntrySource =
   | 'promo'
   | 'evidence'
   | 'poster'
+  | 'poster-plan-b'
+  | 'poster-plan-c'
   | 'insight'
   | 'more';
 
@@ -37,7 +39,9 @@ export const HOME_ENTRY_SOURCE_LABELS: Record<HomeEntrySource, string> = {
   promo: '医学与推广内容',
   evidence: '学术证据解读',
   poster: '会议物料',
-  insight: '话题洞察',
+  'poster-plan-b': '海报 Plan B',
+  'poster-plan-c': '海报 Plan C',
+  insight: '海报与图片',
   more: '视频生成',
 };
 
@@ -199,6 +203,20 @@ export function getEntryWelcome(ctx: HomeEntryContext): { html: string; chips: s
     };
   }
 
+  if (source === 'poster-plan-b') {
+    return {
+      html: '您好，我将协助您基于主KV快速延展新海报。请先填写任务提案并生成主KV，再上传文件或直接填写新海报信息。',
+      chips: ['填写任务提案', '添加视觉参考'],
+    };
+  }
+
+  if (source === 'poster-plan-c') {
+    return {
+      html: '您好，请先填写任务提案。完成后可选择生成主KV再延展系列海报，或直接进入海报与图片列表。',
+      chips: ['填写任务提案'],
+    };
+  }
+
   if (source === 'promo') {
     return {
       html: '您好！请先添加参考知识或品牌策略。中间流程会按你的第一步展开：话题洞察、任务提案、PPT、推文、长图或话术。',
@@ -215,8 +233,8 @@ export function getEntryWelcome(ctx: HomeEntryContext): { html: string; chips: s
 
   if (source === 'insight') {
     return {
-      html: '您好！请添加参考知识或品牌策略，描述想洞察的主题与受众后即可生成话题洞察。',
-      chips: ['基于素材生成话题洞察'],
+      html: '您已进入海报制作工作台页面。您可以在对话框内输入需求，包括但不限于风格、尺寸、配色等。',
+      chips: [],
     };
   }
 

@@ -193,65 +193,38 @@ function conferenceMobileSvg(): string {
 
 export const MOCK_KV_VERSIONS = {
   v1: {
-    title: '主KV · 红色初稿',
-    dataUrl: svgDataUrl(
-      kvSvg({
-        kicker: 'ACADEMIC SYMPOSIUM',
-        title1: 'CKD 患者肾脏保护',
-        title2: '主视觉初稿',
-        subtitle: '—— 建立深红主色与肾脏光影 ——',
-        badge: 'KV Draft 01',
-        glow: 0.55,
-      })
-    ),
+    title: '主KV · 蓝黑竞速视觉初稿',
+    dataUrl: '/demo-assets/poster-studio/kv.png',
   },
   v2: {
-    title: '主KV · 强化标题',
-    dataUrl: svgDataUrl(
-      kvSvg({
-        kicker: 'ACADEMIC SYMPOSIUM',
-        title1: 'CKD 患者肾脏保护',
-        title2: '新进展研讨会',
-        subtitle: '—— 探索前沿科技  守护肾脏健康 ——',
-        badge: 'Key Visual 02',
-        glow: 0.8,
-      })
-    ),
+    title: '主KV · 蓝黑竞速视觉',
+    dataUrl: '/demo-assets/poster-studio/kv.png',
   },
   current: {
-    title: '主KV · CKD肾脏保护',
-    dataUrl: svgDataUrl(
-      kvSvg({
-        kicker: 'ACADEMIC SYMPOSIUM',
-        title1: 'CKD 患者肾脏保护',
-        title2: '新进展研讨会',
-        subtitle: '—— 探索前沿科技  守护肾脏健康 ——',
-        badge: 'Master KV',
-        glow: 1,
-      })
-    ),
+    title: '主KV · 蓝黑竞速视觉',
+    dataUrl: '/demo-assets/poster-studio/kv.png',
   },
 };
 
 export const MOCK_POSTER_VERSIONS = {
   v1: {
-    title: '会议海报 · 信息初稿',
-    dataUrl: svgDataUrl(conferencePosterSvg('outline')),
+    title: '蓝黑系列海报 · 倒计时3天',
+    dataUrl: '/demo-assets/poster-studio/countdown-3.png',
   },
   v2: {
-    title: '会议海报 · 嘉宾与议程',
-    dataUrl: svgDataUrl(conferencePosterSvg('speakers')),
+    title: '蓝黑系列海报 · 倒计时2天',
+    dataUrl: '/demo-assets/poster-studio/countdown-2.png',
   },
   current: {
-    title: '会议海报 · CKD患者肾脏保护新进展研讨会',
-    dataUrl: svgDataUrl(conferencePosterSvg('speakers')),
+    title: '蓝黑系列海报 · 倒计时1天',
+    dataUrl: '/demo-assets/poster-studio/countdown-1.png',
   },
 };
 
 export const MOCK_MOBILE_VERSIONS = {
   current: {
-    title: '会议海报 · 手机版',
-    dataUrl: svgDataUrl(conferenceMobileSvg()),
+    title: '蓝黑系列海报 · 手机版',
+    dataUrl: '/demo-assets/poster-studio/countdown-1.png',
   },
 };
 
@@ -288,39 +261,39 @@ export function createMockVisualTasks(
     return [
       {
         id: 'img-task-kv-v1',
-        prompt: '生成主KV初稿，沿用会议海报的深红肾脏主视觉',
+        prompt: '生成主KV初稿，沿用蓝黑竞速主视觉',
         status: 'completed',
         targetTab: 'visual',
         pageIndex: null,
         assetKey: 'kv',
         targetLabel: '主KV',
-        resultSummary: '已生成红色主KV初稿，确定深红底与肾脏光影。',
+        resultSummary: '已生成蓝黑主KV初稿，确定城市光轨与赛车视觉。',
         imageSnapshot: MOCK_KV_VERSIONS.v1.dataUrl,
         createdAt: now - 3 * 60 * 60 * 1000,
         updatedAt: now - 2.5 * 60 * 60 * 1000,
       },
       {
         id: 'img-task-kv-v2',
-        prompt: '会议标题改为 CKD 肾脏保护，并加大字号',
+        prompt: '强化蓝黑主KV的速度感与城市光轨',
         status: 'completed',
         targetTab: 'visual',
         pageIndex: null,
         assetKey: 'kv',
         targetLabel: '主KV',
-        resultSummary: '已强化主KV标题与会议主题记忆点。',
+        resultSummary: '已强化主KV的竞速氛围与蓝色光效。',
         imageSnapshot: MOCK_KV_VERSIONS.v2.dataUrl,
         createdAt: now - 80 * 60 * 1000,
         updatedAt: now - 70 * 60 * 1000,
       },
       {
         id: 'img-task-kv-v3',
-        prompt: '精修肾脏光影层次，与红色会议海报主视觉对齐',
+        prompt: '精修赛车与城市光影层次，与蓝黑系列海报对齐',
         status: 'running',
         targetTab: 'visual',
         pageIndex: null,
         assetKey: 'kv',
         targetLabel: '主KV',
-        resultSummary: 'AI 正在对齐海报的深红肾脏主视觉…',
+        resultSummary: 'AI 正在对齐海报的蓝黑竞速主视觉…',
         imageSnapshot: MOCK_KV_VERSIONS.current.dataUrl,
         createdAt: now - 8 * 60 * 1000,
         updatedAt: now - 4 * 60 * 1000,

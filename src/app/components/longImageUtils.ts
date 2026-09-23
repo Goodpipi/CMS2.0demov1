@@ -223,6 +223,34 @@ export async function exportLongImageAsPng(src: string, title: string): Promise<
   }
 }
 
+export async function exportImageAsJpg(src: string, title: string): Promise<void> {
+  const jpg = await new Promise<string>((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, img.naturalWidth || CANVAS_W);
+      canvas.height = Math.max(1, img.naturalHeight || 1600);
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('无法创建画布'));
+        return;
+      }
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0);
+      try {
+        resolve(canvas.toDataURL('image/jpeg', 0.94));
+      } catch (error) {
+        reject(error);
+      }
+    };
+    img.onerror = () => reject(new Error('图片加载失败'));
+    img.src = src;
+  });
+  downloadDataUrl(jpg, safeFilename(title, 'jpg'));
+}
+
 export async function exportImageAsPsd(src: string, title: string): Promise<void> {
   try {
     const png = await rasterizeToPngDataUrl(src);

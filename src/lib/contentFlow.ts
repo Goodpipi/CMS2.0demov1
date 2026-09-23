@@ -13,6 +13,9 @@ export type ContentFlowEntry =
   | 'copy'
   | 'visual'
   | 'conferencePoster'
+  | 'posterPlanB'
+  | 'posterPlanCKv'
+  | 'posterPlanCDirect'
   | 'script'
   | 'video'
   | 'team'
@@ -36,8 +39,10 @@ export type ContentFlowStepId =
   | 'kv'
   | 'poster'
   | 'mobile'
+  | 'meetingTemplateBrief'
   | 'meetingTemplates'
   | 'sessionMaterials'
+  | 'posterBrief'
   | 'videoBrief'
   | 'videoHero'
   | 'videoStoryboard'
@@ -72,8 +77,10 @@ export interface ContentFlowProgress {
   kv: boolean;
   poster: boolean;
   mobile: boolean;
+  meetingTemplateBrief: boolean;
   meetingTemplates: boolean;
   sessionMaterials: boolean;
+  posterBrief: boolean;
   videoBrief: boolean;
   videoHero: boolean;
   videoStoryboard: boolean;
@@ -98,8 +105,14 @@ const CORE: Record<Exclude<ContentFlowStepId, 'pending'>, Omit<ContentFlowStep, 
   kv: { id: 'kv', label: '生成主KV', tab: 'visual' },
   poster: { id: 'poster', label: '生成会议海报', tab: 'visual' },
   mobile: { id: 'mobile', label: '一键手机', tab: 'visual' },
+  meetingTemplateBrief: {
+    id: 'meetingTemplateBrief',
+    label: '输入会议物料模板需求',
+    tab: 'meeting-template-brief',
+  },
   meetingTemplates: { id: 'meetingTemplates', label: '生成会议模板', tab: 'meeting-templates' },
   sessionMaterials: { id: 'sessionMaterials', label: '生成场次物料', tab: 'meeting-sessions' },
+  posterBrief: { id: 'posterBrief', label: '海报/图片列表', tab: 'poster-plan-b' },
   videoBrief: { id: 'videoBrief', label: '视频需求', tab: 'video-brief' },
   videoHero: { id: 'videoHero', label: '主视觉参考', tab: 'video-hero' },
   videoStoryboard: { id: 'videoStoryboard', label: '分镜脚本', tab: 'video-storyboard' },
@@ -133,7 +146,15 @@ export function flowEntryFromTab(tab: TabKey | null | undefined): ContentFlowEnt
   if (tab === 'copy') return 'copy';
   if (tab === 'rich-text') return 'articleOutline';
   if (tab === 'visual') return 'visual';
-  if (tab === 'meeting-templates' || tab === 'meeting-sessions') return 'conferencePoster';
+  if (
+    tab === 'meeting-template-brief' ||
+    tab === 'meeting-templates' ||
+    tab === 'meeting-sessions'
+  ) {
+    return 'conferencePoster';
+  }
+  if (tab === 'poster-plan-b') return 'posterPlanB';
+  if (tab === 'poster-plan-c') return null;
   if (
     tab === 'video-render' ||
     tab === 'video-script' ||
@@ -150,6 +171,7 @@ export function flowEntryFromTab(tab: TabKey | null | undefined): ContentFlowEnt
 
 export function flowEntryFromSource(source?: string | null): ContentFlowEntry | null {
   if (source === 'poster') return 'conferencePoster';
+  if (source === 'poster-plan-b') return 'posterPlanB';
   if (source === 'promo') return 'promo';
   if (source === 'case') return 'case';
   if (source === 'evidence') return 'evidence';
@@ -206,6 +228,9 @@ const FLOW_FAMILIES: Record<ContentFlowEntry, ContentFlowEntry[]> = {
   script: ['script', 'copy', 'team'],
   copy: ['copy', 'team'],
   conferencePoster: ['conferencePoster', 'visual', 'team'],
+  posterPlanB: ['posterPlanB', 'visual', 'team'],
+  posterPlanCKv: ['posterPlanCKv', 'visual', 'team'],
+  posterPlanCDirect: ['posterPlanCDirect', 'visual', 'team'],
   video: ['video', 'team'],
   team: ['team'],
   case: [],
@@ -322,6 +347,15 @@ export function buildContentFlowSteps(
   const skipBriefLiterature = omitsBriefLiterature(entry, source);
   const skipInsight = omitsTopicInsight(entry, source);
   const skipStoryline = omitsStoryline(entry, source);
+  if (source === 'poster-plan-c' && !entry) {
+    return [
+      step('create', true),
+      step('brief', true),
+      emptySlot(),
+      step('team', true),
+      step('submit', true),
+    ];
+  }
   const locked = isPendingFlowEntry(entry) ? inferLockedPath(extras, source) : entry;
 
   if (!locked || isPendingFlowEntry(locked)) {
@@ -367,11 +401,23 @@ export function buildContentFlowSteps(
     steps.push(step('copy', true));
   } else if (locked === 'conferencePoster') {
     steps.push(
-      step('brief', true),
+      { ...step('brief', true), label: '填写主KV需求' },
       step('kv', true),
-      step('meetingTemplates', true),
+      step('meetingTemplateBrief', true),
+      { ...step('meetingTemplates', true), label: '生成会议物料模板' },
       step('sessionMaterials', true)
     );
+  } else if (locked === 'posterPlanB') {
+    steps.push(
+      { ...step('brief', true), label: '填写任务提案' },
+      step('kv', true),
+      step('posterBrief', true),
+      { ...step('poster', true), label: '生成海报/图片' }
+    );
+  } else if (locked === 'posterPlanCKv') {
+    steps.push(step('brief', true), step('kv', true), step('posterBrief', true));
+  } else if (locked === 'posterPlanCDirect') {
+    steps.push(step('brief', true), { ...step('poster', true), label: '海报/图片' });
   } else if (locked === 'video') {
     if (source === 'more') {
       steps.push(
@@ -404,8 +450,11 @@ export function activeFlowStepId(active: TabKey | null): ContentFlowStepId {
   if (active === 'ppt-design') return 'ppt';
   if (active === 'copy' || active === 'rich-text') return 'copy';
   if (active === 'visual') return 'visual';
+  if (active === 'meeting-template-brief') return 'meetingTemplateBrief';
   if (active === 'meeting-templates') return 'meetingTemplates';
   if (active === 'meeting-sessions') return 'sessionMaterials';
+  if (active === 'poster-plan-b') return 'posterBrief';
+  if (active === 'poster-plan-c') return 'posterBrief';
   if (active === 'video-brief') return 'videoBrief';
   if (active === 'video-hero') return 'videoHero';
   if (active === 'video-storyboard') return 'videoStoryboard';

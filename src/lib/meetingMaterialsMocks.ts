@@ -1,5 +1,10 @@
 import { MOCK_POSTER_VERSIONS } from '@/lib/imageMocks';
 import type { PptSlide } from '@/types/content';
+import type {
+  PosterPlanBKvBrief,
+  PosterPlanBKvCandidate,
+  PosterPlanBReference,
+} from '@/lib/posterPlanBMocks';
 
 export type MeetingTemplateTab = 'poster' | 'ppt';
 export type MeetingSessionTab = 'info' | 'poster' | 'ppt';
@@ -47,8 +52,23 @@ export interface MeetingTaskProposal {
   other: string;
 }
 
+export interface MeetingTemplateBrief {
+  visualReferences: PosterPlanBReference[];
+  requirement: string;
+  posterRatio: string;
+  posterTemplateFileName?: string;
+  pptTemplateFileName?: string;
+}
+
 export interface MeetingMaterialsState {
   taskProposal?: MeetingTaskProposal;
+  kvBrief: PosterPlanBKvBrief;
+  kvCandidates: PosterPlanBKvCandidate[];
+  activeKvCandidateId: string | null;
+  selectedKvId: string | null;
+  mainKvUrl?: string;
+  uploadedKvFileName?: string;
+  templateBrief: MeetingTemplateBrief;
   templatesReady: boolean;
   sessions: MeetingSession[];
   currentSessionId: string | null;
@@ -72,6 +92,22 @@ export function emptyMeetingTaskProposal(): MeetingTaskProposal {
 
 export function emptyMeetingMaterials(): MeetingMaterialsState {
   return {
+    kvBrief: {
+      visualReferences: [],
+      requirement: '',
+      colorPalette: '',
+      count: 2,
+      ratio: '16:9',
+      styleId: 'tech',
+    },
+    kvCandidates: [],
+    activeKvCandidateId: null,
+    selectedKvId: null,
+    templateBrief: {
+      visualReferences: [],
+      requirement: '',
+      posterRatio: '3:4',
+    },
     templatesReady: false,
     sessions: [],
     currentSessionId: null,
@@ -147,6 +183,15 @@ export function meetingInfoForSession(name: string): MeetingSessionInfo {
 }
 
 export function buildSessionPosterDataUrl(sessionName: string, info: MeetingSessionInfo): string {
+  const blueBlackPosters = [
+    '/demo-assets/poster-studio/countdown-3.png',
+    '/demo-assets/poster-studio/countdown-2.png',
+    '/demo-assets/poster-studio/countdown-1.png',
+  ];
+  const posterIndex =
+    [...sessionName].reduce((sum, char) => sum + char.charCodeAt(0), 0) %
+    blueBlackPosters.length;
+  if (info) return blueBlackPosters[posterIndex];
   const speakers = info.speakers
     .slice(0, 2)
     .map(
@@ -288,7 +333,7 @@ export const MEETING_POSTER_TEMPLATE_URL = MOCK_POSTER_VERSIONS.current.dataUrl;
 export const MEETING_POSTER_TEMPLATE_REGIONS = ['会议名称', '时间', '地点', '专家信息'];
 
 export const MEETING_KV_CAPTION =
-  '主KV确定本次系列会议的深红肾脏视觉。后续海报模板、串场PPT模板和各场次物料将沿用同一套风格。';
+  '主KV确定本次系列会议的蓝黑竞速视觉。后续海报模板、串场PPT模板和各场次物料将沿用同一套风格。';
 
 function compact(text: string): string {
   return text.replace(/\s+/g, '');

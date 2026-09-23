@@ -20,6 +20,9 @@ import type { TaskProduct } from '@/lib/products';
 import type { CopyRevision, ImageReviewStatus } from '@/types/review';
 import type { ModificationTask } from '@/lib/modificationTasks';
 import type { MeetingMaterialsState } from '@/lib/meetingMaterialsMocks';
+import type { PosterPlanBState } from '@/lib/posterPlanBMocks';
+import type { PosterPlanCState } from '@/lib/posterPlanCMocks';
+import type { ImageStudioState } from '@/lib/imageStudioMocks';
 import type { VideoStudioState } from '@/lib/videoStudioMocks';
 
 export type TabKey =
@@ -42,8 +45,11 @@ export type TabKey =
   | 'ppt-design'
   | 'brief'
   | 'storyline'
+  | 'meeting-template-brief'
   | 'meeting-templates'
   | 'meeting-sessions'
+  | 'poster-plan-b'
+  | 'poster-plan-c'
   | 'submit';
 
 export interface ChatMessage {
@@ -84,6 +90,8 @@ export interface SessionAppState {
   storyline: boolean;
   meetingTemplates: boolean;
   meetingSessions: boolean;
+  posterPlanB: boolean;
+  posterPlanC: boolean;
   submit: boolean;
 }
 
@@ -106,6 +114,9 @@ export interface SessionWorkspace {
   contentBrief?: ContentBrief | null;
   storylineContent?: string;
   meetingMaterials?: MeetingMaterialsState;
+  posterPlanB?: PosterPlanBState;
+  posterPlanC?: PosterPlanCState;
+  imageStudio?: ImageStudioState;
   videoStudio?: VideoStudioState;
   richTextContent?: string;
   generatedImages: string[];

@@ -394,8 +394,8 @@ export function getAcademicDemoImage(kind: AcademicDemoImageKind) {
   }
   return {
     title: 'Poster_Result_01.png',
-    dataUrl: '/demo-assets/Poster_Result_01.PNG',
-    copyTitle: '会议海报 · CKD患者肾脏保护新进展研讨会',
+    dataUrl: '/demo-assets/poster-studio/countdown-3.png',
+    copyTitle: '蓝黑系列海报 · 倒计时3天',
   };
 }
 

@@ -46,6 +46,8 @@ export interface ReviewTask {
   sessionId: string;
   title: string;
   contentType: TeamContentType;
+  /** 同一会话内的独立产物，例如 Plan B 的单张海报 */
+  contentItemId?: string;
   assigneeRole: 'medical' | 'marketing';
   assigneeName: string;
   assignerName: string;
