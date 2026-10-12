@@ -9080,6 +9080,14 @@ textarea {
   justify-content: center;
 }
 
+.ppt-page-storyline-point {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: #8a97a8;
+}
+
 .ppt-page-title-row {
   display: flex;
   align-items: center;
@@ -13636,6 +13644,21 @@ textarea {
 .meeting-surface-hint {
   color: #5b6f86;
   line-height: 1.7;
+}
+
+.meeting-parse-success {
+  margin: 4px 0 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #eef8f1;
+  color: #2f7a4a;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.meeting-poster-size {
+  margin-top: 8px;
 }
 
 .meeting-preview-frame {

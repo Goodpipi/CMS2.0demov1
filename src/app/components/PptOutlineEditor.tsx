@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { PptOutline, PptOutlinePage, PptOutlinePageKind } from '@/types/content';
 import { genId, makeOutlinePage, movePageInOutline, outlinePageCount } from './pptUtils';
+import { attachStorylinePointsToOutline } from '@/lib/storylineOutline';
 import { PPT_BUILTIN_TEMPLATES, type PptBuiltinTemplate } from './pptTemplates';
 import { PptTemplatePickerModal, PptTemplateThumb } from './PptTemplatePickerModal';
 import { OutlineAiPrompt, OutlineManualCiteImageForm, OutlineReferencedImages, OutlineStaticField, OutlineStaticList } from './OutlinePageEditModal';
@@ -26,6 +27,7 @@ interface PptOutlineEditorProps {
   variant?: 'inline' | 'overlay';
   onClose?: () => void;
   showGenerateFooter?: boolean;
+  storylineContent?: string;
 }
 
 export function PptOutlineGenerateFooter({
@@ -114,6 +116,7 @@ export function PptOutlineEditor({
   variant = 'inline',
   onClose,
   showGenerateFooter = true,
+  storylineContent = '',
 }: PptOutlineEditorProps) {
   const isInline = variant === 'inline';
   const [draggingPageKey, setDraggingPageKey] = useState<string | null>(null);
@@ -128,12 +131,17 @@ export function PptOutlineEditor({
   const [aiInstruction, setAiInstruction] = useState('');
   const [manualImageOpen, setManualImageOpen] = useState(false);
 
+  const displayOutline = useMemo(
+    () => attachStorylinePointsToOutline(outline, storylineContent),
+    [outline, storylineContent]
+  );
+
   const flatPages = useMemo(
     () =>
-      outline.chapters.flatMap((chapter) =>
+      displayOutline.chapters.flatMap((chapter) =>
         chapter.pages.map((page) => ({ chId: chapter.id, page }))
       ),
-    [outline.chapters]
+    [displayOutline.chapters]
   );
 
   const updatePage = (chId: string, pgId: string, patch: Partial<PptOutlinePage>) => {
@@ -294,6 +302,9 @@ export function PptOutlineEditor({
                 >
                   <div className="ppt-page-num">{index + 1}</div>
                   <div className="ppt-page-body">
+                    {pg.storylinePoint ? (
+                      <div className="ppt-page-storyline-point">核心观点：{pg.storylinePoint}</div>
+                    ) : null}
                     <div className="ppt-page-title-row">
                       <span
                         className="ppt-drag-handle-wrap ppt-drag-handle-wrap--page"

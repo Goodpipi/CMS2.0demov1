@@ -403,7 +403,6 @@ export function buildContentFlowSteps(
     steps.push(
       { ...step('brief', true), label: '填写主KV需求' },
       step('kv', true),
-      step('meetingTemplateBrief', true),
       { ...step('meetingTemplates', true), label: '生成会议物料模板' },
       step('sessionMaterials', true)
     );

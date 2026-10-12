@@ -99,6 +99,7 @@ export const WORKSPACE_MOCK_PPT_OUTLINE: PptOutline = {
       pages: [
         {
           id: 'mock-page-cover',
+          storylinePoint: '慢性肾脏病患者全程管理，核心在于早期识别与长期随访。',
           title: '慢性肾脏病患者全程管理与早期干预',
           bullets: [],
           kind: 'cover',
@@ -116,6 +117,7 @@ export const WORKSPACE_MOCK_PPT_OUTLINE: PptOutline = {
       pages: [
         {
           id: 'mock-page-toc',
+          storylinePoint: '疾病负担与未满足需求 → 早期识别与规范管理 → 沟通建议与行动计划',
           title: '目录',
           bullets: ['疾病负担与未满足需求', '早期识别与规范管理', '沟通建议与行动计划'],
           kind: 'toc',
@@ -131,6 +133,7 @@ export const WORKSPACE_MOCK_PPT_OUTLINE: PptOutline = {
       pages: [
         {
           id: 'mock-page-1-title',
+          storylinePoint: '在已管理的患者中，疾病负担与未满足需求仍被系统性低估。',
           title: '疾病负担与未满足需求',
           bullets: [
             '本章为章节标题页',
@@ -144,6 +147,7 @@ export const WORKSPACE_MOCK_PPT_OUTLINE: PptOutline = {
         },
         {
           id: 'mock-page-1',
+          storylinePoint: '患者规模持续上升，早期症状不明显，筛查与公众认知仍不足。',
           title: '慢性肾脏病的疾病负担',
           bullets: ['患者数量持续增长', '早期症状不明显', '公众认知与筛查率仍需提升'],
           bulletCites: [[1], [1, 2], [2]],
@@ -161,6 +165,7 @@ export const WORKSPACE_MOCK_PPT_OUTLINE: PptOutline = {
         },
         {
           id: 'mock-page-2',
+          storylinePoint: '高风险识别不足、随访依从有限、多学科协作仍有缺口。',
           title: '当前管理中的关键挑战',
           bullets: ['高风险人群识别不足', '长期随访依从性有限', '多学科协作仍有提升空间'],
           bulletCites: [[1], [1], []],
@@ -178,6 +183,7 @@ export const WORKSPACE_MOCK_PPT_OUTLINE: PptOutline = {
       pages: [
         {
           id: 'mock-page-2-title',
+          storylinePoint: '早期识别与规范管理是可落地的干预窗口。',
           title: '早期识别与规范管理',
           bullets: [
             '本章为章节标题页',
@@ -191,6 +197,7 @@ export const WORKSPACE_MOCK_PPT_OUTLINE: PptOutline = {
         },
         {
           id: 'mock-page-3',
+          storylinePoint: '把糖尿病和高血压人群的肾功能评估前移到日常随访。',
           title: '识别高风险人群',
           bullets: ['关注糖尿病和高血压人群', '定期评估肾功能相关指标', '结合个体情况制定随访计划'],
           bulletCites: [[1], [1], []],
@@ -204,6 +211,7 @@ export const WORKSPACE_MOCK_PPT_OUTLINE: PptOutline = {
         },
         {
           id: 'mock-page-4',
+          storylinePoint: '风险评估、生活方式教育、规范诊疗与持续随访串联成路径。',
           title: '患者全程管理路径',
           bullets: ['风险评估', '生活方式教育', '规范诊疗与持续随访'],
           bulletCites: [[1], [1], [1]],
@@ -221,6 +229,7 @@ export const WORKSPACE_MOCK_PPT_OUTLINE: PptOutline = {
       pages: [
         {
           id: 'mock-page-3-title',
+          storylinePoint: '沟通建议要变成可带走、下周就能用的行动计划。',
           title: '沟通建议与行动计划',
           bullets: [
             '本章为章节标题页',
@@ -234,6 +243,7 @@ export const WORKSPACE_MOCK_PPT_OUTLINE: PptOutline = {
         },
         {
           id: 'mock-page-5',
+          storylinePoint: '用易理解表达强调定期检查，有疑问时咨询专业医生。',
           title: '面向患者的沟通要点',
           bullets: ['使用易理解的表达', '强调定期检查的重要性', '有疑问时咨询专业医生'],
           bulletCites: [[1], [1], []],
@@ -244,6 +254,7 @@ export const WORKSPACE_MOCK_PPT_OUTLINE: PptOutline = {
         },
         {
           id: 'mock-page-6',
+          storylinePoint: '提升风险认知、推动早筛早诊、建立持续管理意识。',
           title: '总结与下一步行动',
           bullets: ['提升风险认知', '推动早筛早诊', '建立持续管理意识'],
           bulletCites: [[1], [1], [1]],
@@ -261,6 +272,7 @@ export const WORKSPACE_MOCK_PPT_OUTLINE: PptOutline = {
       pages: [
         {
           id: 'mock-page-back',
+          storylinePoint: '以全程管理框架收束，回到早识别与持续随访。',
           title: '谢谢',
           bullets: [],
           kind: 'back',

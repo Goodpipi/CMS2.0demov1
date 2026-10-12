@@ -85,6 +85,7 @@ export function makeOutlinePage(
   return {
     id: extra.id || genId('pg'),
     title,
+    storylinePoint: extra.storylinePoint,
     bullets: bullets.length ? bullets : titleFields?.bullets ?? bullets,
     kind,
     speakerNotes: extra.speakerNotes,
@@ -162,6 +163,7 @@ function asSinglePageSection(
     [
       makeOutlinePage(first?.title || pageTitle, kind, kind === 'toc' ? first?.bullets?.length ? first.bullets : bullets : [], {
         id: first?.id,
+        storylinePoint: first?.storylinePoint,
         speakerNotes: first?.speakerNotes,
         visualSuggestion: first?.visualSuggestion,
         references: first?.references,
@@ -355,6 +357,7 @@ export function normalizeOutline(
         referencedImages?: PptOutlinePage['referencedImages'];
         bulletCites?: number[][];
         kind?: PptOutlinePageKind;
+        storylinePoint?: string;
       }[];
     }[];
   },
@@ -368,6 +371,7 @@ export function normalizeOutline(
     pages: (ch.pages || []).map((p) => ({
       id: genId('pg'),
       title: p.title || '未命名页面',
+      storylinePoint: p.storylinePoint,
       bullets: p.bullets?.length
         ? p.bullets
         : p.kind === 'section-title'

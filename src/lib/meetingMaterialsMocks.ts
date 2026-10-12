@@ -10,12 +10,11 @@ export type MeetingTemplateTab = 'poster' | 'ppt';
 export type MeetingSessionTab = 'info' | 'poster' | 'ppt';
 
 export function sessionMaterialsTab(
-  session: Pick<MeetingSession, 'info'> | null | undefined,
+  _session: Pick<MeetingSession, 'info'> | null | undefined,
   requested?: MeetingSessionTab | null
 ): MeetingSessionTab {
-  if (!session?.info) return 'info';
-  if (requested === 'ppt' || requested === 'poster') return requested;
-  return 'poster';
+  if (requested === 'poster' || requested === 'ppt' || requested === 'info') return requested;
+  return 'info';
 }
 export type MeetingUpdateReason = 'template' | 'info';
 
@@ -36,6 +35,8 @@ export interface MeetingSession {
   id: string;
   name: string;
   info?: MeetingSessionInfo;
+  infoParsed?: boolean;
+  posterRatio?: string;
   posterReady: boolean;
   pptReady: boolean;
   posterUrl?: string;
@@ -378,7 +379,7 @@ export function isGenerateSessionPosterIntent(text: string): boolean {
 
 export function isGenerateSessionPptIntent(text: string): boolean {
   const t = compact(text);
-  return /生成串场PPT|生成串场ppt|做串场PPT/.test(t);
+  return /生成会议串场PPT|生成串场PPT|生成串场ppt|做串场PPT/.test(t);
 }
 
 export function isViewAllSessionsIntent(text: string): boolean {
@@ -406,10 +407,10 @@ export function meetingSessionChips(materials: MeetingMaterialsState): string[] 
   if (!materials.templatesReady) return ['生成主KV', '添加会议参考资料'];
   if (!materials.sessions.length) return ['新增场次', '查看会议模板'];
   const session = currentMeetingSession(materials);
-  if (!session?.info) return ['上传会议信息', '查看会议模板'];
+  if (!session?.infoParsed) return ['上传会议信息', '查看会议模板'];
   const chips: string[] = [];
   if (!session.posterReady) chips.push('生成会议海报');
-  if (!session.pptReady) chips.push('生成串场PPT');
+  if (!session.pptReady) chips.push('生成会议串场PPT');
   chips.push('新增场次');
   if (chips.length < 3) chips.push('查看会议模板');
   return chips;

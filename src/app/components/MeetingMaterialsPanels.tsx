@@ -341,7 +341,7 @@ export function MeetingWelcomePanel({
             1
           </span>
           <div className="content-flow-start-body">
-            <p>填写主KV需求并生成候选方案，确认后再补充会议物料模板需求。</p>
+            <p>填写主KV需求并生成候选方案，确认主KV后即可生成会议模板。</p>
             <div className="content-flow-start-actions">
               <button type="button" className="btn primary" onClick={onOpenTaskProposal}>
                 填写主KV需求
@@ -931,6 +931,7 @@ interface MeetingSessionsPanelProps {
   onTabChange: (tab: MeetingSessionTab) => void;
   onUploadInfo: () => void;
   onEditInfo: () => void;
+  onPosterRatioChange: (ratio: string) => void;
   onInfoDraftChange: (next: MeetingSessionInfo) => void;
   onSaveInfo: () => void;
   onCancelInfo: () => void;
@@ -960,6 +961,7 @@ export function MeetingSessionsPanel({
   onTabChange,
   onUploadInfo,
   onEditInfo,
+  onPosterRatioChange,
   onInfoDraftChange,
   onSaveInfo,
   onCancelInfo,
@@ -1013,18 +1015,26 @@ export function MeetingSessionsPanel({
   }
 
   const hasInfo = Boolean(current.info);
-  const folderItems: { id: MeetingSessionTab; label: string }[] = hasInfo
-    ? [
-        {
-          id: 'poster',
-          label: current.posterUpdateReasons?.length ? '会议海报（待更新）' : '会议海报',
-        },
-        {
-          id: 'ppt',
-          label: current.pptUpdateReasons?.length ? '串场PPT（待更新）' : '串场PPT',
-        },
-      ]
-    : [{ id: 'info', label: '会议信息' }];
+  const canGenerate = Boolean(current.infoParsed && current.posterRatio);
+  const folderItems: { id: MeetingSessionTab; label: string }[] = [
+    { id: 'info', label: '会议信息' },
+    ...(current.posterReady
+      ? [
+          {
+            id: 'poster' as const,
+            label: current.posterUpdateReasons?.length ? '会议海报（待更新）' : '会议海报',
+          },
+        ]
+      : []),
+    ...(current.pptReady
+      ? [
+          {
+            id: 'ppt' as const,
+            label: current.pptUpdateReasons?.length ? '串场PPT（待更新）' : '串场PPT',
+          },
+        ]
+      : []),
+  ];
   const activeTab = folderItems.some((item) => item.id === tab) ? tab : folderItems[0].id;
 
   return (
@@ -1060,29 +1070,58 @@ export function MeetingSessionsPanel({
                   onSave={onSaveInfo}
                   onCancel={onCancelInfo}
                 />
-              ) : current.info ? (
-                <>
-                  <MeetingInfoPreview info={current.info} />
-                  <div className="meeting-action-row">
-                    <button type="button" className="btn primary" onClick={onGeneratePoster}>
-                      生成会议海报
-                    </button>
-                    <button type="button" className="btn primary" onClick={onGeneratePpt}>
-                      生成串场PPT
-                    </button>
-                  </div>
-                </>
               ) : (
                 <>
                   <p className="small meeting-surface-hint">
-                    请先下载会议信息模板，填写后上传。上传完成后将自动生成会议海报与串场PPT。
+                    请先下载会议信息模板并上传。文件解析成功且选择海报尺寸后，再生成会议海报或会议串场PPT。
                   </p>
                   <div className="meeting-action-row">
                     <button type="button" className="btn soft" onClick={downloadConferenceInfoTemplate}>
                       下载模板
                     </button>
                     <button type="button" className="btn primary" onClick={() => uploadRef.current?.click()}>
-                      上传
+                      {current.infoParsed ? '重新上传' : '上传'}
+                    </button>
+                  </div>
+                  {current.infoParsed ? (
+                    <p className="meeting-parse-success">会议信息解析成功</p>
+                  ) : null}
+                  {hasInfo ? <MeetingInfoPreview info={current.info!} /> : null}
+                  <section className="poster-kv-option-block meeting-poster-size">
+                    <div className="poster-kv-option-title">
+                      <span>海报尺寸</span>
+                    </div>
+                    <div className="poster-kv-ratio-options">
+                      {POSTER_PLAN_B_RATIOS.map((ratio) => (
+                        <button
+                          key={ratio}
+                          type="button"
+                          className={current.posterRatio === ratio ? 'active' : ''}
+                          aria-pressed={current.posterRatio === ratio}
+                          onClick={() => onPosterRatioChange(ratio)}
+                        >
+                          <i className={`ratio-shape ratio-${ratio.replace(':', '-')}`} />
+                          {ratio === '智能' ? '智能尺寸' : ratio}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                  <div className="meeting-action-row">
+                    <button
+                      type="button"
+                      className="btn primary"
+                      disabled={!canGenerate}
+                      onClick={onGeneratePoster}
+                    >
+                      生成会议海报
+                    </button>
+                    <button
+                      type="button"
+                      className="btn primary"
+                      disabled={!canGenerate}
+                      onClick={onGeneratePpt}
+                    >
+                      生成会议串场PPT
                     </button>
                   </div>
                 </>

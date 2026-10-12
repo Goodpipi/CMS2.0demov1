@@ -101,6 +101,7 @@ import { VersionFisheyeTimeline, type VersionTimelineItem } from '@/app/componen
 import { ContentBriefPanel } from '@/app/components/ContentBriefPanel';
 import { StorylinePanel } from '@/app/components/StorylinePanel';
 import { STORYLINE_MOCK_TEXT } from '@/lib/storylineMock';
+import { attachStorylinePointsToOutline } from '@/lib/storylineOutline';
 import { AddMeetingSessionModal } from '@/app/components/AddMeetingSessionModal';
 import {
   MeetingKvPanel,
@@ -815,12 +816,45 @@ export default function App() {
   const demoTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const pendingTopicInsightNoteRef = useRef('');
   const topicInsightUploadPendingRef = useRef(false);
+  const uploadTimersRef = useRef<Record<number, number>>({});
   stateRef.current = state;
   pptWizardRef.current = pptWizard;
   videoWizardRef.current = videoWizard;
   visualWizardRef.current = visualWizard;
   const videoStudioRef = useRef(videoStudio);
   videoStudioRef.current = videoStudio;
+
+  const enqueueUploadingMaterial = (item: LibraryItem) => {
+    setUploadingMaterials((prev) => [item, ...prev.filter((entry) => entry.id !== item.id)]);
+    const previousTimer = uploadTimersRef.current[item.id];
+    if (previousTimer) window.clearTimeout(previousTimer);
+    uploadTimersRef.current[item.id] = window.setTimeout(() => {
+      setUploadingMaterials((prev) => prev.filter((entry) => entry.id !== item.id));
+      delete uploadTimersRef.current[item.id];
+    }, 8000);
+  };
+
+  const cancelUploadingMaterial = (item: LibraryItem) => {
+    const timer = uploadTimersRef.current[item.id];
+    if (timer) {
+      window.clearTimeout(timer);
+      delete uploadTimersRef.current[item.id];
+    }
+    setUploadingMaterials((prev) => prev.filter((entry) => entry.id !== item.id));
+    const isTransientUpload = Boolean(item.fileName) && !item.cms && !item.def && !item.literatureId;
+    setLibrary((prev) =>
+      isTransientUpload
+        ? prev.filter((entry) => entry.id !== item.id)
+        : prev.map((entry) => (entry.id === item.id ? { ...entry, referenced: false } : entry))
+    );
+    if (item.literatureId) {
+      setAddedLiteratureIds((prev) => prev.filter((id) => id !== item.literatureId));
+    }
+    const pill = materialAttachmentPill(item);
+    setAttachments((prev) => prev.filter((entry) => entry !== pill));
+    if (previewMaterial?.id === item.id) setPreviewMaterial(null);
+    toast(`已删除「${item.fileName || item.title}」`);
+  };
 
   const buildWorkspaceSnapshot = useCallback(
     () => ({
@@ -1881,10 +1915,9 @@ export default function App() {
         return '针对当前长图说明要改什么…';
       }
       if (isPosterWorkspace) {
-        if (state.active === 'meeting-template-brief') return '填写会议物料模板需求并生成模板…';
         if (state.active === 'meeting-templates') return '输入「新增场次」，或继续生成海报模板 / 串场PPT模板…';
-        if (state.active === 'meeting-sessions') return '可输入「上传会议信息」「生成会议海报」或「生成串场PPT」…';
-        if (previewedImageAssetKey === 'kv') return '针对当前主KV说明要改什么，或输入「生成会议模板」…';
+        if (state.active === 'meeting-sessions') return '可输入「上传会议信息」「生成会议海报」或「生成会议串场PPT」…';
+        if (previewedImageAssetKey === 'kv') return '确认主KV后输入「生成会议模板」继续…';
         return '先填写任务提案并生成主KV…';
       }
       if (isPosterPlanBWorkspace) {
@@ -2186,10 +2219,6 @@ export default function App() {
   };
 
   const generateMeetingKv = () => {
-    if (!meetingMaterials.kvBrief.requirement.trim()) {
-      toast('请先填写主KV需求');
-      return;
-    }
     const urls = [
       '/demo-assets/poster-studio/kv.png',
       '/demo-assets/poster-studio/countdown-3.png',
@@ -2205,6 +2234,10 @@ export default function App() {
     if (!first) return;
     setMeetingMaterials((prev) => ({
       ...prev,
+      kvBrief: {
+        ...prev.kvBrief,
+        requirement: prev.kvBrief.requirement.trim() || '系列会议主视觉',
+      },
       kvCandidates: candidates,
       activeKvCandidateId: first.id,
       selectedKvId: null,
@@ -2266,14 +2299,8 @@ export default function App() {
       toast('请先选择并设置主KV');
       return;
     }
-    setWorkspacePreviewMaterial(null);
-    setState((prev) => ({
-      ...prev,
-      tabs: prev.tabs.includes('meeting-template-brief')
-        ? prev.tabs
-        : [...prev.tabs, 'meeting-template-brief'],
-      active: 'meeting-template-brief',
-    }));
+    setMeetingMaterials((prev) => ({ ...prev, templatesReady: true, templateTab: 'poster' }));
+    openMeetingTemplates('poster');
   };
 
   const confirmMeetingKvAndOpenTemplateBrief = (candidateId: string) => {
@@ -2284,15 +2311,10 @@ export default function App() {
       activeKvCandidateId: candidateId,
       selectedKvId: candidateId,
       mainKvUrl: candidate.url,
+      templatesReady: true,
+      templateTab: 'poster',
     }));
-    setWorkspacePreviewMaterial(null);
-    setState((prev) => ({
-      ...prev,
-      tabs: prev.tabs.includes('meeting-template-brief')
-        ? prev.tabs
-        : [...prev.tabs, 'meeting-template-brief'],
-      active: 'meeting-template-brief',
-    }));
+    openMeetingTemplates('poster');
     toast(`已将「${candidate.title}」设置为主KV`);
   };
 
@@ -2891,7 +2913,7 @@ export default function App() {
     openMeetingSessions({ tab: 'info' });
     addMsg(
       'ai',
-      `已创建场次「${nextName}」。请下载会议信息模板并上传，无需手动填写。上传后将自动生成会议海报和串场PPT。`,
+      `已创建场次「${nextName}」。请下载会议信息模板并上传，无需手动填写。解析成功并选择海报尺寸后，再生成会议海报或会议串场PPT。`,
       '本地 Mock',
       ['上传会议信息', '查看会议模板']
     );
@@ -2909,12 +2931,9 @@ export default function App() {
   const applyMeetingInfoToCurrent = (info: MeetingSessionInfo, source: 'upload' | 'fill') => {
     const session = currentMeetingSession(meetingMaterials);
     const hasExistingOutputs = Boolean(session?.posterReady || session?.pptReady);
-    const templateChanged = Boolean(
-      session?.posterUpdateReasons?.includes('template') ||
-      session?.pptUpdateReasons?.includes('template')
-    );
     updateCurrentMeetingSession({
       info,
+      infoParsed: source === 'upload' ? true : session?.infoParsed,
       ...(source === 'upload' && hasExistingOutputs
         ? {
             posterUpdateReasons: addMeetingUpdateReason(session?.posterUpdateReasons, 'info'),
@@ -2925,47 +2944,17 @@ export default function App() {
     setMeetingMaterials((prev) => ({
       ...prev,
       infoFormOpen: false,
-      sessionTab: hasExistingOutputs && prev.sessionTab === 'ppt' ? 'ppt' : 'poster',
+      sessionTab: 'info',
       showAllSessions: false,
     }));
     setMeetingInfoDraft(null);
-    if (source === 'upload' && session) {
-      if (hasExistingOutputs) {
-        setMeetingReuploadConfirm({ sessionId: session.id, info, templateChanged });
-        addMsg(
-          'ai',
-          templateChanged
-            ? '会议信息上传成功。检测到会议模板和会议信息均已更新，是否基于最新内容重新生成会议物料？'
-            : '会议信息上传成功。是否根据新上传的信息重新生成会议海报和串场PPT？',
-          '本地 Mock'
-        );
-        return;
-      }
-      updateCurrentMeetingSession({
-        info,
-        posterReady: true,
-        posterUrl: buildSessionPosterDataUrl(session.name, info),
-        posterUpdateReasons: [],
-        pptReady: true,
-        pptSlides: buildSessionPptSlides(session.name, info),
-        pptUpdateReasons: [],
-      });
-      setMeetingMaterials((prev) => ({ ...prev, sessionTab: 'poster' }));
-      addMsg(
-        'ai',
-        '会议信息上传成功，已自动生成会议海报和串场PPT。',
-        '本地 Mock',
-        ['重新上传会议信息', '新增场次']
-      );
-      return;
-    }
     addMsg(
       'ai',
       source === 'upload'
-        ? '已上传并写入当前场次会议信息。'
+        ? '会议信息解析成功。请选择海报尺寸后，再生成会议海报或会议串场PPT。'
         : '已保存当前场次会议信息。',
       '本地 Mock',
-      ['生成会议海报', '生成串场PPT']
+      ['生成会议海报', '生成会议串场PPT']
     );
   };
 
@@ -3295,7 +3284,9 @@ export default function App() {
     };
     setLibrary((prev) => [item, ...prev]);
     setAddedLiteratureIds((prev) => [...prev, article.id]);
-    toast(`已添加「${article.title}」到${cat}`);
+    enqueueUploadingMaterial(item);
+    setPickerOpen(false);
+    toast(`正在添加「${article.title}」`);
   };
 
   const applyLongImageProduct = (templateId?: string | null, opts?: { switched?: boolean }) => {
@@ -3567,26 +3558,20 @@ export default function App() {
     }
 
     if (!demoScriptBusy && isPosterWorkspace && isGenerateMeetingTemplatesIntent(text)) {
-      if (!meetingMaterials.mainKvUrl) {
+      const kvCandidate =
+        meetingMaterials.kvCandidates.find(
+          (item) => item.id === meetingMaterials.selectedKvId || item.id === meetingMaterials.activeKvCandidateId
+        ) || meetingMaterials.kvCandidates[0];
+      const kvUrl = meetingMaterials.mainKvUrl || kvCandidate?.url;
+      if (!kvUrl) {
         addMsg('ai', '请先生成并确认一个主KV方案。', '本地 Mock', ['生成主KV']);
-        return true;
-      }
-      if (
-        !meetingMaterials.templateBrief.visualReferences.length ||
-        !meetingMaterials.templateBrief.requirement.trim() ||
-        !meetingMaterials.templateBrief.posterRatio
-      ) {
-        addMsg(
-          'ai',
-          '请先上传会议物料模板视觉参考，并填写模板需求和会议海报比例。',
-          '本地 Mock'
-        );
-        openMeetingTemplateBrief();
         return true;
       }
       const wantsPpt = /串场PPT模板/.test(text.replace(/\s+/g, ''));
       setMeetingMaterials((prev) => ({
         ...prev,
+        mainKvUrl: prev.mainKvUrl || kvUrl,
+        selectedKvId: prev.selectedKvId || kvCandidate?.id || prev.activeKvCandidateId,
         templatesReady: true,
         templateTab: wantsPpt ? 'ppt' : 'poster',
       }));
@@ -3684,9 +3669,14 @@ export default function App() {
         setAddMeetingSessionOpen(true);
         return true;
       }
-      if (!session.info) {
+      if (!session.infoParsed || !session.info) {
         openMeetingSessions({ tab: 'info' });
-        addMsg('ai', '请先下载会议信息模板并上传，再生成会议海报。', '本地 Mock', ['上传会议信息']);
+        addMsg('ai', '请先下载会议信息模板并上传，解析成功后再生成会议海报。', '本地 Mock', ['上传会议信息']);
+        return true;
+      }
+      if (!session.posterRatio) {
+        openMeetingSessions({ tab: 'info' });
+        addMsg('ai', '请先选择海报尺寸，再生成会议海报。', '本地 Mock');
         return true;
       }
       const posterUrl = buildSessionPosterDataUrl(session.name, session.info);
@@ -3697,7 +3687,7 @@ export default function App() {
         'ai',
         '已基于系列主KV、海报模板和当前场次信息生成会议海报。您可以继续编辑海报，或生成本场会议的串场PPT。',
         '本地 Mock',
-        session.pptReady ? ['新增场次', '查看会议模板'] : ['生成串场PPT', '新增场次']
+        session.pptReady ? ['新增场次', '查看会议模板'] : ['生成会议串场PPT', '新增场次']
       );
       return true;
     }
@@ -3708,9 +3698,14 @@ export default function App() {
         addMsg('ai', '请先新增会议场次。', '本地 Mock', ['新增场次']);
         return true;
       }
-      if (!session.info) {
+      if (!session.infoParsed || !session.info) {
         openMeetingSessions({ tab: 'info' });
-        addMsg('ai', '请先下载会议信息模板并上传，再生成串场PPT。', '本地 Mock', ['上传会议信息']);
+        addMsg('ai', '请先下载会议信息模板并上传，解析成功后再生成会议串场PPT。', '本地 Mock', ['上传会议信息']);
+        return true;
+      }
+      if (!session.posterRatio) {
+        openMeetingSessions({ tab: 'info' });
+        addMsg('ai', '请先选择海报尺寸，再生成会议串场PPT。', '本地 Mock');
         return true;
       }
       updateCurrentMeetingSession({
@@ -5073,7 +5068,9 @@ export default function App() {
   }
 
   const commitPptOutline = (outline: PptOutline) => {
-    setPptOutline(resolveOutlineCitations(outline, library));
+    setPptOutline(
+      resolveOutlineCitations(attachStorylinePointsToOutline(outline, storylineContent), library)
+    );
   };
 
   const generatePptDirectly = async (
@@ -7174,13 +7171,24 @@ export default function App() {
   const handleMaterialPicked = (item: PickedMaterial) => {
     const now = Date.now();
     const fromInsightUpload = topicInsightUploadPendingRef.current && item.cat === HOT_INSIGHT_CATEGORY;
-    const showInUploadQueue =
-      pickerTarget === 'workspace' &&
-      pickerMode === 'reference' &&
-      Boolean(item.fileName) &&
-      !item.cms &&
-      !fromInsightUpload;
+    const showInUploadQueue = pickerTarget === 'workspace' && !fromInsightUpload;
     if (item.existingId !== undefined) {
+      const queuedItem: LibraryItem = {
+        id: item.existingId,
+        cat: item.cat,
+        title: item.title,
+        meta: item.meta,
+        cms: item.cms,
+        def: false,
+        referenced: true,
+        addedAt: now,
+        fileName: item.fileName,
+        contentType: item.contentType,
+        contentText: item.contentText,
+        contentUrl: item.contentUrl,
+        mimeType: item.mimeType,
+        validUntil: item.validUntil,
+      };
       setLibrary((prev) =>
         prev.map((entry) => (entry.id === item.existingId ? { ...entry, referenced: true } : entry))
       );
@@ -7191,7 +7199,9 @@ export default function App() {
         addTab('brief');
         setContentBrief((prev) => prev ?? emptyContentBrief());
       }
-      toast(`已添加「${item.title}」到${item.cat}`);
+      if (showInUploadQueue) enqueueUploadingMaterial(queuedItem);
+      if (showInUploadQueue) setPickerOpen(false);
+      toast(showInUploadQueue ? `正在添加「${item.title}」` : `已添加「${item.title}」到${item.cat}`);
       return;
     }
     const libraryItem: LibraryItem = {
@@ -7211,15 +7221,8 @@ export default function App() {
       validUntil: item.validUntil,
     };
     setLibrary((prev) => [libraryItem, ...prev]);
-    if (showInUploadQueue) {
-      setUploadingMaterials((prev) => [
-        libraryItem,
-        ...prev.filter((entry) => entry.id !== libraryItem.id),
-      ]);
-      window.setTimeout(() => {
-        setUploadingMaterials((prev) => prev.filter((entry) => entry.id !== libraryItem.id));
-      }, 3200);
-    }
+    if (showInUploadQueue) enqueueUploadingMaterial(libraryItem);
+    if (showInUploadQueue) setPickerOpen(false);
     if (item.cat === 'Brief') {
       lockFlowEntry('brief');
       addTab('brief');
@@ -8756,16 +8759,7 @@ export default function App() {
                       setPickerOpen(true);
                     }}
                     onPreview={setPreviewMaterial}
-                    onCancelUpload={(item) => {
-                      setUploadingMaterials((prev) =>
-                        prev.filter((entry) => entry.id !== item.id)
-                      );
-                      setLibrary((prev) => prev.filter((entry) => entry.id !== item.id));
-                      const pill = materialAttachmentPill(item);
-                      setAttachments((prev) => prev.filter((entry) => entry !== pill));
-                      if (previewMaterial?.id === item.id) setPreviewMaterial(null);
-                      toast(`已删除上传「${item.fileName || item.title}」`);
-                    }}
+                    onCancelUpload={cancelUploadingMaterial}
                     onRemove={(item) => {
                       setLibrary((prev) =>
                         prev.map((entry) =>
@@ -9878,10 +9872,6 @@ export default function App() {
                     return;
                   }
                   activateMeetingKv(candidateId);
-                  return;
-                }
-                if (step.id === 'meetingTemplateBrief') {
-                  openMeetingTemplateBrief();
                   return;
                 }
                 if (step.id === 'meetingTemplates') {
@@ -11298,11 +11288,7 @@ function WorkspaceRightPanel({
           : Boolean(hasConferenceKv || posterPlanC?.mainKvUrl),
     poster: Boolean(hasConferencePoster),
     mobile: Boolean(hasConferenceMobile),
-    meetingTemplateBrief: Boolean(
-      meetingMaterials?.templateBrief.visualReferences.length &&
-        meetingMaterials.templateBrief.requirement.trim() &&
-        meetingMaterials.templateBrief.posterRatio
-    ),
+    meetingTemplateBrief: Boolean(meetingMaterials?.templatesReady),
     meetingTemplates: Boolean(meetingMaterials?.templatesReady),
     sessionMaterials: Boolean(meetingMaterials?.sessions.length),
     posterBrief: Boolean(
@@ -12212,6 +12198,14 @@ function WorkspaceRightPanel({
               onMeetingMaterialsChange?.((prev) => ({ ...prev, showAllSessions: true }))
             }
             onTabChange={(tab) => onMeetingMaterialsChange?.((prev) => ({ ...prev, sessionTab: tab }))}
+            onPosterRatioChange={(ratio) => {
+              onMeetingMaterialsChange?.((prev) => ({
+                ...prev,
+                sessions: prev.sessions.map((session) =>
+                  session.id === prev.currentSessionId ? { ...session, posterRatio: ratio } : session
+                ),
+              }));
+            }}
             onUploadInfo={() => {
               const session = currentMeetingSession(materials);
               if (!session) {
@@ -12235,7 +12229,7 @@ function WorkspaceRightPanel({
               onMeetingMaterialsChange?.((prev) => ({ ...prev, infoFormOpen: false }));
             }}
             onGeneratePoster={() => fillQuick('生成会议海报')}
-            onGeneratePpt={() => fillQuick('生成串场PPT')}
+            onGeneratePpt={() => fillQuick('生成会议串场PPT')}
             onRegeneratePoster={() => onRegenerateCurrentMeetingArtifact?.('poster')}
             onRegeneratePpt={() => onRegenerateCurrentMeetingArtifact?.('ppt')}
             onEditPoster={() => {
@@ -13008,6 +13002,7 @@ function WorkspaceRightPanel({
               reviewerMode={reviewerMode}
               onSaveOutlineReview={onSavePptOutlineReview}
               showGenerateFooter={false}
+              storylineContent={storylineContent}
             />
             {!reviewerMode && (
               <div className="ppt-outline-tab-foot">
@@ -13654,8 +13649,7 @@ function WorkspaceRightPanel({
               onConfirmAndContinue={(candidateId) =>
                 onConfirmMeetingKvAndOpenTemplateBrief?.(candidateId)
               }
-              combinedActionLabel="设为主KV并填写模板需求"
-              onEdit={(imageUrl) => onOpenImageEditor(imageUrl, 0)}
+              combinedActionLabel="设为主KV并生成会议模板"
             />
           ) : posterPlanBMode && (posterPlanB?.kvCandidates.length || 0) > 0 ? (
             <PosterPlanBKvGallery
@@ -13682,11 +13676,14 @@ function WorkspaceRightPanel({
                     ? onOpenPosterPlanCList?.()
                     : fillQuick('生成会议模板')
               }
-              onEdit={() =>
-                onOpenImageEditor(
-                  previewFile?.contentUrl || MOCK_KV_VERSIONS.current.dataUrl,
-                  0
-                )
+              onEdit={
+                conferenceMeetingMode
+                  ? undefined
+                  : () =>
+                      onOpenImageEditor(
+                        previewFile?.contentUrl || MOCK_KV_VERSIONS.current.dataUrl,
+                        0
+                      )
               }
               nextActionLabel={
                 posterPlanBMode
