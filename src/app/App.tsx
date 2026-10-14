@@ -219,6 +219,7 @@ import {
   omitsBriefLiterature,
   omitsLiteratureRecommend,
   omitsStoryline,
+  skippedFlowMessage,
   omitsTopicInsight,
   type ContentFlowEntry,
   type ContentFlowProgress,
@@ -309,6 +310,8 @@ import {
   shouldPreferVisualFlow,
   type HomeEntryContext,
   type HomeEntryIntent,
+  type HomeEntrySource,
+  type ProductFormat,
 } from '@/app/components/homeGuide';
 import {
   analyzeBrief,
@@ -413,39 +416,47 @@ const HOME_WORKFLOW_ACTIONS: {
   title: string;
   description: string;
   scenes?: string[];
+  capability?: string;
   intent: HomeEntryIntent;
   prompt: string;
   Icon: typeof Presentation;
   art: 'case' | 'promo' | 'evidence' | 'poster' | 'insight' | 'more';
+  mainStartsTask?: boolean;
+  subentries?: {
+    label: string;
+    intent: HomeEntryIntent;
+    source: HomeEntrySource;
+    productFormat?: ProductFormat;
+  }[];
 }[] = [
   {
     title: '病例内容',
     description: '围绕真实诊疗场景梳理病例叙事，生成可用于科室沟通的结构化内容。',
-    scenes: ['病例PPT', '病例推文', '病例卡'],
     intent: 'ppt',
     prompt: '生成病例内容',
     Icon: Stethoscope,
     art: 'case',
+    mainStartsTask: false,
+    subentries: [
+      { label: '病历PPT', intent: 'ppt', source: 'case', productFormat: 'PPT' },
+      { label: '病历推文', intent: 'ppt', source: 'case', productFormat: '推文' },
+      { label: '病历卡', intent: 'ppt', source: 'case', productFormat: '长图' },
+    ],
   },
   {
     title: '医学与推广内容',
     description: '结合品牌与合规要求，生成面向医生或公众的医学传播与推广素材。',
-    scenes: [
-      '医学PPT-HCP',
-      '医学推文-HCP',
-      '医学内容一图读懂-HCP',
-      '市场推广PPT',
-      '医学PPT-患者',
-      '医学推文-患者',
-      '医学内容一图读懂-患者',
-      '内部培训PPT',
-      '内部培训一图读懂',
-      '话术总结',
-    ],
+    capability: '可做：话题洞察、任务提案、医学与推广 PPT、推文、一图读懂、话术总结。',
     intent: 'copy',
     prompt: '生成医学与推广内容',
     Icon: Megaphone,
     art: 'promo',
+    mainStartsTask: false,
+    subentries: [
+      { label: 'PPT', intent: 'copy', source: 'promo', productFormat: 'PPT' },
+      { label: '推文', intent: 'copy', source: 'promo', productFormat: '推文' },
+      { label: '一图读懂', intent: 'copy', source: 'promo', productFormat: '长图' },
+    ],
   },
   {
     title: '学术证据解读',
@@ -472,6 +483,10 @@ const HOME_WORKFLOW_ACTIONS: {
     prompt: '制作海报与图片',
     Icon: ImagePlus,
     art: 'insight',
+    subentries: [
+      { label: '系列海报', intent: 'visual', source: 'poster-plan-b' },
+      { label: '自由生成海报', intent: 'visual', source: 'insight' },
+    ],
   },
   {
     title: '视频生成',
@@ -515,7 +530,7 @@ const tabNames = {
   insight: '海报与图片',
   'topic-recommendation': '话题推荐',
   literature: '推荐文献',
-  storyline: '故事线',
+  storyline: '故事线/大纲',
   copy: '文案生成',
   'rich-text': '图文',
   team: '团队修改',
@@ -526,7 +541,7 @@ const tabNames = {
   'video-hero': '主视觉参考',
   'video-storyboard': '分镜脚本',
   'video-frames': '分镜参考图',
-  'ppt-outline': '页面级大纲',
+  'ppt-outline': '页面脚本',
   'article-outline': '推文大纲',
   'long-image-outline': '长图大纲',
   'ppt-design': 'PPT生成',
@@ -1756,9 +1771,19 @@ export default function App() {
   const newTask = (
     _prompt = '',
     intent: HomeEntryIntent = 'general',
-    source?: HomeEntryContext['source']
+    source?: HomeEntryContext['source'],
+    extras?: { productFormat?: ProductFormat; entryLabel?: string }
   ) => {
-    startFromHome({ intent, source }, '');
+    const nextSource = source === 'poster-plan-c' ? 'insight' : source;
+    startFromHome(
+      {
+        intent,
+        source: nextSource,
+        productFormat: extras?.productFormat,
+        entryLabel: extras?.entryLabel,
+      },
+      ''
+    );
     setProductPickerOpen(true);
   };
 
@@ -1788,7 +1813,7 @@ export default function App() {
         active: 'brief',
         brief: true,
       }));
-      setTaskTitle(`${product.name}·海报生成 Plan B`);
+      setTaskTitle(`${product.name}·系列海报`);
     } else if (entryContext?.source === 'poster-plan-c') {
       setFlowEntry(null);
       setPosterPlanC(emptyPosterPlanC());
@@ -1804,6 +1829,10 @@ export default function App() {
         posterPlanC: false,
       }));
       setTaskTitle(`${product.name}·海报生成 Plan C`);
+    } else if (entryContext?.source === 'case' && entryContext.entryLabel) {
+      setTaskTitle(`${product.name}·${entryContext.entryLabel}`);
+    } else if (entryContext?.source === 'promo' && entryContext.entryLabel) {
+      setTaskTitle(`${product.name}·${entryContext.entryLabel}`);
     } else if (entryContext?.source === 'more' || entryContext?.intent === 'video') {
       setFlowEntry('video');
       setVideoStudio(emptyVideoStudio(product.name));
@@ -3060,7 +3089,10 @@ export default function App() {
   const GENERATED_BRIEF_ID = -4100;
 
   const syncBriefToLibrary = (brief: ContentBrief) => {
-    const text = formatContentBriefText(brief, entryContext?.source === 'evidence' ? 'evidence' : 'default');
+    const text = formatContentBriefText(
+      brief,
+      entryContext?.source === 'evidence' || entryContext?.source === 'case' ? 'evidence' : 'default'
+    );
     const item: LibraryItem = {
       id: GENERATED_BRIEF_ID,
       cat: 'Brief',
@@ -3082,8 +3114,10 @@ export default function App() {
       userPrompt: userNote || getRecentUserContext(),
       insightText: topicInsightReportText || insightSummary,
       analysis,
-      variant: entryContext?.source === 'evidence' ? 'evidence' : 'default',
+      variant:
+        entryContext?.source === 'evidence' || entryContext?.source === 'case' ? 'evidence' : 'default',
     });
+    if (entryContext?.productFormat) brief.format = entryContext.productFormat;
     setContentBrief(brief);
     syncBriefToLibrary(brief);
     setFlowEntry((prev) => nextLockedFlowEntry(prev, 'brief'));
@@ -3099,7 +3133,13 @@ export default function App() {
         ? '已基于当前话题洞察报告生成任务提案。请点击「任务提案」查看，支持在线编辑与一键复制。'
         : '已根据你的提示词生成任务提案。请点击「任务提案」查看，支持在线编辑与一键复制。',
       '任务提案',
-      ['查看任务提案', '生成PPT大纲', '检索文献']
+      [
+        '查看任务提案',
+        entryContext?.productFormat
+          ? outlineCommandFromEvidenceFormat(entryContext.productFormat)
+          : '生成PPT大纲',
+        '检索文献',
+      ]
     );
   };
 
@@ -3125,7 +3165,10 @@ export default function App() {
       }));
       return;
     }
-    setContentBrief((prev) => prev ?? emptyContentBrief());
+    setContentBrief((prev) => {
+      const base = prev ?? emptyContentBrief();
+      return entryContext?.productFormat ? { ...base, format: entryContext.productFormat } : base;
+    });
     setFlowEntry((prev) => nextLockedFlowEntry(prev, 'brief'));
     setState((prev) => ({
       ...prev,
@@ -3140,16 +3183,19 @@ export default function App() {
       toast('请先填写任务提案');
       return;
     }
-    const missing = missingRequiredBriefLabels(contentBrief, 'evidence');
+    const missing = missingRequiredBriefLabels(contentBrief, 'evidence').filter(
+      (label) => !(entryContext?.productFormat && label === '形式')
+    );
     if (missing.length) {
       toast(`请先填写必填项：${missing.join('、')}`);
       return;
     }
-    if (!['PPT', '推文', '长图', '图'].includes(contentBrief.format.trim())) {
+    const format = (entryContext?.productFormat || contentBrief.format).trim();
+    if (!['PPT', '推文', '长图', '图'].includes(format)) {
       toast('请先选择形式：PPT、推文或长图');
       return;
     }
-    fillQuick(outlineCommandFromEvidenceFormat(contentBrief.format));
+    fillQuick(outlineCommandFromEvidenceFormat(format));
   };
 
   const literatureQueryFromPage = (prefer: 'brief' | 'storyline' | 'auto' = 'auto') => {
@@ -3170,7 +3216,7 @@ export default function App() {
       return;
     }
     if (omitsLiteratureRecommend(flowEntry, entryContext?.source)) {
-      toast('学术证据解读不包含相关文献推荐步骤');
+      toast(skippedFlowMessage(flowEntry, entryContext?.source, 'literature'));
       return;
     }
 
@@ -3189,7 +3235,7 @@ export default function App() {
     } else if (source === 'storyline') {
       query = literatureQueryFromPage('storyline');
       if (!query) {
-        toast('请先填写故事线或任务提案');
+        toast('请先填写故事线/大纲或任务提案');
         return;
       }
     } else {
@@ -3207,7 +3253,7 @@ export default function App() {
 
   const openStoryline = () => {
     if (omitsStoryline(flowEntry, entryContext?.source)) {
-      toast('学术证据解读不包含故事线步骤');
+      toast(skippedFlowMessage(flowEntry, entryContext?.source, 'storyline'));
       return;
     }
     setStorylineContent((prev) => prev.trim() || STORYLINE_MOCK_TEXT);
@@ -3354,15 +3400,19 @@ export default function App() {
       omitsLiteratureRecommend(flowEntry, entryContext?.source) &&
       /检索文献|搜索文献|文献检索|search\s*literature|find\s*papers/i.test(text)
     ) {
-      toast('学术证据解读不包含相关文献推荐步骤');
+      toast(skippedFlowMessage(flowEntry, entryContext?.source, 'literature'));
       return true;
     }
 
     if (
       omitsStoryline(flowEntry, entryContext?.source) &&
-      (text.trim() === '生成故事线' || text.trim() === '下一步：生成故事线' || text.trim() === '下一步：相关文献推荐')
+      (text.trim() === '生成故事线' ||
+        text.trim() === '生成故事线/大纲' ||
+        text.trim() === '下一步：生成故事线' ||
+        text.trim() === '下一步：生成故事线/大纲' ||
+        text.trim() === '下一步：相关文献推荐')
     ) {
-      toast('学术证据解读不包含故事线步骤');
+      toast(skippedFlowMessage(flowEntry, entryContext?.source, 'storyline'));
       return true;
     }
 
@@ -3387,7 +3437,12 @@ export default function App() {
       return true;
     }
 
-    if (text.trim() === '生成故事线' || text.trim() === '下一步：生成故事线') {
+    if (
+      text.trim() === '生成故事线' ||
+      text.trim() === '生成故事线/大纲' ||
+      text.trim() === '下一步：生成故事线' ||
+      text.trim() === '下一步：生成故事线/大纲'
+    ) {
       openStoryline();
       return true;
     }
@@ -5436,9 +5491,14 @@ export default function App() {
       runWorkspaceMockCommand(text);
       return;
     }
-    if (text === '生成故事线' || text === '下一步：生成故事线') {
+    if (
+      text === '生成故事线' ||
+      text === '生成故事线/大纲' ||
+      text === '下一步：生成故事线' ||
+      text === '下一步：生成故事线/大纲'
+    ) {
       if (omitsStoryline(flowEntry, entryContext?.source)) {
-        toast('学术证据解读不包含故事线步骤');
+        toast(skippedFlowMessage(flowEntry, entryContext?.source, 'storyline'));
         return;
       }
       openStoryline();
@@ -5450,7 +5510,7 @@ export default function App() {
     }
     if (text === '下一步：相关文献推荐') {
       if (omitsStoryline(flowEntry, entryContext?.source)) {
-        toast('学术证据解读不包含故事线步骤');
+        toast(skippedFlowMessage(flowEntry, entryContext?.source, 'storyline'));
         return;
       }
       openStoryline();
@@ -6816,7 +6876,7 @@ export default function App() {
           id: -1,
           cat: '生成图片',
           title: request.title,
-          meta: 'Plan B 海报',
+          meta: '系列海报',
           cms: false,
           def: false,
           addedAt: Date.now(),
@@ -8136,139 +8196,167 @@ export default function App() {
 
                   <div className="home-inspire-grid relative z-10 mt-6 animate-fade-up [animation-delay:120ms]">
                     <div className="home-inspire-left">
-                      <button
-                        type="button"
-                        className="home-plan-b-entry"
-                        onClick={() => newTask('海报生成 Plan B', 'visual', 'poster-plan-b')}
-                      >
-                        <span className="home-plan-b-entry-icon">
-                          <ImagePlus className="h-3.5 w-3.5" strokeWidth={2.4} />
-                        </span>
-                        <span>
-                          <strong>海报生成 Plan B</strong>
-                          <small>基于主KV快速延展新海报</small>
-                        </span>
-                        <ArrowUpRight className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        className="home-plan-b-entry home-plan-c-entry"
-                        onClick={() => newTask('海报生成 Plan C', 'visual', 'poster-plan-c')}
-                      >
-                        <span className="home-plan-b-entry-icon">
-                          <Sparkles className="h-3.5 w-3.5" strokeWidth={2.4} />
-                        </span>
-                        <span>
-                          <strong>海报生成 Plan C</strong>
-                          <small>任务提案后灵活选择生成路线</small>
-                        </span>
-                        <ArrowUpRight className="h-3.5 w-3.5" />
-                      </button>
                       <div className="home-inspire-actions">
-                        {HOME_WORKFLOW_ACTIONS.map(({ title, description, scenes, intent, prompt, Icon, art }) => (
+                        {HOME_WORKFLOW_ACTIONS.map(({ title, description, scenes, capability, intent, prompt, Icon, art, mainStartsTask = true, subentries }) => {
+                          const actionInner = (
+                            <>
+                          <span className="home-inspire-action-icon">
+                            <Icon className="h-4 w-4" strokeWidth={2.4} />
+                          </span>
+                          {mainStartsTask ? (
+                            <ArrowUpRight className="home-inspire-action-arrow h-4 w-4" />
+                          ) : null}
+                          <div className="home-inspire-action-body">
+                            <strong>{title}</strong>
+                            {capability ? (
+                              <span className="home-inspire-action-desc">{capability}</span>
+                            ) : scenes?.length ? (
+                              <span className="home-inspire-action-scenes">
+                                {scenes.map((scene) => (
+                                  <em key={scene}>{scene}</em>
+                                ))}
+                              </span>
+                            ) : (
+                              <span className="home-inspire-action-desc">{description}</span>
+                            )}
+                            {mainStartsTask ? (
+                              <span className="home-inspire-action-cta">
+                                新建任务
+                                <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={2.4} />
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className={`home-inspire-action-art art-${art}`} aria-hidden="true">
+                            {art === 'case' && (
+                              <div className="home-inspire-deco is-case">
+                                <div className="home-inspire-deco-back" />
+                                <div className="home-inspire-deco-front">
+                                  <span className="deco-case-clip" />
+                                  <span className="deco-line w-80" />
+                                  <span className="deco-line w-65" />
+                                  <span className="deco-pulse" />
+                                </div>
+                              </div>
+                            )}
+                            {art === 'promo' && (
+                              <div className="home-inspire-deco is-promo">
+                                <div className="home-inspire-deco-back" />
+                                <div className="home-inspire-deco-front">
+                                  <span className="deco-promo-badge" />
+                                  <span className="deco-line w-95" />
+                                  <span className="deco-line w-70" />
+                                  <span className="deco-line w-85" />
+                                </div>
+                              </div>
+                            )}
+                            {art === 'evidence' && (
+                              <div className="home-inspire-deco is-evidence">
+                                <div className="home-inspire-deco-back" />
+                                <div className="home-inspire-deco-front">
+                                  <span className="deco-ppt-rule is-accent" />
+                                  <div className="deco-ppt-chart">
+                                    <i style={{ height: '38%' }} />
+                                    <i style={{ height: '64%' }} />
+                                    <i style={{ height: '52%' }} />
+                                    <i style={{ height: '86%' }} />
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                            {art === 'poster' && (
+                              <div className="home-inspire-deco is-poster">
+                                <div className="home-inspire-deco-back" />
+                                <div className="home-inspire-deco-front">
+                                  <div className="deco-landscape is-poster">
+                                    <span className="deco-sun" />
+                                    <span className="deco-poster-band" />
+                                    <span className="deco-peak is-far" />
+                                    <span className="deco-peak is-near" />
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                            {art === 'insight' && (
+                              <div className="home-inspire-deco is-insight">
+                                <div className="home-inspire-deco-back" />
+                                <div className="home-inspire-deco-front">
+                                  <span className="deco-spark is-a" />
+                                  <span className="deco-spark is-b" />
+                                  <span className="deco-trend" />
+                                  <span className="deco-line w-70" />
+                                </div>
+                              </div>
+                            )}
+                            {art === 'more' && (
+                              <div className="home-inspire-deco is-more">
+                                <div className="home-inspire-deco-back" />
+                                <div className="home-inspire-deco-front">
+                                  <div className="deco-tiles">
+                                    <i />
+                                    <i />
+                                    <i />
+                                    <i />
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                            </>
+                          );
+                          if (subentries?.length) {
+                            const subentryRow = (
+                              <div className="home-card-subentries">
+                                {subentries.map((entry) => (
+                                  <button
+                                    key={entry.label}
+                                    type="button"
+                                    className="home-series-poster-entry"
+                                    onClick={() =>
+                                      newTask(entry.label, entry.intent, entry.source, {
+                                        productFormat: entry.productFormat,
+                                        entryLabel: entry.label,
+                                      })
+                                    }
+                                  >
+                                    <span className="home-series-poster-entry-icon">
+                                      <Icon className="h-3 w-3" strokeWidth={2.4} />
+                                    </span>
+                                    <strong>{entry.label}</strong>
+                                  </button>
+                                ))}
+                              </div>
+                            );
+                            return (
+                              <div
+                                key={title}
+                                className={`home-inspire-action home-task-card art-${art} has-subentry`}
+                              >
+                                {mainStartsTask ? (
+                                  <button
+                                    type="button"
+                                    className="home-inspire-action-main"
+                                    onClick={() => newTask(prompt, intent, art)}
+                                  >
+                                    {actionInner}
+                                  </button>
+                                ) : (
+                                  <div className="home-inspire-action-main is-static">{actionInner}</div>
+                                )}
+                                {subentryRow}
+                              </div>
+                            );
+                          }
+                          return (
                           <button
                             key={title}
                             type="button"
                             className={`home-inspire-action home-task-card art-${art}`}
                             onClick={() => newTask(prompt, intent, art)}
                           >
-                            <span className="home-inspire-action-icon">
-                              <Icon className="h-4 w-4" strokeWidth={2.4} />
-                            </span>
-                            <ArrowUpRight className="home-inspire-action-arrow h-4 w-4" />
-                            <div className="home-inspire-action-body">
-                              <strong>{title}</strong>
-                              {scenes?.length ? (
-                                <span className="home-inspire-action-scenes">
-                                  {scenes.map((scene) => (
-                                    <em key={scene}>{scene}</em>
-                                  ))}
-                                </span>
-                              ) : (
-                                <span className="home-inspire-action-desc">{description}</span>
-                              )}
-                              <span className="home-inspire-action-cta">
-                                新建任务
-                                <ArrowUpRight className="h-3.5 w-3.5" strokeWidth={2.4} />
-                              </span>
-                            </div>
-                            <div className={`home-inspire-action-art art-${art}`} aria-hidden="true">
-                              {art === 'case' && (
-                                <div className="home-inspire-deco is-case">
-                                  <div className="home-inspire-deco-back" />
-                                  <div className="home-inspire-deco-front">
-                                    <span className="deco-case-clip" />
-                                    <span className="deco-line w-80" />
-                                    <span className="deco-line w-65" />
-                                    <span className="deco-pulse" />
-                                  </div>
-                                </div>
-                              )}
-                              {art === 'promo' && (
-                                <div className="home-inspire-deco is-promo">
-                                  <div className="home-inspire-deco-back" />
-                                  <div className="home-inspire-deco-front">
-                                    <span className="deco-promo-badge" />
-                                    <span className="deco-line w-95" />
-                                    <span className="deco-line w-70" />
-                                    <span className="deco-line w-85" />
-                                  </div>
-                                </div>
-                              )}
-                              {art === 'evidence' && (
-                                <div className="home-inspire-deco is-evidence">
-                                  <div className="home-inspire-deco-back" />
-                                  <div className="home-inspire-deco-front">
-                                    <span className="deco-ppt-rule is-accent" />
-                                    <div className="deco-ppt-chart">
-                                      <i style={{ height: '38%' }} />
-                                      <i style={{ height: '64%' }} />
-                                      <i style={{ height: '52%' }} />
-                                      <i style={{ height: '86%' }} />
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-                              {art === 'poster' && (
-                                <div className="home-inspire-deco is-poster">
-                                  <div className="home-inspire-deco-back" />
-                                  <div className="home-inspire-deco-front">
-                                    <div className="deco-landscape is-poster">
-                                      <span className="deco-sun" />
-                                      <span className="deco-poster-band" />
-                                      <span className="deco-peak is-far" />
-                                      <span className="deco-peak is-near" />
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-                              {art === 'insight' && (
-                                <div className="home-inspire-deco is-insight">
-                                  <div className="home-inspire-deco-back" />
-                                  <div className="home-inspire-deco-front">
-                                    <span className="deco-spark is-a" />
-                                    <span className="deco-spark is-b" />
-                                    <span className="deco-trend" />
-                                    <span className="deco-line w-70" />
-                                  </div>
-                                </div>
-                              )}
-                              {art === 'more' && (
-                                <div className="home-inspire-deco is-more">
-                                  <div className="home-inspire-deco-back" />
-                                  <div className="home-inspire-deco-front">
-                                    <div className="deco-tiles">
-                                      <i />
-                                      <i />
-                                      <i />
-                                      <i />
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
+                            {actionInner}
                           </button>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
 
@@ -9894,7 +9982,7 @@ export default function App() {
               }
               if (step.id === 'storyline') {
                 if (omitsStoryline(flowEntry, entryContext?.source)) {
-                  toast('学术证据解读不包含故事线步骤');
+                  toast(skippedFlowMessage(flowEntry, entryContext?.source, 'storyline'));
                   return;
                 }
                 openStoryline();
@@ -9919,7 +10007,7 @@ export default function App() {
             onOpenVisualReference={() => openMaterialPicker('workspace', '视觉参考')}
             onOpenAddEvidenceMaterial={() => {
               setPickerTarget('workspace');
-              setPickerCat('目标解读材料');
+              setPickerCat(entryContext?.source === 'case' ? '病例素材' : '目标解读材料');
               setPickerMode('reference');
               setPickerOpen(true);
             }}
@@ -11705,7 +11793,7 @@ function WorkspaceRightPanel({
       if (entryContext?.source === 'poster-plan-b') {
         return (
           <div className="detail-card content-flow-task-card meeting-welcome-card">
-            <h4>海报生成 Plan B 任务已创建</h4>
+            <h4>系列海报任务已创建</h4>
             <ol className="content-flow-start-steps">
               <li className="content-flow-start-step">
                 <span className="content-flow-start-index" aria-hidden>
@@ -11734,7 +11822,7 @@ function WorkspaceRightPanel({
           />
         );
       }
-      if (entryContext?.source === 'evidence') {
+      if (entryContext?.source === 'evidence' || entryContext?.source === 'case') {
         return (
           <div className="detail-card content-flow-task-card">
             <h4>任务已创建</h4>
@@ -11744,7 +11832,11 @@ function WorkspaceRightPanel({
                   1
                 </span>
                 <div className="content-flow-start-body">
-                  <p>您可以先上传目标解读文献，作为本次学术证据解读的依据，并填写任务提案。</p>
+                  <p>
+                    {entryContext?.source === 'case'
+                      ? '您请上传病例信息、点评示例、参考知识等相关内容，并填写任务提案。'
+                      : '您可以先上传目标解读文献，作为本次学术证据解读的依据，并填写任务提案。'}
+                  </p>
                   <div className="content-flow-start-actions">
                     <button type="button" className="btn primary" onClick={() => onOpenAddEvidenceMaterial?.()}>
                       添加材料
@@ -11838,9 +11930,7 @@ function WorkspaceRightPanel({
         <div className="detail-card content-flow-task-card">
           <h4>任务已创建</h4>
           <p className="small content-flow-task-hint">
-            {entryContext?.source === 'case'
-              ? '请您上传脱敏后的病例原始素材，如需生成专家点评，请上传过往专家点评示例'
-              : entryContext?.source === 'poster-plan-b'
+            {entryContext?.source === 'poster-plan-b'
                 ? '填写任务提案并生成主KV后，可上传文件或直接填写新海报信息。'
               : entryContext?.source === 'poster'
                 ? '从主KV开始制作系列会议海报与串场PPT。'
@@ -12111,7 +12201,16 @@ function WorkspaceRightPanel({
             value={storylineContent || ''}
             onChange={(text) => onStorylineChange?.(text)}
             onRecommendLiterature={() => onRecommendLiterature?.('storyline')}
-            onNext={() => fillQuick('生成PPT大纲')}
+            nextLabel={
+              entryContext?.productFormat === '推文'
+                ? '下一步：生成图文大纲'
+                : entryContext?.productFormat === '长图'
+                  ? '下一步：生成长图大纲'
+                  : '下一步：生成页面脚本'
+            }
+            onNext={() =>
+              fillQuick(outlineCommandFromEvidenceFormat(entryContext?.productFormat || 'PPT'))
+            }
           />
         );
 
@@ -12374,12 +12473,19 @@ function WorkspaceRightPanel({
         return (
           <ContentBriefPanel
             brief={contentBrief}
-            variant={entryContext?.source === 'evidence' ? 'evidence' : 'default'}
+            variant={
+              entryContext?.source === 'evidence' || entryContext?.source === 'case'
+                ? 'evidence'
+                : 'default'
+            }
+            omitFormat={entryContext?.source === 'case'}
             onChange={(next) => onContentBriefChange?.(next)}
             onUpload={() => onUploadBrief?.()}
             onRecommendLiterature={() => onRecommendLiterature?.('brief')}
             onNext={() =>
-              entryContext?.source === 'evidence' ? onGenerateEvidenceOutline?.() : onOpenStoryline?.()
+              entryContext?.source === 'evidence' || entryContext?.source === 'case'
+                ? onGenerateEvidenceOutline?.()
+                : onOpenStoryline?.()
             }
           />
         );
@@ -12972,7 +13078,7 @@ function WorkspaceRightPanel({
         if (!pptOutline) {
           return (
             <div className="detail-card">
-              <h4>页面级大纲</h4>
+              <h4>页面脚本</h4>
               <div className="small">
                 {reviewerMode
                   ? '当前任务中还没有 PPT 大纲，请联系内容运营。'
@@ -13579,6 +13685,7 @@ function WorkspaceRightPanel({
                   activeTab={state.active}
                   currentStepId={conferenceFlowCurrentId}
                   source={entryContext?.source}
+                  productFormat={entryContext?.productFormat}
                   onSelect={onSelectFlowStep}
                 />
               )}
@@ -13714,7 +13821,7 @@ function WorkspaceRightPanel({
                               : previewedImageAssetKey === 'mobile'
                                 ? '手机版海报'
                                 : posterPlanBMode
-                                  ? 'Plan B 海报'
+                                  ? '系列海报'
                                   : posterPlanCMode
                                     ? 'Plan C 海报/图片'
                                 : '会议海报'}

@@ -95,8 +95,8 @@ const CORE: Record<Exclude<ContentFlowStepId, 'pending'>, Omit<ContentFlowStep, 
   insight: { id: 'insight', label: '话题洞察', tab: 'insight' },
   brief: { id: 'brief', label: '任务提案', tab: 'brief' },
   literature: { id: 'literature', label: '相关文献推荐', tab: 'literature' },
-  storyline: { id: 'storyline', label: '故事线', tab: 'storyline' },
-  outline: { id: 'outline', label: '页面级大纲', tab: 'ppt-outline' },
+  storyline: { id: 'storyline', label: '故事线/大纲', tab: 'storyline' },
+  outline: { id: 'outline', label: '页面脚本', tab: 'ppt-outline' },
   articleOutline: { id: 'articleOutline', label: '推文大纲', tab: 'article-outline' },
   longImageOutline: { id: 'longImageOutline', label: '长图大纲', tab: 'long-image-outline' },
   ppt: { id: 'ppt', label: '生成PPT', tab: 'ppt-design' },
@@ -185,10 +185,10 @@ export function isEvidenceFlow(entry?: ContentFlowEntry | null, source?: string 
 }
 
 export function omitsBriefLiterature(
-  entry?: ContentFlowEntry | null,
-  source?: string | null
+  _entry?: ContentFlowEntry | null,
+  _source?: string | null
 ): boolean {
-  return entry === 'case' || source === 'case';
+  return false;
 }
 
 export function omitsTopicInsight(
@@ -198,15 +198,31 @@ export function omitsTopicInsight(
   return entry === 'case' || entry === 'evidence' || source === 'case' || source === 'evidence';
 }
 
+function isCaseFlow(entry?: ContentFlowEntry | null, source?: string | null): boolean {
+  return entry === 'case' || source === 'case';
+}
+
 export function omitsStoryline(entry?: ContentFlowEntry | null, source?: string | null): boolean {
-  return isEvidenceFlow(entry, source);
+  return isEvidenceFlow(entry, source) || isCaseFlow(entry, source);
 }
 
 export function omitsLiteratureRecommend(
   entry?: ContentFlowEntry | null,
   source?: string | null
 ): boolean {
-  return omitsBriefLiterature(entry, source) || isEvidenceFlow(entry, source);
+  return omitsBriefLiterature(entry, source) || isEvidenceFlow(entry, source) || isCaseFlow(entry, source);
+}
+
+export function skippedFlowMessage(
+  entry: ContentFlowEntry | null | undefined,
+  source: string | null | undefined,
+  kind: 'literature' | 'storyline'
+): string {
+  const caseFlow = isCaseFlow(entry, source);
+  if (kind === 'literature') {
+    return caseFlow ? '病例内容不包含相关文献推荐步骤' : '学术证据解读不包含相关文献推荐步骤';
+  }
+    return caseFlow ? '病例内容不包含故事线/大纲步骤' : '学术证据解读不包含故事线/大纲步骤';
 }
 
 const PENDING_FLOW_ENTRIES = new Set<ContentFlowEntry>(['case', 'evidence', 'promo', 'general']);
@@ -319,6 +335,13 @@ function pendingStart(): ContentFlowStep[] {
   return [step('create', true), emptySlot(), emptySlot(), step('team', true), step('submit', true)];
 }
 
+function stepsForProductFormat(format?: string | null): ContentFlowStep[] | null {
+  if (format === '推文') return [step('articleOutline', true), articleCopyStep(true)];
+  if (format === '长图') return [step('longImageOutline', true), longImageVisualStep(true)];
+  if (format === 'PPT') return [step('outline', true), step('ppt', true)];
+  return null;
+}
+
 export function buildContentFlowSteps(
   entry: ContentFlowEntry | null,
   extras: Partial<
@@ -342,11 +365,13 @@ export function buildContentFlowSteps(
       | 'videoFrames'
     >
   > = {},
-  source?: string | null
+  source?: string | null,
+  productFormat?: string | null
 ): ContentFlowStep[] {
   const skipBriefLiterature = omitsBriefLiterature(entry, source);
   const skipInsight = omitsTopicInsight(entry, source);
   const skipStoryline = omitsStoryline(entry, source);
+  const presetProductSteps = stepsForProductFormat(productFormat);
   if (source === 'poster-plan-c' && !entry) {
     return [
       step('create', true),
@@ -376,16 +401,22 @@ export function buildContentFlowSteps(
     steps.push(step('insight', true));
     if (!skipBriefLiterature) steps.push(step('brief', true));
     if (!skipStoryline) steps.push(step('storyline', true));
-    steps.push(step('outline', true), step('ppt', true));
+    steps.push(...(presetProductSteps ?? [step('outline', true), step('ppt', true)]));
   } else if ((locked === 'brief' || locked === 'literature') && !skipBriefLiterature) {
     steps.push(step('brief', true));
     if (skipStoryline) {
-      steps.push(...evidenceProductSteps());
+      steps.push(...(presetProductSteps ?? evidenceProductSteps()));
     } else {
-      steps.push(step('storyline', true), step('outline', true), step('ppt', true));
+      steps.push(
+        step('storyline', true),
+        ...(presetProductSteps ?? [step('outline', true), step('ppt', true)])
+      );
     }
   } else if (locked === 'storyline') {
-    steps.push(step('storyline', true), step('outline', true), step('ppt', true));
+    steps.push(
+      step('storyline', true),
+      ...(presetProductSteps ?? [step('outline', true), step('ppt', true)])
+    );
   } else if (locked === 'outline' || locked === 'ppt') {
     if (skipStoryline && extras.brief && !skipBriefLiterature) steps.push(step('brief', true));
     steps.push(step('outline', true), step('ppt', true));

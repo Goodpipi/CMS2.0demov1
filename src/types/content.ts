@@ -86,7 +86,7 @@ export interface OutlineRefImage {
 
 export interface PptOutlinePage {
   id: string;
-  /** 该页对照的故事线观点，展示在页标题上方。 */
+  /** 该页对照的故事线/大纲观点，展示在页标题上方。 */
   storylinePoint?: string;
   title: string;
   bullets: string[];

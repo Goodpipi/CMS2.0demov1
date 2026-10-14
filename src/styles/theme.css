@@ -1090,6 +1090,84 @@ button, input, textarea, select {
   background: #fff;
 }
 
+.home-inspire-action.has-subentry {
+  cursor: default;
+  padding-bottom: 12px;
+}
+
+.home-inspire-action-main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.home-card-subentries {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.home-inspire-action-main.is-static {
+  cursor: default;
+}
+
+.home-series-poster-entry {
+  position: relative;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 4px 10px 4px 5px;
+  border: 1px solid rgba(84, 185, 249, .4);
+  border-radius: 999px;
+  background: rgba(247, 251, 255, .96);
+  color: #23455f;
+  cursor: pointer;
+  box-shadow: 0 4px 12px -8px rgba(35, 105, 155, .4);
+  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+
+.home-series-poster-entry:hover {
+  border-color: rgba(84, 185, 249, .85);
+  box-shadow: 0 8px 16px -10px rgba(35, 105, 155, .5);
+  transform: translateY(-1px);
+}
+
+.home-series-poster-entry-icon {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #54B9F9, #8AD329);
+  color: #fff;
+}
+
+.home-series-poster-entry strong {
+  color: #18334d;
+  font-size: 12px;
+  font-weight: 720;
+  letter-spacing: 0;
+}
+
+.home-inspire-action.has-subentry:hover .home-series-poster-entry strong {
+  color: #18334d;
+}
+
 .home-inspire-action.home-task-card::after {
   right: -40px;
   bottom: -52px;

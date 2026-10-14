@@ -27,11 +27,17 @@ export type HomeEntrySource =
   | 'insight'
   | 'more';
 
+export type ProductFormat = 'PPT' | '推文' | '长图';
+
 export interface HomeEntryContext {
   intent: HomeEntryIntent;
   templateTitle?: string;
   /** 首页入口来源，用于按业务场景定制工作台结构，不会自动发送为用户消息。 */
   source?: HomeEntrySource;
+  /** 从首页小入口带入的产物形式，不再在任务提案里选择。 */
+  productFormat?: ProductFormat;
+  /** 首页小入口名称，用于任务标题。 */
+  entryLabel?: string;
 }
 
 export const HOME_ENTRY_SOURCE_LABELS: Record<HomeEntrySource, string> = {
@@ -39,8 +45,8 @@ export const HOME_ENTRY_SOURCE_LABELS: Record<HomeEntrySource, string> = {
   promo: '医学与推广内容',
   evidence: '学术证据解读',
   poster: '会议物料',
-  'poster-plan-b': '海报 Plan B',
-  'poster-plan-c': '海报 Plan C',
+  'poster-plan-b': '系列海报',
+  'poster-plan-c': '海报与图片',
   insight: '海报与图片',
   more: '视频生成',
 };
@@ -186,13 +192,19 @@ export function getHomeInputGuidance(
   };
 }
 
+function outlineChipForFormat(format?: ProductFormat): string {
+  if (format === '推文') return '生成图文大纲';
+  if (format === '长图') return '生成长图大纲';
+  return '生成PPT大纲';
+}
+
 export function getEntryWelcome(ctx: HomeEntryContext): { html: string; chips: string[] } {
-  const { intent, templateTitle, source } = ctx;
+  const { intent, templateTitle, source, productFormat } = ctx;
 
   if (source === 'case') {
     return {
-      html: '您好！请您上传脱敏后的病例原始素材，如需生成专家点评，请上传过往专家点评示例',
-      chips: ['生成图文大纲', '生成长图大纲', '生成PPT大纲', '直接生成PPT'],
+      html: '您请上传病例信息、点评示例、参考知识等相关内容，并填写任务提案。',
+      chips: ['填写任务提案', outlineChipForFormat(productFormat)],
     };
   }
 
@@ -205,22 +217,15 @@ export function getEntryWelcome(ctx: HomeEntryContext): { html: string; chips: s
 
   if (source === 'poster-plan-b') {
     return {
-      html: '您好，我将协助您基于主KV快速延展新海报。请先填写任务提案并生成主KV，再上传文件或直接填写新海报信息。',
+      html: '您好，我将协助您基于主KV快速延展系列海报。请先填写任务提案并生成主KV，再上传文件或直接填写新海报信息。',
       chips: ['填写任务提案', '添加视觉参考'],
-    };
-  }
-
-  if (source === 'poster-plan-c') {
-    return {
-      html: '您好，请先填写任务提案。完成后可选择生成主KV再延展系列海报，或直接进入海报与图片列表。',
-      chips: ['填写任务提案'],
     };
   }
 
   if (source === 'promo') {
     return {
       html: '您好！请先添加参考知识或品牌策略。中间流程会按你的第一步展开：话题洞察、任务提案、PPT、推文、长图或话术。',
-      chips: ['基于素材生成话题洞察', '填写任务提案', '生成PPT大纲', '生成图文大纲', '生成长图大纲', '生成话术'],
+      chips: ['基于素材生成话题洞察', '填写任务提案', outlineChipForFormat(productFormat), '生成话术'],
     };
   }
 

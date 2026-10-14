@@ -1,7 +1,6 @@
 import type { ContentBrief } from '@/types/content';
 import type { BriefAnalysis } from '@/app/components/conversationGuide';
 
-export const CONTENT_BRIEF_FORMATS = ['PPT', '推文', '长图'] as const;
 export const EVIDENCE_BRIEF_FORMATS = ['PPT', '推文', '长图'] as const;
 
 export type ContentBriefVariant = 'default' | 'evidence';
@@ -19,7 +18,6 @@ export type ContentBriefFieldDef = {
 export const CONTENT_BRIEF_FIELDS: ContentBriefFieldDef[] = [
   { key: 'audience', label: '受众', required: true },
   { key: 'scenario', label: '场景', required: true },
-  { key: 'format', label: '产物形式', required: true, options: CONTENT_BRIEF_FORMATS },
   { key: 'goal', label: '内容目标', required: true, multiline: true, rows: 2 },
   { key: 'keyMessage', label: '核心信息', required: true, multiline: true, rows: 2 },
   { key: 'length', label: '篇幅', required: true },

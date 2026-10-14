@@ -516,7 +516,7 @@ export function PosterPlanBPanel<T extends PosterPlanBState>({
   onOpenKv,
   onOpenNew,
   onOpenPoster,
-  workspaceLabel = 'Plan B',
+  workspaceLabel = '系列海报',
   sourceMode = 'kv',
   structuredBrief = false,
 }: PosterPlanBPanelProps<T>) {

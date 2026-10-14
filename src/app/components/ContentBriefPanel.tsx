@@ -8,6 +8,7 @@ interface ContentBriefPanelProps {
   onRecommendLiterature: () => void;
   onNext: () => void;
   variant?: ContentBriefVariant;
+  omitFormat?: boolean;
 }
 
 export function ContentBriefPanel({
@@ -17,9 +18,10 @@ export function ContentBriefPanel({
   onRecommendLiterature,
   onNext,
   variant = 'default',
+  omitFormat = false,
 }: ContentBriefPanelProps) {
   const evidence = variant === 'evidence';
-  const fields = briefFieldsFor(variant);
+  const fields = briefFieldsFor(variant).filter((field) => !(omitFormat && field.key === 'format'));
 
   return (
     <div className="workspace-surface-panel content-brief-panel">
@@ -38,7 +40,7 @@ export function ContentBriefPanel({
           )}
         </div>
         <button type="button" className="btn primary topic-insight-copy-btn" onClick={onNext}>
-          {evidence ? '生成详细大纲' : '下一步：生成故事线'}
+          {evidence ? '生成详细大纲' : '下一步：生成故事线/大纲'}
         </button>
       </div>
       <div className="content-brief-fields">

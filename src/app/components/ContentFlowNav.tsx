@@ -17,6 +17,7 @@ interface ContentFlowNavProps {
   activeTab: TabKey | null;
   currentStepId?: ContentFlowStepId;
   source?: string | null;
+  productFormat?: string | null;
   onSelect: (step: ContentFlowStep) => void;
 }
 
@@ -26,6 +27,7 @@ export function ContentFlowNav({
   activeTab,
   currentStepId,
   source,
+  productFormat,
   onSelect,
 }: ContentFlowNavProps) {
   const steps = buildContentFlowSteps(entry, {
@@ -45,7 +47,7 @@ export function ContentFlowNav({
     videoStoryboard: progress.videoStoryboard,
     videoFrames: progress.videoFrames,
     team: progress.team,
-  }, source);
+  }, source, productFormat);
   const currentId = currentStepId ?? activeFlowStepId(activeTab);
 
   return (
