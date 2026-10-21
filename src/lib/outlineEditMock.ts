@@ -19,7 +19,7 @@ function stripRevision(text: string): string {
 function rewriteAfterIntent(instruction: string): string | null {
   const match = instruction.split(/改成|改为|换成|改写为|调整为/);
   if (match.length < 2) return null;
-  const after = match.slice(1).join('').replace(/^[「『“"'\s]+|[」』”"'\s。．！？]+$/g, '').trim();
+  const after = match.slice(1).join('').replace(/^[：:「『“"'\s]+|[」』”"'\s。．！？]+$/g, '').trim();
   return after || null;
 }
 

@@ -34,12 +34,15 @@ export function OutlineAiPrompt({
   onChange,
   onSubmit,
   onCancel,
+  extra,
 }: {
   value: string;
   placeholder: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
   onCancel: () => void;
+  /** 显示在操作区左侧的附加按钮，例如撤销 */
+  extra?: ReactNode;
 }) {
   return (
     <div className="outline-ai-prompt">
@@ -52,6 +55,7 @@ export function OutlineAiPrompt({
         onChange={(event) => onChange(event.target.value)}
       />
       <div className="outline-ai-prompt-actions">
+        {extra ? <div className="outline-ai-prompt-extra">{extra}</div> : null}
         <button type="button" className="btn soft" onClick={onCancel}>
           取消
         </button>

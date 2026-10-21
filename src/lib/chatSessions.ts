@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatSession, SessionStatus } from '@/types/session';
+import type { ChatMessage, ChatSession, SessionStatus, TabKey } from '@/types/session';
 import {
   HOME_ENTRY_SOURCE_LABELS,
   inferHomeEntrySource,
@@ -113,6 +113,36 @@ export function sessionEntrySource(session: ChatSession): HomeEntrySource {
 
 export function sessionEntryLabel(session: ChatSession): string {
   return HOME_ENTRY_SOURCE_LABELS[sessionEntrySource(session)];
+}
+
+/** 业务节点按推进顺序排列，任务标签取已到达的最靠后节点 */
+const SESSION_STAGE_ORDER: { tabs: TabKey[]; label: string }[] = [
+  { tabs: ['brief', 'video-brief', 'meeting-template-brief'], label: '任务提案' },
+  { tabs: ['insight'], label: '话题洞察' },
+  { tabs: ['topic-recommendation'], label: '话题推荐' },
+  { tabs: ['literature'], label: '推荐文献' },
+  { tabs: ['storyline'], label: '故事线' },
+  { tabs: ['ppt-outline'], label: '页面脚本' },
+  { tabs: ['article-outline'], label: '推文大纲' },
+  { tabs: ['long-image-outline'], label: '长图大纲' },
+  { tabs: ['video-script', 'video-hero', 'video-storyboard', 'video-frames'], label: '视频脚本' },
+  { tabs: ['copy'], label: '文案' },
+  { tabs: ['meeting-templates', 'meeting-sessions'], label: '会议物料' },
+  { tabs: ['poster-plan-b', 'poster-plan-c'], label: '海报' },
+  { tabs: ['visual'], label: '图片' },
+  { tabs: ['rich-text'], label: '推文' },
+  { tabs: ['ppt-design'], label: 'PPT' },
+  { tabs: ['video-render'], label: '视频' },
+  { tabs: ['team'], label: '意见收集' },
+  { tabs: ['submit'], label: 'Veeva提交' },
+];
+
+export function sessionStageLabel(session: ChatSession): string | null {
+  const tabs = new Set(session.workspace?.state?.tabs || []);
+  for (let i = SESSION_STAGE_ORDER.length - 1; i >= 0; i -= 1) {
+    if (SESSION_STAGE_ORDER[i].tabs.some((tab) => tabs.has(tab))) return SESSION_STAGE_ORDER[i].label;
+  }
+  return null;
 }
 
 export function deriveSessionSubtitle(session: ChatSession): string {

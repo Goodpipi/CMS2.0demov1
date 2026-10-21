@@ -191,6 +191,8 @@ export function promptPptDesigns(outlineJson, audience, scenario, pageCount = 5)
 大纲：
 ${outlineJson}
 
+排版时参考每页 visualSuggestion；如页面填写了 visualRequirement（用户的页面视觉要求，如样式、图表类型），优先遵循。
+
 重要：不要生成 SVG 代码。每套方案只需返回全部 ${pageCount} 页的 title、bullets（可与大纲一致或优化表述），服务端会自动排版。
 
 只返回 JSON（勿包含 svg 字段）：
@@ -227,6 +229,8 @@ export function promptPptDesignsWithTemplate(
 
 大纲：
 ${outlineJson}
+
+排版时参考每页 visualSuggestion；如页面填写了 visualRequirement（用户的页面视觉要求，如样式、图表类型），优先遵循。
 
 重要：不要生成 SVG。只返回 1 个 version，slides 长度必须为 ${pageCount}，表述符合制药合规与疾病教育场景。
 

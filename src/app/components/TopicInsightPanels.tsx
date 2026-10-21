@@ -286,7 +286,7 @@ function DemoHotInsightReportPanel({
               <path d="M10 22h4" />
               <path d="M15.09 14c.18-.98.91-1.74 1.65-2.53A6 6 0 1 0 7.26 11.47c.74.79 1.47 1.55 1.65 2.53" />
             </svg>
-            <strong>共 {report.topics.length} 条选题</strong>
+            <strong>{`共 ${report.topics.length} 条选题`}</strong>
           </div>
           <label className="demo-select-all">
             <input

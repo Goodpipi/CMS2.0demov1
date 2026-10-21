@@ -23,6 +23,8 @@ interface ContextMaterialsPanelProps {
   library: LibraryItem[];
   uploadingItems?: LibraryItem[];
   variant?: 'default' | 'case' | 'poster' | 'evidence' | 'insight' | 'promo' | 'video';
+  /** 当前所处环节，决定展示哪些参考分类 */
+  stage?: MaterialStage;
   citedItemIds?: number[];
   onOpenPicker: (cat: string) => void;
   onPreview: (item: LibraryItem) => void;
@@ -299,6 +301,34 @@ function sectionsForVariant(variant: ContextMaterialsPanelProps['variant']): Mat
   return SECTIONS;
 }
 
+export type MaterialStage = 'storyline' | 'outline' | null;
+
+const STORYLINE_STAGE_SECTIONS: MaterialSectionDef[] = [
+  { title: '品牌策略', groupId: 'strategy', category: '品牌策略' },
+  { title: '参考知识', groupId: 'knowledge', category: '参考知识' },
+  { title: '参考文献', groupId: 'literature', category: '参考文献' },
+];
+
+const OUTLINE_STAGE_SECTIONS: MaterialSectionDef[] = [
+  { title: '参考知识', groupId: 'knowledge', category: '参考知识' },
+  { title: '参考文献', groupId: 'literature', category: '参考文献' },
+];
+
+/** 医学与推广等通用流程中，故事线与页面脚本环节各自只展示生成时参考的分类 */
+function sectionsForStage(
+  variant: ContextMaterialsPanelProps['variant'],
+  stage: MaterialStage | undefined
+): { sections: MaterialSectionDef[]; hint: string } | null {
+  if (variant !== 'promo' && variant !== 'default') return null;
+  if (stage === 'storyline') {
+    return { sections: STORYLINE_STAGE_SECTIONS, hint: '故事线/大纲生成参考：品牌策略、参考知识、参考文献' };
+  }
+  if (stage === 'outline') {
+    return { sections: OUTLINE_STAGE_SECTIONS, hint: '页面脚本生成参考：参考知识、参考文献；循证引用仅来自参考文献' };
+  }
+  return null;
+}
+
 function unifiedAddCategory(variant: ContextMaterialsPanelProps['variant']): string {
   if (variant === 'poster') return '视觉参考';
   if (variant === 'video') return '参考素材';
@@ -326,6 +356,7 @@ export function ContextMaterialsPanel({
   library,
   uploadingItems = [],
   variant = 'default',
+  stage,
   citedItemIds,
   onOpenPicker,
   onPreview,
@@ -336,10 +367,12 @@ export function ContextMaterialsPanel({
   const referencedMaterials = library.filter(
     (item) => (item.referenced ?? item.def) && !uploadingIds.has(item.id)
   );
-  const sections = sectionsForVariant(variant);
+  const staged = sectionsForStage(variant, stage);
+  const sections = staged?.sections ?? sectionsForVariant(variant);
 
   return (
     <div className="space-y-2">
+      {staged ? <p className="context-stage-hint">{staged.hint}</p> : null}
       <button
         type="button"
         className="context-materials-unified-add"

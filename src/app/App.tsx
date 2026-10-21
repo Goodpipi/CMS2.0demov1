@@ -228,9 +228,10 @@ import {
 import { MaterialDetailModal } from '@/app/components/MaterialDetailModal';
 import { MaterialContentPreview } from '@/app/components/MaterialContentPreview';
 import { ContextMaterialsPanel } from '@/app/components/ContextMaterialsPanel';
+import { LanguageToggle } from '@/app/components/LanguageToggle';
 import { CreationMethodModal } from '@/app/components/CreationMethodModal';
 import type { LibraryItem } from '@/types/library';
-import { materialAttachmentPill, isMaterialUsable } from '@/lib/libraryUtils';
+import { materialAttachmentPill, isMaterialUsable, filterMaterialsByGroup } from '@/lib/libraryUtils';
 import { assignCopyTopicTitles, ensureCopyCount, groupCopiesByTopic } from '@/lib/copyUtils';
 import { groupImagesByCopy } from '@/lib/imageUtils';
 import { buildPreviewFieldsFromTitle, readFileForPreview } from '@/lib/materialContent';
@@ -393,6 +394,7 @@ import {
   saveSession,
   seedSessionsIfEmpty,
   sessionEntryLabel,
+  sessionStageLabel,
   sessionEntrySource,
 } from '@/lib/chatSessions';
 import type {
@@ -588,6 +590,16 @@ type EditorTarget =
   | { kind: 'ppt-slide'; index: number }
   | { kind: 'meeting-poster'; source: 'template' | 'session' }
   | { kind: 'meeting-ppt'; source: 'template' | 'session'; index: number };
+
+/** 页面脚本只参考已引用的参考知识与参考文献；病例、证据等流程沿用各自素材 */
+function outlineReferenceMaterials(library: LibraryItem[], source?: HomeEntrySource | null): LibraryItem[] {
+  if (source && source !== 'promo') return library;
+  const referenced = library.filter((item) => item.referenced ?? item.def);
+  return [
+    ...filterMaterialsByGroup(referenced, 'knowledge'),
+    ...filterMaterialsByGroup(referenced, 'literature'),
+  ].filter((item, index, list) => list.findIndex((other) => other.id === item.id) === index);
+}
 
 const emptyWorkspaceState = (): AppState => ({
   tabs: [],
@@ -5138,7 +5150,7 @@ export default function App() {
       '正在直接生成 PPT',
       async () => {
       const raw = await api.generatePptOutline({
-        materials: library,
+        materials: outlineReferenceMaterials(library, entryContext?.source),
         brief,
         audience,
         scenario,
@@ -5181,7 +5193,7 @@ export default function App() {
       '正在智能生成 PPT 大纲',
       async () => {
       const raw = await api.generatePptOutline({
-        materials: library,
+        materials: outlineReferenceMaterials(library, entryContext?.source),
         brief,
         audience,
         scenario,
@@ -5318,7 +5330,7 @@ export default function App() {
       '正在根据文案生成大纲',
       async () => {
       const raw = await api.generatePptOutline({
-        materials: library,
+        materials: outlineReferenceMaterials(library, entryContext?.source),
         brief: copy,
         audience,
         scenario,
@@ -8137,6 +8149,7 @@ export default function App() {
                   accountMenuOpen ? ' invisible pointer-events-none' : ''
                 }`}
               >
+                <LanguageToggle />
                 <button
                   type="button"
                   className="glass-button flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium text-foreground hover:text-primary"
@@ -8429,6 +8442,11 @@ export default function App() {
                                         <em className={`home-task-entry-tag is-${sessionEntrySource(session)}`}>
                                           {sessionEntryLabel(session)}
                                         </em>
+                                        {sessionStageLabel(session) ? (
+                                          <em className="home-task-entry-tag home-task-stage-tag" title="当前业务节点">
+                                            {sessionStageLabel(session)}
+                                          </em>
+                                        ) : null}
                                       </span>
                                       <span className="home-task-card-meta">
                                         {session.id.slice(0, 10)} · {deriveSessionSubtitle(session)} ·{' '}
@@ -8839,6 +8857,15 @@ export default function App() {
                                 : entryContext?.source === 'more'
                                   ? 'video'
                                   : 'default'
+                    }
+                    stage={
+                      state.active === 'storyline'
+                        ? 'storyline'
+                        : state.active === 'ppt-outline' ||
+                            state.active === 'article-outline' ||
+                            state.active === 'long-image-outline'
+                          ? 'outline'
+                          : null
                     }
                     onOpenPicker={(category) => {
                       setPickerTarget('workspace');
@@ -13007,7 +13034,7 @@ function WorkspaceRightPanel({
           <>
             <div className="detail-card detail-card-ppt-design">
               <h4>视频预览</h4>
-              <div className="small">共 {videoVersions.length} 套方案</div>
+              <div className="small">{`共 ${videoVersions.length} 套方案`}</div>
               <div className="quick-row" style={{ marginTop: 10 }}>
                 <button type="button" className="btn primary" onClick={onExportMergedVideos}>
                   合并导出已勾选视频
@@ -13109,6 +13136,7 @@ function WorkspaceRightPanel({
               onSaveOutlineReview={onSavePptOutlineReview}
               showGenerateFooter={false}
               storylineContent={storylineContent}
+              onNotify={toast}
             />
             {!reviewerMode && (
               <div className="ppt-outline-tab-foot">
@@ -13211,7 +13239,7 @@ function WorkspaceRightPanel({
           return (
             <div className="reviewer-ppt-stage">
               <div className="reviewer-ppt-stage-head">
-                <strong>第 {slide.page ?? reviewerPptPageIndex + 1} 页</strong>
+                <strong>{`第 ${slide.page ?? reviewerPptPageIndex + 1} 页`}</strong>
                 <span>{slide.title}</span>
               </div>
               <div className="reviewer-ppt-slide-canvas">
@@ -13331,7 +13359,7 @@ function WorkspaceRightPanel({
                 <div className="ppt-design-title-row">
                   <div>
                     <h4>选择 PPT 设计方案</h4>
-                    <div className="small">共 {pptVersions.length} 套拜耳蓝绿风格方案</div>
+                    <div className="small">{`共 ${pptVersions.length} 套拜耳蓝绿风格方案`}</div>
                   </div>
                 </div>
                 <div className="ppt-version-grid">
@@ -13359,7 +13387,7 @@ function WorkspaceRightPanel({
               <div className="creator-ppt-preview-card">
                 <div className="creator-ppt-toolbar">
                   <div className="creator-ppt-toolbar-page">
-                    <strong>第 {liveSlide?.page ?? creatorActivePageIndex + 1} 页</strong>
+                    <strong>{`第 ${liveSlide?.page ?? creatorActivePageIndex + 1} 页`}</strong>
                     <span>{creatorActiveSlide.title}</span>
                     {viewingHistoricalVersion && (
                       <span className="creator-ppt-version-pill">

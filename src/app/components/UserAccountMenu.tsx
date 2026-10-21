@@ -8,6 +8,8 @@ import {
   getTokenUsage,
   type TokenUsage,
 } from '@/lib/userAccount';
+import { translateUi } from '@/lib/i18n';
+import { useLang } from './LanguageToggle';
 
 interface UserAccountMenuProps {
   role: UserRole;
@@ -22,6 +24,9 @@ export function UserAccountMenu({ role, onLogout, onOpenChange }: UserAccountMen
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const account = ACCOUNT_PROFILES[role];
+  const lang = useLang();
+  const avatarText =
+    lang === 'en' ? translateUi(account.name).charAt(0).toUpperCase() : account.name.slice(-1);
 
   useEffect(() => {
     if (open) setUsage(getTokenUsage(role));
@@ -84,8 +89,8 @@ export function UserAccountMenu({ role, onLogout, onOpenChange }: UserAccountMen
         aria-haspopup="dialog"
         onClick={() => setOpen((prev) => !prev)}
       >
-        <span className="user-account-avatar" aria-hidden>
-          {account.name.slice(-1)}
+        <span className="user-account-avatar" aria-hidden data-i18n-skip>
+          {avatarText}
         </span>
         <span className="user-account-trigger-copy">
           <strong>{account.name}</strong>
@@ -115,8 +120,8 @@ export function UserAccountMenu({ role, onLogout, onOpenChange }: UserAccountMen
             }}
           >
             <div className="user-account-profile">
-              <span className="user-account-avatar is-lg" aria-hidden>
-                {account.name.slice(-1)}
+              <span className="user-account-avatar is-lg" aria-hidden data-i18n-skip>
+                {avatarText}
               </span>
               <div>
                 <strong>{account.name}</strong>

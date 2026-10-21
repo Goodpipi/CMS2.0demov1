@@ -93,8 +93,17 @@ export interface PptOutlinePage {
   /** 与 bullets 对齐，每条核心内容引用的文献序号 */
   bulletCites?: number[][];
   speakerNotes?: string;
-  /** 页面可视化建议 */
+  /** 页面可视化建议，仅在生成 PPT 时使用，不在大纲中展示 */
   visualSuggestion?: string;
+  /** 用户填写的页面视觉要求，例如页面样式、图表类型 */
+  visualRequirement?: string;
+  /** 人工修改后判定与原故事线观点不一致，不再展示对应故事线 */
+  storylineDetached?: boolean;
+  /** 标题、核心内容各自最近一次 AI 修改前的内容，用于分别撤销 */
+  aiUndo?: {
+    title?: string;
+    core?: { bullets: string[]; bulletCites?: number[][] };
+  };
   /** 当前页面参考文献 */
   references?: string[];
   /** 当前页面引用图片 */

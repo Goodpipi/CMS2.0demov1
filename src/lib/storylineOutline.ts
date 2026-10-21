@@ -63,6 +63,48 @@ export function storylinePointForPage(
   return point;
 }
 
+function bigrams(text: string): Set<string> {
+  const clean = text.replace(/[\s，。；;、：:“”"'（）()【】\-—·…!！?？,.]/g, '').toLowerCase();
+  const grams = new Set<string>();
+  for (let i = 0; i < clean.length - 1; i += 1) grams.add(clean.slice(i, i + 2));
+  return grams;
+}
+
+function overlapRatio(a: string, b: string): number {
+  const left = bigrams(a);
+  const right = bigrams(b);
+  if (!left.size || !right.size) return 0;
+  let hit = 0;
+  left.forEach((gram) => {
+    if (right.has(gram)) hit += 1;
+  });
+  return hit / Math.min(left.size, right.size);
+}
+
+function pageText(page: Pick<PptOutlinePage, 'title' | 'bullets'>): string {
+  return [page.title, ...(page.bullets || [])].join(' ');
+}
+
+/**
+ * 判断人工修改后的页面是否仍与原故事线观点对应：
+ * 修改后内容与原内容差异较大，且与观点的贴合度明显下降时视为不一致。
+ */
+export function isPageDetachedFromStoryline(
+  before: Pick<PptOutlinePage, 'title' | 'bullets'>,
+  after: Pick<PptOutlinePage, 'title' | 'bullets'>,
+  storylinePoint?: string
+): boolean {
+  const point = (storylinePoint || '').trim();
+  if (!point) return false;
+  const beforeText = pageText(before);
+  const afterText = pageText(after);
+  if (beforeText === afterText) return false;
+  const drift = 1 - overlapRatio(beforeText, afterText);
+  const beforeFit = overlapRatio(beforeText, point);
+  const afterFit = overlapRatio(afterText, point);
+  return drift > 0.5 && afterFit < Math.max(0.12, beforeFit * 0.6);
+}
+
 export function attachStorylinePointsToOutline(outline: PptOutline, storyline: string): PptOutline {
   const viewpoints = parseStorylineViewpoints(storyline);
   const hasPoints = Boolean(viewpoints.anchor || viewpoints.chapters.length || viewpoints.pagePoints.length);
@@ -77,6 +119,7 @@ export function attachStorylinePointsToOutline(outline: PptOutline, storyline: s
         const storylinePoint = clipPoint(
           storylinePointForPage(page, chapter, viewpoints, counters) || page.storylinePoint || ''
         );
+        if (page.storylineDetached) return { ...page, storylinePoint: undefined };
         return storylinePoint ? { ...page, storylinePoint } : page;
       }),
     })),

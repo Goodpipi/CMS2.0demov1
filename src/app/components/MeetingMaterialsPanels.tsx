@@ -265,7 +265,7 @@ function MeetingPptCanvas({
       <div className="creator-ppt-preview-card">
         <div className="creator-ppt-toolbar">
           <div className="creator-ppt-toolbar-page">
-            <strong>第 {slide.page ?? pptIndex + 1} 页</strong>
+            <strong>{`第 ${slide.page ?? pptIndex + 1} 页`}</strong>
             <span>{slide.title}</span>
           </div>
           <div className="creator-ppt-toolbar-tools" role="toolbar" aria-label="页面操作">

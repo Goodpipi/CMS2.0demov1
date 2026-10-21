@@ -372,6 +372,7 @@ export function normalizeOutline(
       id: genId('pg'),
       title: p.title || '未命名页面',
       storylinePoint: p.storylinePoint,
+      visualRequirement: (p as { visualRequirement?: string }).visualRequirement,
       bullets: p.bullets?.length
         ? p.bullets
         : p.kind === 'section-title'

@@ -170,7 +170,7 @@ function TemplatePreviewModal({
               {slides.map((src, index) => (
                 <figure key={src}>
                   <img src={src} alt={`${asset.title}${slides.length > 1 ? ` 第 ${index + 1} 页` : ''}`} />
-                  {slides.length > 1 && <figcaption>第 {index + 1} 页</figcaption>}
+                  {slides.length > 1 && <figcaption>{`第 ${index + 1} 页`}</figcaption>}
                 </figure>
               ))}
             </div>

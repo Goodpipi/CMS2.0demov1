@@ -184,7 +184,7 @@ export function ArticleOutlineEditor({
                 onChange={(event) => onChange({ ...outline, title: event.target.value })}
               />
             </label>
-            <div className="small">共 {outline.chapters.length} 个章节</div>
+            <div className="small">{`共 ${outline.chapters.length} 个章节`}</div>
           </div>
         </header>
 

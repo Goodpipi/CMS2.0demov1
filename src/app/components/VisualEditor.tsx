@@ -570,10 +570,28 @@ export function VisualEditor({
       const vb = svg.getAttribute('viewBox')?.split(/\s+/).map(Number) || [0, 0, 900, 560];
       const scale = stage.getBoundingClientRect().width / (vb[2] || 900);
       const orig: Record<string, { x: number; y: number }> = {};
+      const svgRect = svg.getBoundingClientRect();
+      const unitX = svgRect.width / (vb[2] || 900) || scale;
+      const unitY = svgRect.height / (vb[3] || 560) || scale;
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
       movingIds.forEach((itemId) => {
         const node = host.querySelector(`[data-edit-id="${itemId}"]`);
-        if (node) orig[itemId] = getTranslate(node);
+        if (!node) return;
+        orig[itemId] = getTranslate(node);
+        const r = node.getBoundingClientRect();
+        minX = Math.min(minX, (r.left - svgRect.left) / unitX);
+        minY = Math.min(minY, (r.top - svgRect.top) / unitY);
+        maxX = Math.max(maxX, (r.right - svgRect.left) / unitX);
+        maxY = Math.max(maxY, (r.bottom - svgRect.top) / unitY);
       });
+      const canvasW = vb[2] || 900;
+      const canvasH = vb[3] || 560;
+      const hasBounds = Number.isFinite(minX) && Number.isFinite(maxX);
+      const clampDelta = (delta: number, lo: number, hi: number) =>
+        Math.min(Math.max(delta, Math.min(lo, 0)), Math.max(hi, 0));
       let moved = false;
       dragRef.current = { ids: movingIds, startX: e.clientX, startY: e.clientY, orig, scale };
       el.setPointerCapture(e.pointerId);
@@ -582,8 +600,12 @@ export function VisualEditor({
         const d = dragRef.current;
         if (!d) return;
         moved = true;
-        const dx = (ev.clientX - d.startX) / d.scale;
-        const dy = (ev.clientY - d.startY) / d.scale;
+        let dx = (ev.clientX - d.startX) / d.scale;
+        let dy = (ev.clientY - d.startY) / d.scale;
+        if (hasBounds) {
+          dx = clampDelta(dx, -minX, canvasW - maxX);
+          dy = clampDelta(dy, -minY, canvasH - maxY);
+        }
         d.ids.forEach((itemId) => {
           const node = host.querySelector(`[data-edit-id="${itemId}"]`);
           const start = d.orig[itemId];

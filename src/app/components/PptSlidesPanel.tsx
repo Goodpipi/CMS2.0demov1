@@ -9,7 +9,7 @@ function PptSlidePreviewImage({ slide, index }: { slide: PptSlide; index: number
   if (failed) {
     return (
       <div className="ppt-slide-preview ppt-slide-preview-fallback">
-        <span className="small">第 {slide.page ?? index + 1} 页 · {slide.title || '预览加载失败'}</span>
+        <span className="small">{`第 ${slide.page ?? index + 1} 页 · ${slide.title || '预览加载失败'}`}</span>
       </div>
     );
   }
@@ -54,7 +54,7 @@ export function PptSlidesPanel({ slides, title, onEditSlide }: PptSlidesPanelPro
               <PptSlidePreviewImage slide={slide} index={index} />
               <div className="ppt-slide-card-meta">
                 <strong>
-                  第 {slide.page ?? index + 1} 页 · {slide.title}
+                  {`第 ${slide.page ?? index + 1} 页 · ${slide.title}`}
                 </strong>
                 <div className="quick-row" style={{ marginTop: 8 }}>
                   <button

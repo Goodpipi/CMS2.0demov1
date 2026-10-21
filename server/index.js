@@ -191,7 +191,11 @@ app.post('/api/generate/ppt-designs', async (req, res) => {
   try {
     const { outline, audience = '公众', scenario = '', templateId = null } = req.body;
     const pageCount = flattenOutlinePages(outline).length;
-    const outlineJson = JSON.stringify(outline, null, 2);
+    const outlineJson = JSON.stringify(
+      outline,
+      (key, value) => (key === 'aiUndo' || key === 'storylineDetached' ? undefined : value),
+      2
+    );
     const tpl = templateId ? getPptTemplate(templateId) : null;
     const prompt = tpl
       ? promptPptDesignsWithTemplate(
