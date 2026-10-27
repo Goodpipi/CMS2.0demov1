@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, Fragment } from 'react';
 import { createPortal } from 'react-dom';
 import * as api from '@/lib/api';
 import {
@@ -87,7 +87,8 @@ import {
 } from '@/app/components/teamReviewUtils';
 import { buildVideoPosterDataUrl } from '@/app/components/videoUtils';
 import { VisualEditor } from '@/app/components/VisualEditor';
-import { parseSvgFromDataUrl, svgToDataUrl } from '@/app/components/svgEditorUtils';
+import { inlineSvgImages, parseSvgFromDataUrl, svgToDataUrl } from '@/app/components/svgEditorUtils';
+import { getLang } from '@/lib/i18n';
 import {
   buildLongImageDataUrl,
   exportImageAsPsd,
@@ -177,6 +178,7 @@ import {
 } from '@/lib/imageStudioMocks';
 import {
   emptyContentBrief,
+  englishMockContentBrief,
   formatContentBriefText,
   generateContentBrief,
   isGenerateBriefIntent,
@@ -184,6 +186,7 @@ import {
   normalizeContentBrief,
   literatureQueryFromBrief,
   outlineCommandFromEvidenceFormat,
+  hiddenEvidenceBriefFields,
 } from '@/lib/contentBrief';
 import {
   pptTemplateIdFromTitle,
@@ -342,6 +345,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Database,
+  BookMarked,
   FolderOpen,
   Image as ImageIcon,
   ImagePlus,
@@ -365,6 +369,8 @@ import {
 } from 'lucide-react';
 import { LibraryMaterialCard } from '@/app/components/LibraryMaterialCard';
 import { AssetLibraryPage } from '@/app/components/AssetLibraryPage';
+import { BrandKnowledgePage, StockSlidePickerModal } from '@/app/components/BrandKnowledgePage';
+import { brandKbItemToPptSlide } from '@/lib/brandKnowledgeMocks';
 import { ProductPickerModal } from '@/app/components/ProductPickerModal';
 import type { TaskProduct } from '@/lib/products';
 import { loadAllProjects } from '@/lib/chatProjects';
@@ -417,7 +423,6 @@ function addMeetingUpdateReason(
 const HOME_WORKFLOW_ACTIONS: {
   title: string;
   description: string;
-  scenes?: string[];
   capability?: string;
   intent: HomeEntryIntent;
   prompt: string;
@@ -431,20 +436,6 @@ const HOME_WORKFLOW_ACTIONS: {
     productFormat?: ProductFormat;
   }[];
 }[] = [
-  {
-    title: '病例内容',
-    description: '围绕真实诊疗场景梳理病例叙事，生成可用于科室沟通的结构化内容。',
-    intent: 'ppt',
-    prompt: '生成病例内容',
-    Icon: Stethoscope,
-    art: 'case',
-    mainStartsTask: false,
-    subentries: [
-      { label: '病历PPT', intent: 'ppt', source: 'case', productFormat: 'PPT' },
-      { label: '病历推文', intent: 'ppt', source: 'case', productFormat: '推文' },
-      { label: '病历卡', intent: 'ppt', source: 'case', productFormat: '长图' },
-    ],
-  },
   {
     title: '医学与推广内容',
     description: '结合品牌与合规要求，生成面向医生或公众的医学传播与推广素材。',
@@ -461,13 +452,33 @@ const HOME_WORKFLOW_ACTIONS: {
     ],
   },
   {
+    title: '病例内容',
+    description: '围绕真实诊疗场景梳理病例叙事，生成可用于科室沟通的结构化内容。',
+    intent: 'ppt',
+    prompt: '生成病例内容',
+    Icon: Stethoscope,
+    art: 'case',
+    mainStartsTask: false,
+    subentries: [
+      { label: '病历PPT', intent: 'ppt', source: 'case', productFormat: 'PPT' },
+      { label: '病历推文', intent: 'ppt', source: 'case', productFormat: '推文' },
+      { label: '病历卡', intent: 'ppt', source: 'case', productFormat: '长图' },
+    ],
+  },
+  {
     title: '学术证据解读',
     description: '把研究数据与关键结论转译为清晰、可引用的学术解读内容。',
-    scenes: ['指南解读', '文献解读', '研究解读', '共识解读'],
+    capability: '可做：指南解读、文献解读、研究解读、共识解读。',
     intent: 'ppt',
     prompt: '生成学术证据解读',
     Icon: Microscope,
     art: 'evidence',
+    mainStartsTask: false,
+    subentries: [
+      { label: 'PPT', intent: 'ppt', source: 'evidence', productFormat: 'PPT' },
+      { label: '推文', intent: 'ppt', source: 'evidence', productFormat: '推文' },
+      { label: '一图读懂', intent: 'ppt', source: 'evidence', productFormat: '长图' },
+    ],
   },
   {
     title: '会议物料',
@@ -476,11 +487,13 @@ const HOME_WORKFLOW_ACTIONS: {
     prompt: '生成会议物料',
     Icon: ImageIcon,
     art: 'poster',
+    mainStartsTask: false,
+    subentries: [{ label: '会议物料', intent: 'visual', source: 'poster' }],
   },
   {
     title: '海报与图片',
     description: '输入视觉需求，快速生成主KV、系列海报与图片产物。',
-    scenes: ['主KV', '倒计时海报', '活动图片'],
+    capability: '可做：主KV、倒计时海报、活动图片。',
     intent: 'visual',
     prompt: '制作海报与图片',
     Icon: ImagePlus,
@@ -493,7 +506,7 @@ const HOME_WORKFLOW_ACTIONS: {
   {
     title: '视频生成',
     description: '从视频需求出发，生成主视觉参考、分镜脚本和患者教育短视频。',
-    scenes: ['患者教育短视频', '主视觉参考', '分镜脚本'],
+    capability: '可做：患者教育短视频、主视觉参考、分镜脚本。',
     intent: 'video',
     prompt: '生成视频',
     Icon: Video,
@@ -579,7 +592,7 @@ function findCopyIndexForRevision(
 
 const posterData = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 900 560'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' x2='1' y1='0' y2='1'%3E%3Cstop stop-color='%23eaf7ff'/%3E%3Cstop offset='1' stop-color='%23f4fff0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='900' height='560' fill='url(%23g)'/%3E%3Ccircle cx='720' cy='110' r='100' fill='%2369BE28' opacity='.22'/%3E%3Ccircle cx='145' cy='115' r='82' fill='%231d6bff' opacity='.16'/%3E%3Cpath d='M560 360c90-100 190-85 260-28v228H520c-35-68-27-137 40-200z' fill='%2369BE28' opacity='.24'/%3E%3Crect x='54' y='46' width='118' height='42' rx='21' fill='%23103C8F'/%3E%3Ctext x='83' y='73' font-size='24' font-weight='700' fill='white'%3EBayer%3C/text%3E%3Ctext x='70' y='175' font-size='58' font-weight='900' fill='%23103C8F'%3E%E8%82%BE%E8%84%8F%E5%81%A5%E5%BA%B7%3C/text%3E%3Ctext x='70' y='248' font-size='58' font-weight='900' fill='%23103C8F'%3E%E4%B8%8D%E6%AD%A2%E7%9C%8B%E7%97%87%E7%8A%B6%3C/text%3E%3Ctext x='74' y='316' font-size='28' fill='%2340536a'%3E%E4%BA%86%E8%A7%A3%E9%A3%8E%E9%99%A9%E5%9B%A0%E7%B4%A0%EF%BC%8C%E5%87%BA%E7%8E%B0%E7%96%91%E9%97%AE%E6%97%B6%E8%AF%B7%E5%92%A8%E8%AF%A2%E4%B8%93%E4%B8%9A%E5%8C%BB%E7%94%9F%3C/text%3E%3Crect x='70' y='410' width='420' height='64' rx='32' fill='%23fff' stroke='%23cfe0f1'/%3E%3Ctext x='100' y='452' font-size='24' fill='%231d5aa7'%3E%E7%96%BE%E7%97%85%E6%95%99%E8%82%B2%E5%86%85%E5%AE%B9%EF%BD%9C%E4%BB%85%E4%BE%9B%E7%A7%91%E6%99%AE%E5%8F%82%E8%80%83%3C/text%3E%3C/svg%3E";
 
-type Screen = 'home' | 'library' | 'assets' | 'workspace';
+type Screen = 'home' | 'library' | 'brandKb' | 'assets' | 'workspace';
 
 type EditorTarget =
   | { kind: 'image'; index: number }
@@ -1843,6 +1856,8 @@ export default function App() {
       setTaskTitle(`${product.name}·海报生成 Plan C`);
     } else if (entryContext?.source === 'case' && entryContext.entryLabel) {
       setTaskTitle(`${product.name}·${entryContext.entryLabel}`);
+    } else if (entryContext?.source === 'evidence' && entryContext.entryLabel) {
+      setTaskTitle(`${product.name}·证据解读${entryContext.entryLabel}`);
     } else if (entryContext?.source === 'promo' && entryContext.entryLabel) {
       setTaskTitle(`${product.name}·${entryContext.entryLabel}`);
     } else if (entryContext?.source === 'more' || entryContext?.intent === 'video') {
@@ -3103,7 +3118,8 @@ export default function App() {
   const syncBriefToLibrary = (brief: ContentBrief) => {
     const text = formatContentBriefText(
       brief,
-      entryContext?.source === 'evidence' || entryContext?.source === 'case' ? 'evidence' : 'default'
+      entryContext?.source === 'evidence' || entryContext?.source === 'case' ? 'evidence' : 'default',
+      entryContext?.source === 'case' ? ['interpretation'] : []
     );
     const item: LibraryItem = {
       id: GENERATED_BRIEF_ID,
@@ -3178,7 +3194,9 @@ export default function App() {
       return;
     }
     setContentBrief((prev) => {
-      const base = prev ?? emptyContentBrief();
+      const base =
+        prev ??
+        (getLang() === 'en' ? englishMockContentBrief(entryContext?.source) : emptyContentBrief());
       return entryContext?.productFormat ? { ...base, format: entryContext.productFormat } : base;
     });
     setFlowEntry((prev) => nextLockedFlowEntry(prev, 'brief'));
@@ -3195,14 +3213,16 @@ export default function App() {
       toast('请先填写任务提案');
       return;
     }
-    const missing = missingRequiredBriefLabels(contentBrief, 'evidence').filter(
-      (label) => !(entryContext?.productFormat && label === '形式')
+    const missing = missingRequiredBriefLabels(
+      contentBrief,
+      'evidence',
+      hiddenEvidenceBriefFields(entryContext?.source)
     );
     if (missing.length) {
       toast(`请先填写必填项：${missing.join('、')}`);
       return;
     }
-    const format = (entryContext?.productFormat || contentBrief.format).trim();
+    const format = (entryContext?.productFormat || contentBrief.format || 'PPT').trim();
     if (!['PPT', '推文', '长图', '图'].includes(format)) {
       toast('请先选择形式：PPT、推文或长图');
       return;
@@ -6787,17 +6807,22 @@ export default function App() {
       toast(`第 ${editorTarget.index + 1} 页已更新`);
     } else if (editorTarget?.kind === 'ppt-slide' && pptResult) {
       const idx = editorTarget.index;
-      const slides = pptResult.slides.map((s, i) =>
-        i === idx ? { ...s, svg: svg || s.svg } : s
-      );
-      setPptResult({ ...pptResult, slides });
-      if (selectedPptVersionId) {
-        setPptVersions((prev) =>
-          prev.map((v) =>
-            v.id === selectedPptVersionId ? { ...v, slides } : v
-          )
+      const applySlideSvg = (nextSvg: string | undefined) => {
+        const slides = pptResult.slides.map((s, i) =>
+          i === idx ? { ...s, svg: nextSvg || s.svg, imageUrl: nextSvg ? undefined : s.imageUrl } : s
         );
-      }
+        setPptResult({ ...pptResult, slides });
+        if (selectedPptVersionId) {
+          setPptVersions((prev) =>
+            prev.map((v) =>
+              v.id === selectedPptVersionId ? { ...v, slides } : v
+            )
+          );
+        }
+      };
+      applySlideSvg(svg);
+      if (svg) void inlineSvgImages(svg).then((inlined) => inlined !== svg && applySlideSvg(inlined));
+      const slides = pptResult.slides;
       touchActiveReviewTask();
       toast(
         activeReviewTaskId && isReviewerRole(userRole)
@@ -7800,17 +7825,20 @@ export default function App() {
     [pptResult, selectedPptVersionId, currentSessionId, toast]
   );
 
-  const handleAddCreatorPptSlide = useCallback(() => {
+  const handleAddCreatorPptSlide = useCallback((afterIndex: number, incoming?: PptSlide[]) => {
     if (!pptResult) return;
-    const insertIndex = Math.min(creatorPptPageIndex + 1, pptResult.slides.length);
-    const blank = createBlankPptSlide(insertIndex + 1);
+    const insertIndex = Math.max(0, Math.min(afterIndex + 1, pptResult.slides.length));
+    const added = incoming?.length
+      ? incoming.map((slide, offset) => ({ ...slide, page: insertIndex + 1 + offset }))
+      : [createBlankPptSlide(insertIndex + 1)];
+    const count = added.length;
     const nextSlides = [
       ...pptResult.slides.slice(0, insertIndex),
-      blank,
+      ...added,
       ...pptResult.slides.slice(insertIndex),
     ].map((slide, index) => ({ ...slide, page: index + 1 }));
 
-    const remapIndex = (oldIndex: number) => (oldIndex >= insertIndex ? oldIndex + 1 : oldIndex);
+    const remapIndex = (oldIndex: number) => (oldIndex >= insertIndex ? oldIndex + count : oldIndex);
 
     setPptResult((prev) => (prev ? { ...prev, slides: nextSlides } : prev));
     setPptVersions((prev) =>
@@ -7852,8 +7880,8 @@ export default function App() {
     });
     saveReviewTasks(nextReviewTasks);
     setReviewTasks(nextReviewTasks);
-    toast('已添加空白页');
-  }, [pptResult, creatorPptPageIndex, selectedPptVersionId, currentSessionId, toast]);
+    toast(incoming?.length ? `已插入 ${count} 张常用幻灯` : '已添加空白页');
+  }, [pptResult, selectedPptVersionId, currentSessionId, toast]);
 
   const handleWorkspaceElementSelect = useCallback((selection: SelectableSvgSelection | null, slideIndex: number) => {
     if (!selection) {
@@ -8153,6 +8181,16 @@ export default function App() {
                 <button
                   type="button"
                   className="glass-button flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium text-foreground hover:text-primary"
+                  onClick={() => setCurrentScreen('brandKb')}
+                >
+                  <span className="grid h-5 w-5 place-items-center rounded-md bg-gradient-to-br from-[#8B6FD6] to-[#54B9F9] shadow-[0_3px_8px_-2px_rgba(110,90,200,0.45)] ring-1 ring-white/40">
+                    <BookMarked className="h-3 w-3 text-white" strokeWidth={2.5} />
+                  </span>
+                  品牌知识库
+                </button>
+                <button
+                  type="button"
+                  className="glass-button flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium text-foreground hover:text-primary"
                   onClick={() => setCurrentScreen('library')}
                 >
                   <span className="grid h-5 w-5 place-items-center rounded-md bg-gradient-to-br from-[#54B9F9] to-[#3BA6E8] shadow-[0_3px_8px_-2px_rgba(59,150,210,0.5)] ring-1 ring-white/40">
@@ -8210,7 +8248,7 @@ export default function App() {
                   <div className="home-inspire-grid relative z-10 mt-6 animate-fade-up [animation-delay:120ms]">
                     <div className="home-inspire-left">
                       <div className="home-inspire-actions">
-                        {HOME_WORKFLOW_ACTIONS.map(({ title, description, scenes, capability, intent, prompt, Icon, art, mainStartsTask = true, subentries }) => {
+                        {HOME_WORKFLOW_ACTIONS.map(({ title, description, capability, intent, prompt, Icon, art, mainStartsTask = true, subentries }) => {
                           const actionInner = (
                             <>
                           <span className="home-inspire-action-icon">
@@ -8221,17 +8259,7 @@ export default function App() {
                           ) : null}
                           <div className="home-inspire-action-body">
                             <strong>{title}</strong>
-                            {capability ? (
-                              <span className="home-inspire-action-desc">{capability}</span>
-                            ) : scenes?.length ? (
-                              <span className="home-inspire-action-scenes">
-                                {scenes.map((scene) => (
-                                  <em key={scene}>{scene}</em>
-                                ))}
-                              </span>
-                            ) : (
-                              <span className="home-inspire-action-desc">{description}</span>
-                            )}
+                            <span className="home-inspire-action-desc">{capability ?? description}</span>
                             {mainStartsTask ? (
                               <span className="home-inspire-action-cta">
                                 新建任务
@@ -8791,6 +8819,11 @@ export default function App() {
             </div>
           )}
         </div>
+      </section>
+
+      {/* Brand Knowledge Screen */}
+      <section className={`screen screen-full ${currentScreen === 'brandKb' ? 'active' : ''}`}>
+        <BrandKnowledgePage onNotify={toast} onBack={goToHome} />
       </section>
 
       {/* Asset Library Screen */}
@@ -11208,7 +11241,7 @@ function WorkspaceRightPanel({
   pptPageVersionEpoch: number;
   onCreatorPptPageChange: (index: number) => void;
   onReorderCreatorPptSlides: (fromIndex: number, toIndex: number) => void;
-  onAddCreatorPptSlide: () => void;
+  onAddCreatorPptSlide: (afterIndex: number, slides?: PptSlide[]) => void;
   pageModificationTasks: ModificationTask[];
   imageModificationTasks: ModificationTask[];
   imagePageVersionEpoch: number;
@@ -11551,6 +11584,17 @@ function WorkspaceRightPanel({
   const [imageDownloadOpen, setImageDownloadOpen] = useState(false);
   const [draggingThumbIndex, setDraggingThumbIndex] = useState<number | null>(null);
   const [dropThumbIndex, setDropThumbIndex] = useState<number | null>(null);
+  const [pptAddMenu, setPptAddMenu] = useState<{ afterIndex: number; x: number; y: number } | null>(null);
+  const [pptStockPickerAfter, setPptStockPickerAfter] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!pptAddMenu) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPptAddMenu(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [pptAddMenu]);
   const thumbDragMovedRef = useRef(false);
   const pptPreviewRef = useRef<SelectableSvgPreviewHandle>(null);
   const selectedHistory = majorVersions.find((version) => version.id === previewHistoryId) ?? null;
@@ -12505,7 +12549,7 @@ function WorkspaceRightPanel({
                 ? 'evidence'
                 : 'default'
             }
-            omitFormat={entryContext?.source === 'case'}
+            hiddenFields={hiddenEvidenceBriefFields(entryContext?.source)}
             onChange={(next) => onContentBriefChange?.(next)}
             onUpload={() => onUploadBrief?.()}
             onRecommendLiterature={() => onRecommendLiterature?.('brief')}
@@ -13320,6 +13364,33 @@ function WorkspaceRightPanel({
           slideVersionId !== 'current' &&
           pageVersions.some((version) => version.id === slideVersionId && version.id !== 'current');
         const canReorderThumbs = !selectedHistory && !reviewerMode;
+        const showThumbInsert = canReorderThumbs && !viewingHistoricalVersion;
+        const renderThumbInsert = (afterIndex: number) =>
+          showThumbInsert ? (
+            <div className={`creator-ppt-thumb-insert${pptAddMenu?.afterIndex === afterIndex ? ' is-open' : ''}`}>
+              <button
+                type="button"
+                className="creator-ppt-thumb-insert-btn"
+                title={afterIndex < 0 ? '在开头新增页面' : `在第 ${afterIndex + 1} 页后新增页面`}
+                aria-label={afterIndex < 0 ? '在开头新增页面' : `在第 ${afterIndex + 1} 页后新增页面`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  setPptAddMenu((prev) =>
+                    prev?.afterIndex === afterIndex
+                      ? null
+                      : {
+                          afterIndex,
+                          x: Math.round(rect.right + 8),
+                          y: Math.round(rect.top + rect.height / 2),
+                        }
+                  );
+                }}
+              >
+                +
+              </button>
+            </div>
+          ) : null;
         const currentMajorMinors: VersionTimelineItem[] =
           pageVersions.length > 1
             ? pageVersions.map((version) => ({
@@ -13431,13 +13502,14 @@ function WorkspaceRightPanel({
                 </div>
                 <div className="creator-ppt-workspace">
                   <div className="creator-ppt-thumbnails" aria-label="页面缩略图，可拖拽排序">
+                    {renderThumbInsert(-1)}
                     {previewSlides.map((slide, index) => {
                       const commentCount = creatorPptComments.filter(
                         (comment) => comment.pageIndex === index
                       ).length;
                       return (
+                        <Fragment key={`ppt-thumb-${index}`}>
                         <button
-                          key={`ppt-thumb-${index}`}
                           type="button"
                           draggable={canReorderThumbs}
                           className={[
@@ -13514,23 +13586,67 @@ function WorkspaceRightPanel({
                             <span className="creator-ppt-thumbnail-comments">{commentCount}</span>
                           )}
                         </button>
+                        {renderThumbInsert(index)}
+                        </Fragment>
                       );
                     })}
-                    {canReorderThumbs && !viewingHistoricalVersion ? (
-                      <button
-                        type="button"
-                        className="is-add"
-                        title="添加页面"
-                        aria-label="添加页面"
-                        onClick={onAddCreatorPptSlide}
-                      >
-                        <span className="creator-ppt-thumbnail-add" aria-hidden>
-                          +
-                        </span>
-                        <span>添加页面</span>
-                      </button>
-                    ) : null}
                   </div>
+                  {pptAddMenu
+                    ? createPortal(
+                        <>
+                          <button
+                            type="button"
+                            className="creator-ppt-add-menu-backdrop"
+                            aria-label="关闭新增页面菜单"
+                            onClick={() => setPptAddMenu(null)}
+                          />
+                          <div
+                            className="creator-ppt-add-menu"
+                            role="menu"
+                            style={{ left: pptAddMenu.x, top: pptAddMenu.y }}
+                          >
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                onAddCreatorPptSlide(pptAddMenu.afterIndex);
+                                setPptAddMenu(null);
+                              }}
+                            >
+                              新增空白页
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                setPptStockPickerAfter(pptAddMenu.afterIndex);
+                                setPptAddMenu(null);
+                              }}
+                            >
+                              插入常用幻灯
+                            </button>
+                          </div>
+                        </>,
+                        document.body
+                      )
+                    : null}
+                  {pptStockPickerAfter != null
+                    ? createPortal(
+                        <StockSlidePickerModal
+                          open
+                          onClose={() => setPptStockPickerAfter(null)}
+                          onConfirm={(items) => {
+                            if (!items.length) return;
+                            onAddCreatorPptSlide(
+                              pptStockPickerAfter,
+                              items.map((item, offset) => brandKbItemToPptSlide(item, offset + 1))
+                            );
+                            setPptStockPickerAfter(null);
+                          }}
+                        />,
+                        document.body
+                      )
+                    : null}
                   <div className="creator-ppt-stage">
                     <div className="creator-ppt-slide-canvas">
                       <SelectableSvgPreview

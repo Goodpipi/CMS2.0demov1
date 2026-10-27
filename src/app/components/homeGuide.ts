@@ -231,8 +231,8 @@ export function getEntryWelcome(ctx: HomeEntryContext): { html: string; chips: s
 
   if (source === 'evidence') {
     return {
-      html: '您好！请添加待解读的目标材料，如指南、文献或研究原文；也可补充其他参考知识。填写任务提案并选择形式后，即可生成详细大纲。',
-      chips: ['填写任务提案', '生成PPT大纲', '生成图文大纲'],
+      html: '您好！请添加待解读的目标材料，如指南、文献或研究原文；也可补充其他参考知识。填写任务提案并选择解读类型后，即可生成详细大纲。',
+      chips: ['填写任务提案', outlineChipForFormat(productFormat)],
     };
   }
 

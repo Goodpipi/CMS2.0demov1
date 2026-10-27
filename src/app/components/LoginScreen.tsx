@@ -14,7 +14,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       <div className="login-shell">
         <BrandLogo />
         <header className="login-head">
-          <h2>登录 Bayidea</h2>
+          <h2>登录 CMS</h2>
           <p>选择账号进入工作台，可随时在右上角查看 Token 用量或登出。</p>
         </header>
         <div className="login-account-grid">

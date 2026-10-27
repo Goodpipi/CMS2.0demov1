@@ -8,7 +8,7 @@ interface ContentBriefPanelProps {
   onRecommendLiterature: () => void;
   onNext: () => void;
   variant?: ContentBriefVariant;
-  omitFormat?: boolean;
+  hiddenFields?: readonly (keyof ContentBrief)[];
 }
 
 export function ContentBriefPanel({
@@ -18,10 +18,10 @@ export function ContentBriefPanel({
   onRecommendLiterature,
   onNext,
   variant = 'default',
-  omitFormat = false,
+  hiddenFields = [],
 }: ContentBriefPanelProps) {
   const evidence = variant === 'evidence';
-  const fields = briefFieldsFor(variant).filter((field) => !(omitFormat && field.key === 'format'));
+  const fields = briefFieldsFor(variant, hiddenFields);
 
   return (
     <div className="workspace-surface-panel content-brief-panel">
@@ -56,7 +56,7 @@ export function ContentBriefPanel({
             {options ? (
               <select
                 className="input content-brief-select"
-                value={brief[key]}
+                value={brief[key] ?? ''}
                 onChange={(event) => onChange({ ...brief, [key]: event.target.value })}
               >
                 <option value="">请选择{label}</option>
@@ -69,7 +69,7 @@ export function ContentBriefPanel({
             ) : multiline ? (
               <textarea
                 className="input content-brief-textarea"
-                value={brief[key]}
+                value={brief[key] ?? ''}
                 rows={rows ?? 3}
                 placeholder={`请输入${label}`}
                 onChange={(event) => onChange({ ...brief, [key]: event.target.value })}
@@ -77,7 +77,7 @@ export function ContentBriefPanel({
             ) : (
               <input
                 className="input"
-                value={brief[key]}
+                value={brief[key] ?? ''}
                 placeholder={`请输入${label}`}
                 onChange={(event) => onChange({ ...brief, [key]: event.target.value })}
               />

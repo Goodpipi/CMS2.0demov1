@@ -1,29 +1,8 @@
 import type { ArticleOutline, OutlineRefImage, PptDesignVersion, PptOutline, PptSlide } from '@/types/content';
+import { XARELTO_AF_SLIDES, xareltoAfSlideUrl } from '@/lib/xareltoPptMock';
 
 function refImg(url: string, caption: string, cites?: number[]): OutlineRefImage {
   return { url, caption, alt: caption, cites };
-}
-
-function slideSvg(title: string, subtitle: string, index: number, accent: string): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540">
-    <defs>
-      <linearGradient id="bg${index}" x1="0" x2="1" y1="0" y2="1">
-        <stop stop-color="#f7fbff"/>
-        <stop offset="1" stop-color="#f5f0fa"/>
-      </linearGradient>
-    </defs>
-    <rect width="960" height="540" fill="url(#bg${index})"/>
-    <rect x="0" y="0" width="26" height="540" fill="${accent}"/>
-    <circle cx="846" cy="86" r="92" fill="${accent}" opacity=".12"/>
-    <circle cx="870" cy="470" r="150" fill="#8AD329" opacity=".08"/>
-    <text x="72" y="82" font-family="Arial,Microsoft YaHei,sans-serif" font-size="18" font-weight="700" fill="${accent}">BAYER · 医学内容</text>
-    <text x="72" y="188" font-family="Arial,Microsoft YaHei,sans-serif" font-size="42" font-weight="800" fill="#18334d">${title}</text>
-    <text x="72" y="244" font-family="Arial,Microsoft YaHei,sans-serif" font-size="22" fill="#536a80">${subtitle}</text>
-    <rect x="72" y="314" width="610" height="2" fill="${accent}" opacity=".35"/>
-    <text x="72" y="372" font-family="Arial,Microsoft YaHei,sans-serif" font-size="18" fill="#60758a">• 以循证信息为基础，保持专业、清晰、可追溯</text>
-    <text x="72" y="414" font-family="Arial,Microsoft YaHei,sans-serif" font-size="18" fill="#60758a">• 内容仅用于疾病教育，需经内部合规审核</text>
-    <text x="892" y="504" text-anchor="end" font-family="Arial,sans-serif" font-size="16" fill="#8aa0b3">0${index}</text>
-  </svg>`;
 }
 
 function slideSvgEnglish(title: string, subtitle: string, index: number, accent: string): string {
@@ -284,49 +263,14 @@ export const WORKSPACE_MOCK_PPT_OUTLINE: PptOutline = {
   ],
 };
 
-const MOCK_SLIDES: PptSlide[] = [
-  {
-    page: 1,
-    title: '慢性肾脏病患者全程管理',
-    bullets: ['早期识别 · 规范管理 · 持续随访'],
-    speakerNotes:
-      '开场先明确沟通目标：帮助听众理解全程管理框架。可结合一句患者旅程引入，再过渡到本页主标题。',
-    svg: slideSvg('慢性肾脏病患者全程管理', '早期识别 · 规范管理 · 持续随访', 1, '#54B9F9'),
-  },
-  {
-    page: 2,
-    title: '疾病负担与管理挑战',
-    bullets: ['患者数量持续增长', '早期认知不足', '长期管理仍有提升空间'],
-    speakerNotes:
-      '用 1–2 个关键数据说明负担，随后落到“早期认知不足”这一可行动洞察，避免堆砌数字。',
-    svg: slideSvg('疾病负担与管理挑战', '从风险认知到长期管理', 2, '#6FBD1F'),
-  },
-  {
-    page: 3,
-    title: '高风险人群识别',
-    bullets: ['关注糖尿病和高血压人群', '定期评估相关指标', '制定随访计划'],
-    speakerNotes:
-      '强调识别标准与随访节奏，可举例说明何时转介或加强监测，提醒以获批资料为准。',
-    svg: slideSvg('高风险人群识别', '把风险识别前移', 3, '#3B7FBF'),
-  },
-  {
-    page: 4,
-    title: '患者全程管理路径',
-    bullets: ['风险评估', '疾病教育', '规范诊疗', '持续随访'],
-    speakerNotes:
-      '按路径四步口头串讲，每步给出一句可落地动作，结尾预告下一页行动建议。',
-    svg: slideSvg('患者全程管理路径', '连接评估、教育、诊疗与随访', 4, '#8AD329'),
-  },
-];
-
 export const WORKSPACE_MOCK_PPT: PptDesignVersion = {
   id: 'workspace-mock-ppt',
-  name: '医学沟通方案',
-  styleTag: '品牌蓝紫 · 专业',
-  description: '内置 Mock PPT，可在部署后离线展示',
-  slides: MOCK_SLIDES,
-  coverDataUrl: `data:image/svg+xml,${encodeURIComponent(MOCK_SLIDES[0].svg || '')}`,
-  fileName: '慢性肾脏病患者全程管理-Mock.pptx',
+  name: '房颤卒中预防：从风险识别到剂量管理',
+  styleTag: '拜瑞妥紫 · 学术',
+  description: '内置 Mock PPT：医学与推广内容｜拜瑞妥，可在部署后离线展示',
+  slides: XARELTO_AF_SLIDES,
+  coverDataUrl: xareltoAfSlideUrl(1),
+  fileName: '医学与推广内容｜拜瑞妥.pptx',
 };
 
 export const WORKSPACE_MOCK_PPT_OUTLINE_EN: PptOutline = {

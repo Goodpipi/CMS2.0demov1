@@ -10,6 +10,8 @@ CJK = re.compile(r"[\u4e00-\u9fff]")
 MOCK_FILES = {
     "src/lib/videoStudioMocks.ts",
     "src/lib/workspaceMocks.ts",
+    "src/lib/xareltoPptMock.ts",
+    "src/lib/brandKnowledgeMocks.ts",
     "src/lib/demoScenarioFlow.ts",
     "src/lib/demoScripts.ts",
     "src/lib/materialContent.ts",

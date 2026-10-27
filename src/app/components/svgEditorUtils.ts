@@ -183,6 +183,48 @@ export function serializeSvgFromContainer(container: HTMLElement): string {
   return new XMLSerializer().serializeToString(clone);
 }
 
+/** `<img>` 中的 SVG 不会加载外链图片，需先把引用的图片转为 data URL */
+export async function inlineSvgImages(svg: string): Promise<string> {
+  const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+  const images = Array.from(doc.querySelectorAll('image'));
+  const cache = new Map<string, Promise<string>>();
+  const toDataUrl = (href: string) => {
+    if (!cache.has(href)) {
+      cache.set(
+        href,
+        fetch(href)
+          .then((res) => res.blob())
+          .then(
+            (blob) =>
+              new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(String(reader.result));
+                reader.onerror = () => reject(reader.error);
+                reader.readAsDataURL(blob);
+              })
+          )
+      );
+    }
+    return cache.get(href)!;
+  };
+  let changed = false;
+  await Promise.all(
+    images.map(async (image) => {
+      const href = image.getAttribute('href') || image.getAttribute('xlink:href') || '';
+      if (!href || href.startsWith('data:')) return;
+      try {
+        const dataUrl = await toDataUrl(href);
+        image.setAttribute('href', dataUrl);
+        if (image.hasAttribute('xlink:href')) image.setAttribute('xlink:href', dataUrl);
+        changed = true;
+      } catch {
+        /* 保留原链接 */
+      }
+    })
+  );
+  return changed ? new XMLSerializer().serializeToString(doc.documentElement) : svg;
+}
+
 export function svgToDataUrl(svg: string): string {
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }

@@ -432,15 +432,15 @@ export async function exportLongImageAsPptx(src: string, title: string): Promise
       data: xmlBytes(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <dc:title>${safeTitle}</dc:title>
-  <dc:creator>Bayidea</dc:creator>
-  <cp:lastModifiedBy>Bayidea</cp:lastModifiedBy>
+  <dc:creator>CMS</dc:creator>
+  <cp:lastModifiedBy>CMS</cp:lastModifiedBy>
 </cp:coreProperties>`),
     },
     {
       name: 'docProps/app.xml',
       data: xmlBytes(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">
-  <Application>Bayidea</Application>
+  <Application>CMS</Application>
   <Slides>1</Slides>
 </Properties>`),
     },

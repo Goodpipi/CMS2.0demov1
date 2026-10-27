@@ -1,6 +1,7 @@
 import type { TabKey } from '@/types/session';
 import type { VideoResult } from '@/types/content';
 import { getPatientEducationVideoVersion } from '@/lib/demoScenarioFlow';
+import { getLang } from '@/lib/i18n';
 
 export const VIDEO_STUDIO_FULL_URL = '/demo-assets/1488265506.mp4';
 export const VIDEO_HERO_IMAGE_URL = '/demo-assets/video-studio/hero.jpg';
@@ -204,6 +205,28 @@ export function ratioFromChannel(channel: string): string {
 }
 
 export function defaultVideoBrief(brand = '可申达'): VideoBrief {
+  if (getLang() === 'en') {
+    return {
+      theme: 'Healthy Eating for People with Diabetes',
+      audience: 'People with diabetes and their families',
+      keyMessages:
+        '1. Combine different food groups in a balanced way;\n2. Control total intake and staple food portions;\n3. Cut down on sugary drinks and choose plain water.',
+      scene: 'Patient education short video',
+      channel: 'Short video platforms',
+      duration: '10 s',
+      style: '3D cartoon medical explainer',
+      ratio: '9:16',
+      language: 'English',
+      narrationType: 'AI narration',
+      brand,
+      heroRequirement: 'A friendly, energetic health assistant character',
+      tone: 'Simple, relaxed and easy to understand',
+      refVideo: '',
+      personRef: '',
+      sceneRef: '',
+      brandBrief: '',
+    };
+  }
   return {
     theme: '糖尿病患者如何健康饮食',
     audience: '糖尿病患者及其家属',

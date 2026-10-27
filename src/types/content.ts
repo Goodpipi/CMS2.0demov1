@@ -116,6 +116,8 @@ export interface ContentBrief {
   audience: string;
   scenario: string;
   format: string;
+  /** 学术证据解读类型：指南解读 / 文献解读 / 研究解读 / 共识解读 */
+  interpretation?: string;
   goal: string;
   keyMessage: string;
   length: string;

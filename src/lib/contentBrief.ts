@@ -2,6 +2,7 @@ import type { ContentBrief } from '@/types/content';
 import type { BriefAnalysis } from '@/app/components/conversationGuide';
 
 export const EVIDENCE_BRIEF_FORMATS = ['PPT', '推文', '长图'] as const;
+export const EVIDENCE_INTERPRETATION_TYPES = ['指南解读', '文献解读', '研究解读', '共识解读'] as const;
 
 export type ContentBriefVariant = 'default' | 'evidence';
 
@@ -29,11 +30,23 @@ export const EVIDENCE_BRIEF_FIELDS: ContentBriefFieldDef[] = [
   { key: 'scenario', label: '主题', required: true },
   { key: 'audience', label: '受众', required: true },
   { key: 'format', label: '形式', required: true, options: EVIDENCE_BRIEF_FORMATS, wide: true },
+  { key: 'interpretation', label: '解读类型', required: true, options: EVIDENCE_INTERPRETATION_TYPES, wide: true },
   { key: 'notes', label: '其他补充', required: false, multiline: true, rows: 2 },
 ];
 
-export function briefFieldsFor(variant: ContentBriefVariant = 'default'): ContentBriefFieldDef[] {
-  return variant === 'evidence' ? EVIDENCE_BRIEF_FIELDS : CONTENT_BRIEF_FIELDS;
+export function briefFieldsFor(
+  variant: ContentBriefVariant = 'default',
+  hidden: readonly (keyof ContentBrief)[] = []
+): ContentBriefFieldDef[] {
+  const fields = variant === 'evidence' ? EVIDENCE_BRIEF_FIELDS : CONTENT_BRIEF_FIELDS;
+  return hidden.length ? fields.filter((field) => !hidden.includes(field.key)) : fields;
+}
+
+/** 病例与学术证据解读的形式由首页小入口决定；解读类型仅学术证据解读需要 */
+export function hiddenEvidenceBriefFields(source?: string | null): (keyof ContentBrief)[] {
+  if (source === 'case') return ['format', 'interpretation'];
+  if (source === 'evidence') return ['format'];
+  return [];
 }
 
 export function emptyContentBrief(): ContentBrief {
@@ -41,11 +54,43 @@ export function emptyContentBrief(): ContentBrief {
     audience: '',
     scenario: '',
     format: '',
+    interpretation: '',
     goal: '',
     keyMessage: '',
     length: '',
     notes: '',
     narrative: '',
+  };
+}
+
+/** 英文界面演示用的任务提案预填内容 */
+export function englishMockContentBrief(source?: string | null): ContentBrief {
+  if (source === 'case') {
+    return {
+      ...emptyContentBrief(),
+      scenario: 'Case review: elderly NVAF patient with reduced renal function on anticoagulation',
+      audience: 'Cardiologists and internal medicine physicians',
+      notes: 'Highlight CHA₂DS₂-VASc assessment, CrCl-based dose checks and follow-up planning; keep the case de-identified.',
+    };
+  }
+  if (source === 'evidence') {
+    return {
+      ...emptyContentBrief(),
+      scenario: 'Stroke prevention in non-valvular atrial fibrillation: 2024 China AF guideline update',
+      audience: 'Cardiologists and neurologists',
+      interpretation: '指南解读',
+      notes: 'Focus on risk stratification thresholds and NOAC dosing by CrCl; cite only approved sources.',
+    };
+  }
+  return {
+    ...emptyContentBrief(),
+    audience: 'Cardiologists and HCPs managing atrial fibrillation',
+    scenario: 'Regional academic meeting and department education',
+    goal: 'Help HCPs move from risk identification to consistent, guideline-based stroke prevention in NVAF patients.',
+    keyMessage: 'Assess stroke risk early, match the evidence to the clinical scenario, and confirm the dose by renal function.',
+    length: 'PPT, 10–12 pages',
+    notes: 'Follow the brand template style; every data point must be traceable to approved references.',
+    narrative: 'Disease burden → guideline position → key evidence → complex scenarios → dosing in practice.',
   };
 }
 
@@ -56,18 +101,20 @@ export function normalizeContentBrief(brief: ContentBrief | null | undefined): C
 
 export function missingRequiredBriefLabels(
   brief: ContentBrief,
-  variant: ContentBriefVariant = 'default'
+  variant: ContentBriefVariant = 'default',
+  hidden: readonly (keyof ContentBrief)[] = []
 ): string[] {
-  return briefFieldsFor(variant)
+  return briefFieldsFor(variant, hidden)
     .filter((field) => field.required && !String(brief[field.key] || '').trim())
     .map((field) => field.label);
 }
 
 export function formatContentBriefText(
   brief: ContentBrief,
-  variant: ContentBriefVariant = 'default'
+  variant: ContentBriefVariant = 'default',
+  hidden: readonly (keyof ContentBrief)[] = []
 ): string {
-  return briefFieldsFor(variant)
+  return briefFieldsFor(variant, hidden)
     .map(({ key, label }) => `${label}：${brief[key] || '—'}`)
     .join('\n');
 }
@@ -80,7 +127,7 @@ export function outlineCommandFromEvidenceFormat(format: string): string {
 }
 
 export function literatureQueryFromBrief(brief: ContentBrief): string {
-  return [brief.audience, brief.scenario, brief.keyMessage, brief.goal, brief.format]
+  return [brief.audience, brief.scenario, brief.interpretation, brief.keyMessage, brief.goal, brief.format]
     .map((part) => String(part || '').trim())
     .filter(Boolean)
     .join(' ');
@@ -111,6 +158,8 @@ export function generateContentBrief(input: {
     : /推文|图文/.test(prompt)
       ? '推文'
       : 'PPT';
+  const interpretation =
+    EVIDENCE_INTERPRETATION_TYPES.find((type) => prompt.includes(type.slice(0, 2))) ?? '文献解读';
   const topicHint = hasInsight
     ? '围绕房颤卒中预防、长期抗凝管理与泛血管风险沟通'
     : prompt.slice(0, 42) || '慢性肾脏病早期识别与规范管理';
@@ -119,6 +168,7 @@ export function generateContentBrief(input: {
     audience,
     scenario,
     format,
+    interpretation,
     goal: hasInsight
       ? '把洞察报告中的高优先话题转化为可执行任务提案，指导后续文案、配图与 PPT 生产。'
       : `根据用户提示「${topicHint}」明确内容方向、边界与交付形态。`,
