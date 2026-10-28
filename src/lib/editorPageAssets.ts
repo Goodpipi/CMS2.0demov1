@@ -61,7 +61,7 @@ export const EDITOR_PAGE_ASSET_GROUPS: { id: EditorAssetGroup; title: string; it
   },
   {
     id: 'other',
-    title: '其他素材',
+    title: '常用机制图',
     items: [
       { id: 'other-vegf', title: 'VEGF 血管新生机制图', meta: '机制图 · 16:9', group: 'other', href: '/other/vegf-pathway.svg', width: 320, height: 180 },
       { id: 'other-her2', title: 'HER2 信号通路机制图', meta: '机制图 · 16:9', group: 'other', href: '/other/her2-signaling.svg', width: 320, height: 180 },

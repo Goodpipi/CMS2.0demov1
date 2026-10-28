@@ -8206,7 +8206,7 @@ export default function App() {
                   <span className="grid h-5 w-5 place-items-center rounded-md bg-gradient-to-br from-[#8AD329] to-[#54B9F9] shadow-[0_3px_8px_-2px_rgba(120,180,40,0.45)] ring-1 ring-white/40">
                     <LibraryIcon className="h-3 w-3 text-white" strokeWidth={2.5} />
                   </span>
-                  视觉素材库
+                  品牌素材库
                 </button>
               </div>
 

@@ -5,6 +5,7 @@ import {
   Image as ImageIcon,
   Layers3,
   LibraryBig,
+  Network,
   Palette,
   Presentation,
   Search,
@@ -16,12 +17,13 @@ import {
 import { cn } from '@/app/components/ui/utils';
 import { BrandSwitcher } from '@/app/components/BrandSwitcher';
 import { matchesBrand, type ContentBrand } from '@/lib/brands';
+import { BRAND_KB_BRANDS, BRAND_KB_SLIDES } from '@/lib/brandKnowledgeMocks';
 import {
   EDITOR_PAGE_ASSET_GROUPS,
   type EditorAssetGroup,
 } from '@/lib/editorPageAssets';
 
-type AssetTab = 'templates' | 'brand';
+type AssetTab = 'templates' | 'brand' | 'slides' | 'mechanism';
 export type TemplateKind = 'ppt' | 'image';
 
 export interface TemplateAsset {
@@ -60,7 +62,7 @@ const BRAND_FILTER_ICONS: Record<EditorAssetGroup, typeof Palette> = {
   other: Shapes,
 };
 
-const BRAND_FILTERS = EDITOR_PAGE_ASSET_GROUPS.map((group) => ({
+const BRAND_FILTERS = EDITOR_PAGE_ASSET_GROUPS.filter((group) => group.id !== 'other').map((group) => ({
   id: group.id,
   label: group.title,
   Icon: BRAND_FILTER_ICONS[group.id],
@@ -251,7 +253,35 @@ export function AssetLibraryPage({ brand, onBrandChange, onNotify, onBack }: Ass
   }, [brandAssets, brandGroup, query, brand]);
 
   const templateCount = templateAssets.filter((asset) => matchesBrand(asset.brand, brand)).length;
-  const brandCount = brandAssets.filter((asset) => matchesBrand(asset.brand, brand)).length;
+  const brandCount = brandAssets.filter((asset) => asset.group !== 'other' && matchesBrand(asset.brand, brand)).length;
+  const mechanismCount = brandAssets.filter((asset) => asset.group === 'other' && matchesBrand(asset.brand, brand)).length;
+  const visibleSlides = useMemo(() => {
+    const keyword = query.trim().toLowerCase();
+    return BRAND_KB_SLIDES.filter((item) => {
+      const brandName = BRAND_KB_BRANDS.find((entry) => entry.id === item.brandId)?.name || '';
+      return (
+        !keyword ||
+        item.title.toLowerCase().includes(keyword) ||
+        item.summary.toLowerCase().includes(keyword) ||
+        item.meta.toLowerCase().includes(keyword) ||
+        item.tags.some((tag) => tag.toLowerCase().includes(keyword)) ||
+        brandName.includes(keyword)
+      );
+    });
+  }, [query]);
+
+  const visibleMechanisms = useMemo(() => {
+    const keyword = query.trim().toLowerCase();
+    return brandAssets.filter(
+      (asset) =>
+        asset.group === 'other' &&
+        matchesBrand(asset.brand, brand) &&
+        (!keyword ||
+          asset.title.toLowerCase().includes(keyword) ||
+          asset.description.toLowerCase().includes(keyword) ||
+          asset.category.toLowerCase().includes(keyword))
+    );
+  }, [brandAssets, brand, query]);
 
   const uploadTemplate = (file: File) => {
     const title = file.name.replace(/\.[^.]+$/, '');
@@ -275,18 +305,19 @@ export function AssetLibraryPage({ brand, onBrandChange, onNotify, onBack }: Ass
   const uploadBrandAsset = (file: File) => {
     const title = file.name.replace(/\.[^.]+$/, '');
     const extension = file.name.split('.').pop()?.toUpperCase() || 'FILE';
+    const isMechanism = activeTab === 'mechanism';
     const uploaded: BrandAsset = {
       id: `brand-${Date.now()}`,
       title,
       description: `本地上传 · ${(file.size / 1024).toFixed(0)}KB`,
       format: extension,
-      category: '其他素材',
-      group: 'other',
+      category: isMechanism ? '常用机制图' : '官方图片',
+      group: isMechanism ? 'other' : 'official',
       previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined,
       brand,
     };
     setBrandAssets((prev) => [uploaded, ...prev]);
-    onNotify(`品牌元素「${title}」上传成功`);
+    onNotify(isMechanism ? `机制图「${title}」上传成功` : `品牌元素「${title}」上传成功`);
   };
 
   return (
@@ -306,8 +337,14 @@ export function AssetLibraryPage({ brand, onBrandChange, onNotify, onBack }: Ass
               <LibraryBig className="h-5 w-5" />
             </span>
             <div>
-              <h2 className="text-[28px] font-semibold tracking-tight text-foreground">视觉素材库</h2>
-              <p className="mt-0.5 text-[12.5px] text-muted-foreground">正在查看「{brand}」的模板与视觉元素，通用素材会一并显示</p>
+              <h2 className="text-[28px] font-semibold tracking-tight text-foreground">品牌素材库</h2>
+              <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+                {activeTab === 'slides'
+                  ? '常用单页幻灯收录各品牌可直接插入 PPT 的单页'
+                  : activeTab === 'mechanism'
+                    ? '常用机制图用于说明产品作用或疾病机制，可插入页面'
+                    : `正在查看「${brand}」的模板与品牌元素，通用素材会一并显示`}
+              </p>
             </div>
           </div>
         </div>
@@ -318,18 +355,22 @@ export function AssetLibraryPage({ brand, onBrandChange, onNotify, onBack }: Ass
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="搜索模板、Logo 或图标"
+              placeholder={
+                activeTab === 'slides' ? '搜索标题、来源、标签…' : activeTab === 'mechanism' ? '搜索机制图' : '搜索模板、Logo 或图标'
+              }
               className="glass-input w-full rounded-xl border border-border/70 py-2.5 pl-10 pr-3 text-[13px] outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/15"
             />
           </div>
+          {activeTab !== 'slides' && (
           <button
             type="button"
             className="btn-hero-3d inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-[12px] font-semibold"
             onClick={() => (activeTab === 'templates' ? templateUploadRef : brandUploadRef).current?.click()}
           >
             <Upload className="h-3.5 w-3.5" />
-            上传{activeTab === 'templates' ? '模板' : '品牌元素'}
+            上传{activeTab === 'templates' ? '模板' : activeTab === 'mechanism' ? '机制图' : '品牌元素'}
           </button>
+          )}
           <input
             ref={templateUploadRef}
             type="file"
@@ -359,6 +400,8 @@ export function AssetLibraryPage({ brand, onBrandChange, onNotify, onBack }: Ass
         {([
           { id: 'templates' as const, label: '模板', Icon: Layers3, count: templateCount },
           { id: 'brand' as const, label: '品牌元素', Icon: Palette, count: brandCount },
+          { id: 'slides' as const, label: '常用单页幻灯', Icon: Presentation, count: BRAND_KB_SLIDES.length },
+          { id: 'mechanism' as const, label: '常用机制图', Icon: Network, count: mechanismCount },
         ]).map(({ id, label, Icon, count }) => (
           <button
             key={id}
@@ -434,7 +477,7 @@ export function AssetLibraryPage({ brand, onBrandChange, onNotify, onBack }: Ass
             ))}
           </div>
         </>
-      ) : (
+      ) : activeTab === 'brand' ? (
         <>
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div className="creator-right-tabs is-inline" role="tablist" aria-label="品牌元素分类">
@@ -487,12 +530,72 @@ export function AssetLibraryPage({ brand, onBrandChange, onNotify, onBack }: Ass
             ))}
           </div>
         </>
+      ) : activeTab === 'slides' ? (
+        <>
+          <div className="mb-5 flex items-center justify-end">
+            <span className="text-[11.5px] text-muted-foreground">{`${visibleSlides.length} 张常用单页`}</span>
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {visibleSlides.map((item) => {
+              const slideBrand = BRAND_KB_BRANDS.find((entry) => entry.id === item.brandId);
+              return (
+                <article key={item.id} className="overflow-hidden rounded-2xl glass-card p-3">
+                  <div className="aspect-[16/9] overflow-hidden rounded-xl bg-[#f4f7fb]">
+                    {item.previewUrl ? (
+                      <img src={item.previewUrl} alt={item.title} className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="grid h-full place-items-center px-4 text-center text-[12px] font-semibold text-foreground">{item.title}</div>
+                    )}
+                  </div>
+                  <div className="px-1 pb-1 pt-3">
+                    <div className="mb-1.5 flex items-center justify-between gap-2">
+                      <span
+                        className="rounded-md px-2 py-0.5 text-[9.5px] font-semibold"
+                        style={{ color: slideBrand?.accent, background: slideBrand?.accentSoft }}
+                      >
+                        {slideBrand?.name}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">{item.format}</span>
+                    </div>
+                    <h3 className="line-clamp-2 text-[13.5px] font-semibold text-foreground">{item.title}</h3>
+                    <p className="mt-1 min-h-9 text-[11px] leading-[1.55] text-muted-foreground">{item.summary}</p>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="mb-5 flex items-center justify-end">
+            <span className="text-[11.5px] text-muted-foreground">{`${visibleMechanisms.length} 张机制图`}</span>
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {visibleMechanisms.map((asset) => (
+              <article key={asset.id} className="group overflow-hidden rounded-2xl glass-card transition duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-glow">
+                <div className="grid aspect-[16/9] place-items-center overflow-hidden bg-[#f4f8fa]">
+                  <BrandPreview asset={asset} />
+                </div>
+                <div className="p-4">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="rounded-md bg-primary/10 px-2 py-0.5 text-[9.5px] font-semibold text-primary">常用机制图</span>
+                    <span className="text-[10px] text-muted-foreground">{asset.format}</span>
+                  </div>
+                  <h3 className="text-[13.5px] font-semibold text-foreground">{asset.title}</h3>
+                  <p className="mt-1 min-h-9 text-[11px] leading-[1.55] text-muted-foreground">{asset.description}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+        </>
       )}
 
       {previewAsset && <TemplatePreviewModal asset={previewAsset} onClose={() => setPreviewAsset(null)} />}
 
       {((activeTab === 'templates' && visibleTemplates.length === 0) ||
-        (activeTab === 'brand' && visibleBrandAssets.length === 0)) && (
+        (activeTab === 'brand' && visibleBrandAssets.length === 0) ||
+        (activeTab === 'slides' && visibleSlides.length === 0) ||
+        (activeTab === 'mechanism' && visibleMechanisms.length === 0)) && (
         <div className="mt-10 rounded-2xl border border-dashed border-border bg-white/60 px-6 py-12 text-center">
           <Search className="mx-auto h-7 w-7 text-muted-foreground/60" />
           <p className="mt-3 text-[13px] font-semibold text-foreground">没有找到匹配的素材</p>

@@ -15,8 +15,11 @@ import {
   Undo2,
   X,
   Image as ImageIcon,
+  Network,
+  Shapes,
 } from 'lucide-react';
-import { EDITOR_PAGE_ASSET_GROUPS, type EditorPageAsset } from '@/lib/editorPageAssets';
+import { EDITOR_PAGE_ASSET_GROUPS, type EditorAssetGroup, type EditorPageAsset } from '@/lib/editorPageAssets';
+import { cn } from '@/app/components/ui/utils';
 import {
   applyElementProps,
   EDITOR_FONT_FAMILIES,
@@ -171,6 +174,7 @@ export function VisualEditor({
   const [props, setProps] = useState<ElementProps | null>(null);
   const [insertTool, setInsertTool] = useState<InsertShapeType | null>(null);
   const [addElementOpen, setAddElementOpen] = useState(false);
+  const [assetGroupId, setAssetGroupId] = useState<EditorAssetGroup>(EDITOR_PAGE_ASSET_GROUPS[0]?.id ?? 'logo');
   const isPptEditor = !allowBrush;
   const elementShapeTools = allowShapes ? ELEMENT_SHAPE_TOOLS : [];
   const showAddElement = elementShapeTools.length > 0 || isPptEditor;
@@ -1394,33 +1398,49 @@ export function VisualEditor({
             ) : null}
             {isPptEditor ? (
               <section className="visual-editor-add-section">
-                <h4>素材</h4>
+                <div className="mb-3 flex gap-1 rounded-2xl border border-border/70 bg-white/70 p-1.5 shadow-sm">
+                  {EDITOR_PAGE_ASSET_GROUPS.map((group) => {
+                    const Icon = group.id === 'other' ? Network : group.id === 'official' ? ImageIcon : Shapes;
+                    const active = assetGroupId === group.id;
+                    return (
+                      <button
+                        key={group.id}
+                        type="button"
+                        onClick={() => setAssetGroupId(group.id)}
+                        className={cn(
+                          'flex h-11 min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-2 text-[13px] font-semibold transition',
+                          active
+                            ? 'bg-hero-gradient text-white shadow-glow'
+                            : 'text-muted-foreground hover:bg-white hover:text-foreground'
+                        )}
+                      >
+                        <Icon className="h-4 w-4" />
+                        {group.title}
+                        <span className={cn('rounded-full px-2 py-0.5 text-[10px]', active ? 'bg-white/16 text-white' : 'bg-secondary text-muted-foreground')}>
+                          {group.items.length}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
                 <div className="visual-editor-asset-picker">
-                  {EDITOR_PAGE_ASSET_GROUPS.map((group) => (
-                    <div key={group.id} className="visual-editor-asset-group">
-                      <div className="visual-editor-asset-group-head">
-                        <span>{group.title}</span>
-                        <span className="visual-editor-asset-group-count">{group.items.length}</span>
-                      </div>
-                      <div className="visual-editor-asset-tile-grid">
-                        {group.items.map((item) => (
-                          <button
-                            key={item.id}
-                            type="button"
-                            className="visual-editor-asset-tile"
-                            onClick={() => handleInsertAsset(item)}
-                            title={`插入「${item.title}」`}
-                          >
-                            <span className="visual-editor-asset-tile-preview">
-                              <img src={item.href} alt="" />
-                            </span>
-                            <span className="visual-editor-asset-tile-title">{item.title}</span>
-                            <span className="visual-editor-asset-tile-meta">{item.meta}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
+                  <div className="visual-editor-asset-tile-grid">
+                    {(EDITOR_PAGE_ASSET_GROUPS.find((group) => group.id === assetGroupId) ?? EDITOR_PAGE_ASSET_GROUPS[0]).items.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className="visual-editor-asset-tile"
+                        onClick={() => handleInsertAsset(item)}
+                        title={`插入「${item.title}」`}
+                      >
+                        <span className="visual-editor-asset-tile-preview">
+                          <img src={item.href} alt="" />
+                        </span>
+                        <span className="visual-editor-asset-tile-title">{item.title}</span>
+                        <span className="visual-editor-asset-tile-meta">{item.meta}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </section>
             ) : null}

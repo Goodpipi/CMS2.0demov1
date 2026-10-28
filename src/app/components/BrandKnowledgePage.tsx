@@ -5,8 +5,6 @@ import {
   Check,
   ChevronLeft,
   Lightbulb,
-  Network,
-  Presentation,
   Search,
   Star,
   Target,
@@ -26,11 +24,7 @@ const CATEGORIES: { id: BrandKbCategory; label: string; Icon: typeof Target }[] 
   { id: 'strategy', label: '品牌策略', Icon: Target },
   { id: 'literature', label: '常用文献', Icon: BookOpen },
   { id: 'knowledge', label: '常用知识参考', Icon: Lightbulb },
-  { id: 'slide', label: '常用单页幻灯', Icon: Presentation },
-  { id: 'mechanism', label: '常用机制图', Icon: Network },
 ];
-
-const isVisual = (category: BrandKbCategory) => category === 'slide' || category === 'mechanism';
 
 function matchesQuery(item: BrandKbItem, keyword: string): boolean {
   if (!keyword) return true;
@@ -45,7 +39,7 @@ function VisualPreview({ item, brand }: { item: BrandKbItem; brand: BrandKbBrand
       <img
         src={item.previewUrl}
         alt={item.title}
-        className={cn('h-full w-full', item.category === 'slide' ? 'object-cover' : 'object-contain p-3')}
+        className="h-full w-full object-cover"
       />
     );
   }
@@ -85,12 +79,8 @@ function ItemCard({
       }}
       className="brand-kb-card group flex cursor-pointer flex-col overflow-hidden rounded-2xl glass-card transition duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-glow"
     >
-      {isVisual(item.category) ? (
-        <div className="aspect-[16/9] overflow-hidden border-b border-border/60 bg-[#f4f7fb]">
-          <VisualPreview item={item} brand={brand} />
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 px-4 pt-4">
+      <div className="flex flex-1 flex-col p-4">
+        <div className="mb-2 flex items-center gap-2">
           <span
             className="grid h-8 w-8 shrink-0 place-items-center rounded-lg"
             style={{ background: brand.accentSoft, color: brand.accent }}
@@ -99,12 +89,7 @@ function ItemCard({
           </span>
           <span className="min-w-0 truncate text-[10.5px] text-muted-foreground">{item.meta}</span>
         </div>
-      )}
-      <div className="flex flex-1 flex-col p-4 pt-3">
         <h3 className="line-clamp-2 text-[13.5px] font-semibold leading-snug text-foreground">{item.title}</h3>
-        {isVisual(item.category) && (
-          <p className="mt-1 truncate text-[10.5px] text-muted-foreground">{item.meta}</p>
-        )}
         <p className="mt-1.5 line-clamp-2 text-[11.5px] leading-[1.6] text-muted-foreground">{item.summary}</p>
         <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-3">
           {item.tags.map((tag) => (
@@ -168,11 +153,6 @@ function ItemPreviewModal({
             <X className="h-4 w-4" strokeWidth={2.2} />
           </button>
         </div>
-        {isVisual(item.category) && (
-          <div className="mt-4 aspect-[16/9] overflow-hidden rounded-xl border border-border/60 bg-[#f4f7fb]">
-            <VisualPreview item={item} brand={brand} />
-          </div>
-        )}
         <dl className="mt-4 grid gap-3 text-[12.5px]">
           <div>
             <dt className="mb-1 text-[11px] font-semibold text-muted-foreground">内容摘要</dt>
@@ -230,6 +210,14 @@ export function BrandKnowledgePage({ onNotify, onBack }: BrandKnowledgePageProps
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [previewItem]);
 
+  const categoryCounts = useMemo(() => {
+    const counts = { strategy: 0, literature: 0, knowledge: 0 };
+    for (const item of BRAND_KB_ITEMS) {
+      if (item.brandId === brandId) counts[item.category] += 1;
+    }
+    return counts;
+  }, [brandId]);
+
   const visibleItems = useMemo(
     () =>
       BRAND_KB_ITEMS.filter(
@@ -257,7 +245,7 @@ export function BrandKnowledgePage({ onNotify, onBack }: BrandKnowledgePageProps
             <div>
               <h2 className="text-[28px] font-semibold tracking-tight text-foreground">品牌知识库</h2>
               <p className="mt-0.5 text-[12.5px] text-muted-foreground">
-                {`正在查看「${brand.name}」的品牌策略、文献、知识参考、单页幻灯与机制图`}
+                {`正在查看「${brand.name}」的品牌策略、文献与知识参考`}
               </p>
             </div>
           </div>
@@ -290,23 +278,26 @@ export function BrandKnowledgePage({ onNotify, onBack }: BrandKnowledgePageProps
         </div>
       </div>
 
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div className="creator-right-tabs is-inline" role="tablist" aria-label="内容分类">
-          {CATEGORIES.map(({ id, label, Icon }) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={category === id}
-              className={category === id ? 'active' : ''}
-              onClick={() => setCategory(id)}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
-            </button>
-          ))}
-        </div>
-        <span className="text-[11.5px] text-muted-foreground">{`${visibleItems.length} 项知识`}</span>
+      <div className="mb-5 flex gap-1 rounded-2xl border border-border/70 bg-white/70 p-1.5 shadow-sm">
+        {CATEGORIES.map(({ id, label, Icon }) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setCategory(id)}
+            className={cn(
+              'flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold transition',
+              category === id
+                ? 'bg-hero-gradient text-white shadow-glow'
+                : 'text-muted-foreground hover:bg-white hover:text-foreground'
+            )}
+          >
+            <Icon className="h-4 w-4" />
+            {label}
+            <span className={cn('rounded-full px-2 py-0.5 text-[10px]', category === id ? 'bg-white/16 text-white' : 'bg-secondary text-muted-foreground')}>
+              {categoryCounts[id]}
+            </span>
+          </button>
+        ))}
       </div>
 
       {visibleItems.length > 0 ? (
@@ -393,7 +384,7 @@ export function StockSlidePickerModal({
         <div className="stock-slide-picker-head">
           <div>
             <h3 id="stock-slide-picker-title">插入常用幻灯</h3>
-            <p>来自品牌知识库的全部常用单页幻灯，可多选后插入到当前位置。</p>
+            <p>来自品牌素材库的全部常用单页幻灯，可多选后插入到当前位置。</p>
           </div>
           <button type="button" className="literature-picker-close" onClick={onClose} aria-label="关闭">
             <X className="h-4 w-4" strokeWidth={2.2} />

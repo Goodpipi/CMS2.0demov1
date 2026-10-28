@@ -8408,11 +8408,17 @@ textarea {
 }
 
 .visual-editor-add-modal .visual-editor-asset-picker {
-  max-height: 58vh;
+  container-type: inline-size;
+  height: calc(2 * (((100cqi - 20px) / 3 - 16px) * 0.75 + 78.4px) + 18px);
   overflow: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+}
+
+.visual-editor-add-modal .visual-editor-asset-tile-grid {
+  align-content: start;
+}
+
+.visual-editor-add-modal .visual-editor-asset-tile-title {
+  min-height: 2.7em;
 }
 
 .visual-editor-asset-group-head {
@@ -8506,6 +8512,10 @@ textarea {
   .visual-editor-asset-tile-grid,
   .visual-editor-add-modal .visual-editor-shape-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .visual-editor-add-modal .visual-editor-asset-picker {
+    height: calc(2 * (((100cqi - 10px) / 2 - 16px) * 0.75 + 78.4px) + 18px);
   }
 }
 

@@ -1,7 +1,7 @@
 import type { PptSlide } from '@/types/content';
 import { xareltoAfSlideUrl } from '@/lib/xareltoPptMock';
 
-export type BrandKbCategory = 'strategy' | 'literature' | 'knowledge' | 'slide' | 'mechanism';
+export type BrandKbCategory = 'strategy' | 'literature' | 'knowledge';
 
 export interface BrandKbBrand {
   id: string;
@@ -48,14 +48,6 @@ export const BRAND_KB_ITEMS: BrandKbItem[] = [
   { id: 'xa-k2', brandId: 'xarelto', category: 'knowledge', title: '常见临床问题 FAQ（20 问）', summary: '漏服处理、围手术期停药、与抗血小板联用、高龄低体重患者等问题的标准回答口径。', meta: '医学部 · 已审批', format: 'Word · 12 页', tags: ['FAQ', '标准口径'], updatedAt: '2026-09-26' },
   { id: 'xa-k3', brandId: 'xarelto', category: 'knowledge', title: '合规表述清单', summary: '可用与禁用表述对照：避免“最安全”“首选”等绝对化用语，同类比较须基于同一研究。', meta: '合规部 · 2026 版', format: '清单', tags: ['合规', '必读'], updatedAt: '2026-09-12' },
   { id: 'xa-k4', brandId: 'xarelto', category: 'knowledge', title: '说明书要点摘录', summary: '适应证、用法用量、禁忌、特殊人群用药与药物相互作用的关键段落摘录。', meta: '注册部 · 最新说明书', format: 'PDF', tags: ['说明书'], updatedAt: '2026-06-30' },
-  { id: 'xa-p1', brandId: 'xarelto', category: 'slide', title: '上海真实世界数据：房颤负担随年龄显著上升', summary: '按年龄分层的房颤患病率柱状图，适合作为疾病负担开场页。', meta: '来自《房颤卒中预防：从风险识别到剂量管理》第 3 页', format: '16:9 单页', tags: ['疾病负担'], updatedAt: '2026-10-20', previewUrl: xareltoAfSlideUrl(3) },
-  { id: 'xa-p2', brandId: 'xarelto', category: 'slide', title: '卒中风险分层：从房颤诊断走向危险因素组合', summary: 'CHA₂DS₂-VASc 风险因素拆解，引导进入抗凝决策。', meta: '来自《房颤卒中预防：从风险识别到剂量管理》第 5 页', format: '16:9 单页', tags: ['风险评估'], updatedAt: '2026-10-20', previewUrl: xareltoAfSlideUrl(5) },
-  { id: 'xa-p3', brandId: 'xarelto', category: 'slide', title: '指南定位：多数非瓣膜性房颤优先考虑NOAC', summary: '中外指南推荐对照，强调 NOAC 优先地位。', meta: '来自《房颤卒中预防：从风险识别到剂量管理》第 9 页', format: '16:9 单页', tags: ['指南'], updatedAt: '2026-10-20', previewUrl: xareltoAfSlideUrl(9) },
-  { id: 'xa-p4', brandId: 'xarelto', category: 'slide', title: 'ROCKET AF：卒中和体循环栓塞预防达到非劣效', summary: '主要疗效终点结果页，含 HR 与 95% CI。', meta: '来自《房颤卒中预防：从风险识别到剂量管理》第 12 页', format: '16:9 单页', tags: ['ROCKET AF'], updatedAt: '2026-10-20', previewUrl: xareltoAfSlideUrl(12) },
-  { id: 'xa-p5', brandId: 'xarelto', category: 'slide', title: '剂量判断以CrCl为核心', summary: '以 CrCl 为核心的剂量判断流程，避免按年龄或单项化验直接减量。', meta: '来自《房颤卒中预防：从风险识别到剂量管理》第 26 页', format: '16:9 单页', tags: ['剂量'], updatedAt: '2026-10-20', previewUrl: xareltoAfSlideUrl(26) },
-  { id: 'xa-p6', brandId: 'xarelto', category: 'slide', title: '产品简处页：拜瑞妥®（利伐沙班）房颤剂量与关键信息汇总', summary: '所有对外 PPT 必须附带的产品简处页。', meta: '来自《房颤卒中预防：从风险识别到剂量管理》第 31 页', format: '16:9 单页', tags: ['必备页', '合规'], updatedAt: '2026-10-20', previewUrl: xareltoAfSlideUrl(31) },
-  { id: 'xa-m1', brandId: 'xarelto', category: 'mechanism', title: '利伐沙班作用机制：直接抑制 Xa 因子', summary: '凝血级联示意图，标注利伐沙班直接、选择性抑制游离及结合态 Xa 因子。', meta: '医学部 · 可编辑 SVG', format: 'SVG', tags: ['作用机制'], updatedAt: '2026-09-05', previewUrl: '/other/platelet-antithrombotic.svg' },
-  { id: 'xa-m2', brandId: 'xarelto', category: 'mechanism', title: '房颤卒中形成机制：左心耳血栓', summary: '心房颤动导致血流淤滞、左心耳血栓形成并脱落致卒中的示意图。', meta: '医学部 · 长图', format: 'PNG', tags: ['疾病机制'], updatedAt: '2026-08-21', previewUrl: '/image-templates/afib-stroke.png' },
 
   // 可申达
   { id: 'ke-s1', brandId: 'kerendia', category: 'strategy', title: '2026 可申达品牌策略：CKD 合并 T2D 心肾双重保护', summary: '在 RASi、SGLT-2i 基础上，确立非奈利酮作为“第三支柱”的沟通主线。', meta: '品牌组 · 年度策略 V1.4', format: 'PPT · 24 页', tags: ['年度策略'], updatedAt: '2026-10-18' },
@@ -67,9 +59,6 @@ export const BRAND_KB_ITEMS: BrandKbItem[] = [
   { id: 'ke-k1', brandId: 'kerendia', category: 'knowledge', title: '血钾监测与剂量调整流程', summary: '起始剂量按 eGFR 选择 10 mg 或 20 mg，第 4 周复查血钾后按流程上调或暂停。', meta: '医学部 · 已审批', format: '知识卡片', tags: ['剂量', '安全性'], updatedAt: '2026-10-10' },
   { id: 'ke-k2', brandId: 'kerendia', category: 'knowledge', title: '甾体与非甾体 MRA 差异要点', summary: '结构、组织分布、受体结合方式与高钾风险差异的标准讲解口径。', meta: '医学部 · 已审批', format: 'Word · 4 页', tags: ['机制', '标准口径'], updatedAt: '2026-09-01' },
   { id: 'ke-k3', brandId: 'kerendia', category: 'knowledge', title: '合规表述清单', summary: '心肾获益表述需注明研究人群与终点，不得外推至非糖尿病 CKD。', meta: '合规部 · 2026 版', format: '清单', tags: ['合规', '必读'], updatedAt: '2026-08-20' },
-  { id: 'ke-p1', brandId: 'kerendia', category: 'slide', title: 'FIDELIO-DKD 主要终点结果页', summary: '肾脏复合终点 Kaplan-Meier 曲线与 HR。', meta: '来自《可申达 G1-2 期临床数据汇总》第 6 页', format: '16:9 单页', tags: ['FIDELIO-DKD'], updatedAt: '2026-10-02' },
-  { id: 'ke-p2', brandId: 'kerendia', category: 'slide', title: 'CKD 合并 T2D 治疗三支柱', summary: 'RASi + SGLT-2i + 非奈利酮联合方案示意页。', meta: '来自《可申达 G1-2 期临床数据汇总》第 11 页', format: '16:9 单页', tags: ['治疗路径'], updatedAt: '2026-10-02' },
-  { id: 'ke-m1', brandId: 'kerendia', category: 'mechanism', title: '非奈利酮与 SGLT-2i 联合机制解析', summary: '从炎症、纤维化与血流动力学三条通路说明联合治疗的互补机制。', meta: '医学部 · 长图', format: 'PNG', tags: ['作用机制', 'CONFIDENCE'], updatedAt: '2026-09-22', previewUrl: '/image-templates/confidence-talk.png' },
 
   // 艾力雅
   { id: 'ey-s1', brandId: 'eylea', category: 'strategy', title: '2026 艾力雅品牌策略：更长给药间隔', summary: '以“更少注射、视力持久”为主线，覆盖 nAMD 与 DME 两大适应证。', meta: '品牌组 · 年度策略 V1.2', format: 'PPT · 20 页', tags: ['年度策略'], updatedAt: '2026-10-12' },
@@ -78,11 +67,6 @@ export const BRAND_KB_ITEMS: BrandKbItem[] = [
   { id: 'ey-l3', brandId: 'eylea', category: 'literature', title: 'Intravitreal aflibercept 8 mg in neovascular AMD (PULSAR)', summary: '8 mg 方案最长可延长至每 16 周给药，视力获益非劣效。', meta: 'Lanzetta P, et al. Lancet. 2024;403:1141-1152', format: 'RCT · PDF', tags: ['高剂量', '高频引用'], updatedAt: '2026-10-05' },
   { id: 'ey-k1', brandId: 'eylea', category: 'knowledge', title: 'T&E 给药方案讲解口径', summary: '治疗-延长（Treat & Extend）方案的随访节点与延长判断标准。', meta: '医学部 · 已审批', format: '知识卡片', tags: ['给药方案'], updatedAt: '2026-09-20' },
   { id: 'ey-k2', brandId: 'eylea', category: 'knowledge', title: '眼内注射安全性 FAQ', summary: '眼内炎、眼压升高等常见问题的标准回答。', meta: '医学部 · 已审批', format: 'Word · 6 页', tags: ['FAQ', '安全性'], updatedAt: '2026-08-02' },
-  { id: 'ey-p1', brandId: 'eylea', category: 'slide', title: 'nAMD Meta 分析：抗 VEGF 治疗初治患者', summary: '系统评价封面页，适合学术会议开场。', meta: '来自《EYLEA nAMD Meta 分析》第 1 页', format: '16:9 单页', tags: ['Meta 分析'], updatedAt: '2026-09-10', previewUrl: '/ppt-templates/eylea-namd-01.png' },
-  { id: 'ey-p2', brandId: 'eylea', category: 'slide', title: '视力获益对比页', summary: '各抗 VEGF 方案 BCVA 变化森林图。', meta: '来自《EYLEA nAMD Meta 分析》第 2 页', format: '16:9 单页', tags: ['疗效'], updatedAt: '2026-09-10', previewUrl: '/ppt-templates/eylea-namd-02.png' },
-  { id: 'ey-p3', brandId: 'eylea', category: 'slide', title: '注射次数与给药间隔对比页', summary: '展示更长给药间隔带来的治疗负担下降。', meta: '来自《EYLEA nAMD Meta 分析》第 3 页', format: '16:9 单页', tags: ['治疗负担'], updatedAt: '2026-09-10', previewUrl: '/ppt-templates/eylea-namd-03.png' },
-  { id: 'ey-m1', brandId: 'eylea', category: 'mechanism', title: 'VEGF 信号通路与阿柏西普结合方式', summary: '阿柏西普作为诱饵受体，同时结合 VEGF-A、VEGF-B 与 PlGF。', meta: '医学部 · 可编辑 SVG', format: 'SVG', tags: ['作用机制'], updatedAt: '2026-08-28', previewUrl: '/other/vegf-pathway.svg' },
-  { id: 'ey-m2', brandId: 'eylea', category: 'mechanism', title: '脉络膜新生血管（CNV）形成示意', summary: 'nAMD 中 CNV 穿透 Bruch 膜导致渗漏与出血的结构示意。', meta: '医学部 · 可编辑 SVG', format: 'SVG', tags: ['疾病机制'], updatedAt: '2026-08-28', previewUrl: '/other/retina-cnv.svg' },
 
   // 塞伐艾替尼
   { id: 'se-s1', brandId: 'sevabertinib', category: 'strategy', title: '上市前医学沟通策略：HER2 突变 NSCLC', summary: '聚焦 HER2 突变检测率提升与口服靶向治疗的未满足需求。', meta: '医学事务 · 草案 V0.9', format: 'PPT · 18 页', tags: ['上市前', '医学沟通'], updatedAt: '2026-09-28' },
@@ -90,13 +74,24 @@ export const BRAND_KB_ITEMS: BrandKbItem[] = [
   { id: 'se-l2', brandId: 'sevabertinib', category: 'literature', title: 'NCCN 非小细胞肺癌临床实践指南（2025）HER2 相关章节', summary: '推荐对晚期 NSCLC 开展包括 HER2 在内的广泛分子检测。', meta: 'NCCN Guidelines. NSCLC. 2025', format: '指南 · PDF', tags: ['国际指南'], updatedAt: '2026-08-08' },
   { id: 'se-k1', brandId: 'sevabertinib', category: 'knowledge', title: 'HER2 突变检测路径', summary: 'NGS 检测时机、样本类型与报告解读要点。', meta: '医学部 · 已审批', format: '知识卡片', tags: ['分子检测'], updatedAt: '2026-09-02' },
   { id: 'se-k2', brandId: 'sevabertinib', category: 'knowledge', title: '上市前沟通合规边界', summary: '上市前仅限医学交流，禁止任何推广性表述。', meta: '合规部 · 2026 版', format: '清单', tags: ['合规', '必读'], updatedAt: '2026-08-15' },
-  { id: 'se-p1', brandId: 'sevabertinib', category: 'slide', title: 'HER2 突变 NSCLC 医学汇报封面', summary: '医学事务汇报标准封面版式。', meta: '来自《HER2 突变 NSCLC 医学汇报》第 1 页', format: '16:9 单页', tags: ['封面'], updatedAt: '2026-09-15', previewUrl: '/ppt-templates/her2-nsclc-01.png' },
-  { id: 'se-p2', brandId: 'sevabertinib', category: 'slide', title: '疾病背景与未满足需求', summary: 'HER2 突变发生率与现有治疗局限。', meta: '来自《HER2 突变 NSCLC 医学汇报》第 2 页', format: '16:9 单页', tags: ['疾病背景'], updatedAt: '2026-09-15', previewUrl: '/ppt-templates/her2-nsclc-02.png' },
-  { id: 'se-p3', brandId: 'sevabertinib', category: 'slide', title: 'SOHO-01 疗效数据页', summary: 'ORR、DoR 与 PFS 汇总。', meta: '来自《HER2 突变 NSCLC 医学汇报》第 3 页', format: '16:9 单页', tags: ['疗效'], updatedAt: '2026-09-15', previewUrl: '/ppt-templates/her2-nsclc-03.png' },
-  { id: 'se-m1', brandId: 'sevabertinib', category: 'mechanism', title: 'HER2 信号通路与 TKI 抑制位点', summary: 'HER2 外显子 20 插入突变激活下游 PI3K/AKT 与 MAPK 通路，TKI 阻断胞内激酶域。', meta: '医学部 · 可编辑 SVG', format: 'SVG', tags: ['作用机制'], updatedAt: '2026-09-01', previewUrl: '/other/her2-signaling.svg' },
 ];
 
-export const BRAND_KB_SLIDES = BRAND_KB_ITEMS.filter((item) => item.category === 'slide');
+export const BRAND_KB_SLIDES: BrandKbItem[] = [
+  { id: 'xa-p1', brandId: 'xarelto', category: 'strategy', title: '上海真实世界数据：房颤负担随年龄显著上升', summary: '按年龄分层的房颤患病率柱状图，适合作为疾病负担开场页。', meta: '来自《房颤卒中预防：从风险识别到剂量管理》第 3 页', format: '16:9 单页', tags: ['疾病负担'], updatedAt: '2026-10-20', previewUrl: xareltoAfSlideUrl(3) },
+  { id: 'xa-p2', brandId: 'xarelto', category: 'strategy', title: '卒中风险分层：从房颤诊断走向危险因素组合', summary: 'CHA₂DS₂-VASc 风险因素拆解，引导进入抗凝决策。', meta: '来自《房颤卒中预防：从风险识别到剂量管理》第 5 页', format: '16:9 单页', tags: ['风险评估'], updatedAt: '2026-10-20', previewUrl: xareltoAfSlideUrl(5) },
+  { id: 'xa-p3', brandId: 'xarelto', category: 'strategy', title: '指南定位：多数非瓣膜性房颤优先考虑NOAC', summary: '中外指南推荐对照，强调 NOAC 优先地位。', meta: '来自《房颤卒中预防：从风险识别到剂量管理》第 9 页', format: '16:9 单页', tags: ['指南'], updatedAt: '2026-10-20', previewUrl: xareltoAfSlideUrl(9) },
+  { id: 'xa-p4', brandId: 'xarelto', category: 'strategy', title: 'ROCKET AF：卒中和体循环栓塞预防达到非劣效', summary: '主要疗效终点结果页，含 HR 与 95% CI。', meta: '来自《房颤卒中预防：从风险识别到剂量管理》第 12 页', format: '16:9 单页', tags: ['ROCKET AF'], updatedAt: '2026-10-20', previewUrl: xareltoAfSlideUrl(12) },
+  { id: 'xa-p5', brandId: 'xarelto', category: 'strategy', title: '剂量判断以CrCl为核心', summary: '以 CrCl 为核心的剂量判断流程，避免按年龄或单项化验直接减量。', meta: '来自《房颤卒中预防：从风险识别到剂量管理》第 26 页', format: '16:9 单页', tags: ['剂量'], updatedAt: '2026-10-20', previewUrl: xareltoAfSlideUrl(26) },
+  { id: 'xa-p6', brandId: 'xarelto', category: 'strategy', title: '产品简处页：拜瑞妥®（利伐沙班）房颤剂量与关键信息汇总', summary: '所有对外 PPT 必须附带的产品简处页。', meta: '来自《房颤卒中预防：从风险识别到剂量管理》第 31 页', format: '16:9 单页', tags: ['必备页', '合规'], updatedAt: '2026-10-20', previewUrl: xareltoAfSlideUrl(31) },
+  { id: 'ke-p1', brandId: 'kerendia', category: 'strategy', title: 'FIDELIO-DKD 主要终点结果页', summary: '肾脏复合终点 Kaplan-Meier 曲线与 HR。', meta: '来自《可申达 G1-2 期临床数据汇总》第 6 页', format: '16:9 单页', tags: ['FIDELIO-DKD'], updatedAt: '2026-10-02' },
+  { id: 'ke-p2', brandId: 'kerendia', category: 'strategy', title: 'CKD 合并 T2D 治疗三支柱', summary: 'RASi + SGLT-2i + 非奈利酮联合方案示意页。', meta: '来自《可申达 G1-2 期临床数据汇总》第 11 页', format: '16:9 单页', tags: ['治疗路径'], updatedAt: '2026-10-02' },
+  { id: 'ey-p1', brandId: 'eylea', category: 'strategy', title: 'nAMD Meta 分析：抗 VEGF 治疗初治患者', summary: '系统评价封面页，适合学术会议开场。', meta: '来自《EYLEA nAMD Meta 分析》第 1 页', format: '16:9 单页', tags: ['Meta 分析'], updatedAt: '2026-09-10', previewUrl: '/ppt-templates/eylea-namd-01.png' },
+  { id: 'ey-p2', brandId: 'eylea', category: 'strategy', title: '视力获益对比页', summary: '各抗 VEGF 方案 BCVA 变化森林图。', meta: '来自《EYLEA nAMD Meta 分析》第 2 页', format: '16:9 单页', tags: ['疗效'], updatedAt: '2026-09-10', previewUrl: '/ppt-templates/eylea-namd-02.png' },
+  { id: 'ey-p3', brandId: 'eylea', category: 'strategy', title: '注射次数与给药间隔对比页', summary: '展示更长给药间隔带来的治疗负担下降。', meta: '来自《EYLEA nAMD Meta 分析》第 3 页', format: '16:9 单页', tags: ['治疗负担'], updatedAt: '2026-09-10', previewUrl: '/ppt-templates/eylea-namd-03.png' },
+  { id: 'se-p1', brandId: 'sevabertinib', category: 'strategy', title: 'HER2 突变 NSCLC 医学汇报封面', summary: '医学事务汇报标准封面版式。', meta: '来自《HER2 突变 NSCLC 医学汇报》第 1 页', format: '16:9 单页', tags: ['封面'], updatedAt: '2026-09-15', previewUrl: '/ppt-templates/her2-nsclc-01.png' },
+  { id: 'se-p2', brandId: 'sevabertinib', category: 'strategy', title: '疾病背景与未满足需求', summary: 'HER2 突变发生率与现有治疗局限。', meta: '来自《HER2 突变 NSCLC 医学汇报》第 2 页', format: '16:9 单页', tags: ['疾病背景'], updatedAt: '2026-09-15', previewUrl: '/ppt-templates/her2-nsclc-02.png' },
+  { id: 'se-p3', brandId: 'sevabertinib', category: 'strategy', title: 'SOHO-01 疗效数据页', summary: 'ORR、DoR 与 PFS 汇总。', meta: '来自《HER2 突变 NSCLC 医学汇报》第 3 页', format: '16:9 单页', tags: ['疗效'], updatedAt: '2026-09-15', previewUrl: '/ppt-templates/her2-nsclc-03.png' },
+];
 
 function escSvg(text: string): string {
   return text

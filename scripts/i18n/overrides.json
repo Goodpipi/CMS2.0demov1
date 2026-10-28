@@ -60,5 +60,18 @@
   "没有找到匹配的内容": "No matching content",
   "维护：{0}": "Owner: {0}",
   "正在查看「{0}」的品牌策略、文献、知识参考、单页幻灯与机制图": "Viewing brand strategy, literature, knowledge, stock slides, and mechanism figures for “{0}”",
+  "正在查看「{0}」的品牌策略、文献与知识参考": "Viewing brand strategy, literature, and knowledge notes for “{0}”",
+  "品牌素材库": "Brand Assets",
+  "常用单页幻灯收录各品牌可直接插入 PPT 的单页": "Stock slides from each brand that can be inserted into a PPT.",
+  "正在查看「{0}」的模板与品牌元素，通用素材会一并显示": "Viewing templates and brand elements for “{0}”. Shared assets are included.",
+  "来自品牌素材库的全部常用单页幻灯，可多选后插入到当前位置。": "All stock single slides from Brand Assets. Multi-select and insert at the current position.",
+  "{0} 张常用单页": "{0} stock slides",
+  "常用机制图用于说明产品作用或疾病机制，可插入页面": "Mechanism figures explain how a product or disease works and can be placed on a page.",
+  "搜索机制图": "Search mechanism figures",
+  "{0} 张机制图": "{0} mechanism figures",
+  "机制图「{0}」上传成功": "Mechanism figure “{0}” uploaded",
+  "上传机制图": "Upload Mechanism Figure",
+  "机制图": "Mechanism Figure",
+  "官方图片": "Official Images",
   "{0} 项知识": "{0} items"
 }
