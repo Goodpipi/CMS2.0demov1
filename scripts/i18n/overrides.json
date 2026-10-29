@@ -73,5 +73,15 @@
   "上传机制图": "Upload Mechanism Figure",
   "机制图": "Mechanism Figure",
   "官方图片": "Official Images",
-  "{0} 项知识": "{0} items"
+  "{0} 项知识": "{0} items",
+  "AI编辑：在标题和页面核心内容下方填写修改要求，两个输入框共用「按此修改」": "AI Edit: enter revision notes under the title and the page key content. Both boxes share Apply Changes.",
+  "标题修改要求": "Title revision note",
+  "页面核心内容修改要求": "Key content revision note",
+  "LOGO与图表": "Logos & Charts",
+  "图片分类": "Image Categories",
+  "{0} 张图片": "{0} images",
+  "搜索图片": "Search images",
+  "上传图片": "Upload Image",
+  "图片「{0}」上传成功": "Image “{0}” uploaded",
+  "正在查看「{0}」的模板与图片，通用素材会一并显示": "Viewing templates and images for “{0}”. Shared assets are included."
 }

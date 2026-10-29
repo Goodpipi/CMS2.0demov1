@@ -4,8 +4,8 @@ import { genId, makeOutlinePage, movePageInOutline, outlinePageCount } from './p
 import { attachStorylinePointsToOutline, isPageDetachedFromStoryline } from '@/lib/storylineOutline';
 import { PPT_BUILTIN_TEMPLATES, type PptBuiltinTemplate } from './pptTemplates';
 import { PptTemplatePickerModal, PptTemplateThumb } from './PptTemplatePickerModal';
-import { OutlineAiPrompt, OutlineReferencedImages, OutlineStaticList } from './OutlinePageEditModal';
-import { mockRevisePptPageRegion, type PptPageAiRegion } from '@/lib/outlineEditMock';
+import { OutlineReferencedImages, OutlineStaticList } from './OutlinePageEditModal';
+import { mockRevisePptPageRegion } from '@/lib/outlineEditMock';
 
 interface PptOutlineEditorProps {
   outline: PptOutline;
@@ -300,8 +300,8 @@ export function PptOutlineEditor({
     snapshot: PptOutlinePage;
   } | null>(null);
   const [draft, setDraft] = useState<ManualDraft | null>(null);
-  const [aiRegion, setAiRegion] = useState<PptPageAiRegion | null>(null);
-  const [aiInstruction, setAiInstruction] = useState('');
+  const [titleAiInstruction, setTitleAiInstruction] = useState('');
+  const [coreAiInstruction, setCoreAiInstruction] = useState('');
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
   const [notice, setNotice] = useState('');
   const noticeTimer = useRef<number | null>(null);
@@ -360,8 +360,8 @@ export function PptOutlineEditor({
   };
 
   const resetEditUi = () => {
-    setAiRegion(null);
-    setAiInstruction('');
+    setTitleAiInstruction('');
+    setCoreAiInstruction('');
   };
 
   const beginPageEdit = (chId: string, page: PptOutlinePage, mode: 'manual' | 'ai') => {
@@ -412,14 +412,23 @@ export function PptOutlineEditor({
   };
 
   const applyPageAi = (page: PptOutlinePage) => {
-    if (!pageEdit || !aiRegion || !aiInstruction.trim()) return;
-    const revised = mockRevisePptPageRegion(page, aiRegion, aiInstruction.trim());
-    const aiUndo =
-      aiRegion === 'title'
-        ? { ...page.aiUndo, title: page.title }
-        : { ...page.aiUndo, core: { bullets: [...(page.bullets || [])], bulletCites: page.bulletCites } };
+    if (!pageEdit) return;
+    const titleNote = titleAiInstruction.trim();
+    const coreNote = coreAiInstruction.trim();
+    if (!titleNote && !coreNote) return;
+    let revised = page;
+    const aiUndo = { ...page.aiUndo };
+    if (titleNote) {
+      aiUndo.title = page.title;
+      revised = mockRevisePptPageRegion(revised, 'title', titleNote);
+    }
+    if (coreNote) {
+      aiUndo.core = { bullets: [...(page.bullets || [])], bulletCites: page.bulletCites };
+      revised = mockRevisePptPageRegion(revised, 'core', coreNote);
+    }
     replacePage(pageEdit.chId, pageEdit.pgId, { ...revised, aiUndo });
-    setAiInstruction('');
+    setTitleAiInstruction('');
+    setCoreAiInstruction('');
   };
 
   const undoLastAi = (chId: string, page: PptOutlinePage, region: 'title' | 'core') => {
@@ -599,17 +608,8 @@ export function PptOutlineEditor({
               const isManual = isEditing && pageEdit?.mode === 'manual' && Boolean(draft);
               const isAi = isEditing && pageEdit?.mode === 'ai';
               const collapsed = !isEditing && collapsedIds.has(pg.id);
-              const titleAi = isAi && aiRegion === 'title';
-              const coreAi = isAi && aiRegion === 'core';
               const canInsertAfter = pg.kind !== 'back';
-              const toggleAi = (region: PptPageAiRegion) => {
-                setAiRegion((prev) => (prev === region ? null : region));
-                setAiInstruction('');
-              };
-              const cancelAi = () => {
-                setAiRegion(null);
-                setAiInstruction('');
-              };
+              const canApplyAi = Boolean(titleAiInstruction.trim() || coreAiInstruction.trim());
               return (
                 <div key={pg.id} className="ppt-page-slot">
                   <div
@@ -661,15 +661,6 @@ export function PptOutlineEditor({
                             <path d="M6 9l6 6 6-6" />
                           </svg>
                         </button>
-                        {isAi ? (
-                          <button
-                            type="button"
-                            className={`ppt-page-ai-btn ${titleAi ? 'is-active' : ''}`}
-                            onClick={() => toggleAi('title')}
-                          >
-                            AI修改
-                          </button>
-                        ) : null}
                         {isManual && draft ? (
                           <input
                             className="ppt-manual-title-input"
@@ -679,7 +670,7 @@ export function PptOutlineEditor({
                             onChange={(e) => updateDraft({ title: e.target.value })}
                           />
                         ) : (
-                          <div className={`ppt-page-title-text ${titleAi ? 'is-ai-active' : ''}`}>{pg.title || '未命名页面'}</div>
+                          <div className={`ppt-page-title-text ${isAi ? 'is-ai-active' : ''}`}>{pg.title || '未命名页面'}</div>
                         )}
                         {pageKindLabel(pg.kind) && (
                           <span className={`ppt-page-kind-badge is-${pg.kind}`}>{pageKindLabel(pg.kind)}</span>
@@ -700,15 +691,17 @@ export function PptOutlineEditor({
                       </div>
                       {collapsed ? null : (
                         <>
-                          {titleAi ? (
-                            <OutlineAiPrompt
-                              value={aiInstruction}
-                              placeholder="例如：标题更短，突出早期干预"
-                              onChange={setAiInstruction}
-                              onSubmit={() => applyPageAi(pg)}
-                              onCancel={cancelAi}
-                              extra={aiUndoButton(chId, pg, 'title')}
-                            />
+                          {isAi ? (
+                            <div className="outline-ai-prompt">
+                              <textarea
+                                className="outline-ai-prompt-input"
+                                value={titleAiInstruction}
+                                placeholder="例如：标题更短，突出早期干预"
+                                aria-label="标题修改要求"
+                                rows={3}
+                                onChange={(event) => setTitleAiInstruction(event.target.value)}
+                              />
+                            </div>
                           ) : null}
                           {isManual && draft ? (
                             <div className="ppt-manual-form">
@@ -830,22 +823,32 @@ export function PptOutlineEditor({
                                 empty="暂无核心内容"
                                 itemCites={pg.bulletCites}
                                 numbered={false}
-                                showAi={isAi}
-                                aiActive={coreAi}
-                                onAi={() => toggleAi('core')}
-                                aiPrompt={
-                                  coreAi ? (
-                                    <OutlineAiPrompt
-                                      value={aiInstruction}
-                                      placeholder="例如：把第三条改成强调随访依从性"
-                                      onChange={setAiInstruction}
-                                      onSubmit={() => applyPageAi(pg)}
-                                      onCancel={cancelAi}
-                                      extra={aiUndoButton(chId, pg, 'core')}
-                                    />
-                                  ) : null
-                                }
+                                aiActive={isAi}
                               />
+                              {isAi ? (
+                                <div className="outline-ai-prompt">
+                                  <textarea
+                                    className="outline-ai-prompt-input"
+                                    value={coreAiInstruction}
+                                    placeholder="例如：把第三条改成强调随访依从性"
+                                    aria-label="页面核心内容修改要求"
+                                    rows={3}
+                                    onChange={(event) => setCoreAiInstruction(event.target.value)}
+                                  />
+                                  <div className="outline-ai-shared-actions">
+                                    {aiUndoButton(chId, pg, 'title')}
+                                    {aiUndoButton(chId, pg, 'core')}
+                                    <button
+                                      type="button"
+                                      className="btn primary"
+                                      disabled={!canApplyAi}
+                                      onClick={() => applyPageAi(pg)}
+                                    >
+                                      按此修改
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : null}
                               {isAi ? null : (
                                 <>
                                   <OutlineReferencedImages images={pg.referencedImages} />
@@ -872,7 +875,7 @@ export function PptOutlineEditor({
                           {isEditing ? (
                             <div className="ppt-page-edit-actions">
                               <span className="ppt-manual-hint">
-                                {isManual ? '人工编辑：可直接修改标题、核心内容、角标与参考文献' : 'AI编辑：点击标题或核心内容旁的「AI修改」进行定向修改'}
+                                {isManual ? '人工编辑：可直接修改标题、核心内容、角标与参考文献' : 'AI编辑：在标题和页面核心内容下方填写修改要求，两个输入框共用「按此修改」'}
                               </span>
                               <div className="ppt-page-edit-actions-end">
                                 <button

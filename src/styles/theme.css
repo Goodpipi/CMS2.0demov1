@@ -9744,6 +9744,13 @@ textarea {
   gap: 8px;
 }
 
+.outline-ai-shared-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .outline-ai-prompt-extra {
   display: flex;
   align-items: center;
